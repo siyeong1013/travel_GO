@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
-import { TextField } from '@/components/ui/TextField';
+import { TextField } from '@/components/ui/Field';
 import {
   TITLE_MAX_LENGTH,
   TRIP_FORM_FIELDS,

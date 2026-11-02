@@ -1,13 +1,9 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { routes } from '@/app/router';
 import { repositories } from '@/data';
-import { createBackupFile } from '@/data/rules/backupFormat';
-import { tripStore } from '@/features/trips/tripStore';
-import { T0 } from '@/test/fixtures';
+import { makePlace } from '@/test/fixtures';
+import { renderApp, resetApp, resetStores } from '@/test/app';
 
 // The app's singletons, backed by a throwaway database.
 vi.mock('@/data', async () => {
@@ -15,21 +11,14 @@ vi.mock('@/data', async () => {
   return { repositories: createTestRepositories().repos };
 });
 
-/** Simulates a fresh page load: empty store, data only in IndexedDB. */
-function resetStore() {
-  tripStore.setState(tripStore.getInitialState(), true);
-}
+beforeEach(resetApp);
 
-beforeEach(async () => {
-  resetStore();
-  await repositories.backup.importAll(createBackupFile([], [], T0), 'overwrite');
-});
-
-function renderApp(path = '/') {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
-  return { router, user: userEvent.setup() };
-}
+const osaka = {
+  title: '오사카 여행',
+  city: { name: '오사카', placeId: null, location: null },
+  startDate: '2026-11-10',
+  endDate: '2026-11-12',
+};
 
 describe('trip flows', () => {
   it('creates a trip, and it is still there after a reload', async () => {
@@ -53,25 +42,25 @@ describe('trip flows', () => {
     expect(router.state.location.pathname).toMatch(/^\/trips\/[0-9a-f-]{36}$/);
 
     cleanup();
-    resetStore();
+    resetStores();
     renderApp('/');
     const card = await screen.findByRole('link', { name: /오사카 여행/ });
     expect(card).toHaveTextContent('11.10 (화) – 11.12 (목) · 2박 3일');
   });
 
-  it('deletes a trip only after confirming', async () => {
-    const trip = await repositories.trips.create({
-      title: '오사카 여행',
-      city: { name: '오사카', placeId: null, location: null },
-      startDate: '2026-11-10',
-      endDate: '2026-11-12',
-    });
+  it('deletes a trip and its items only after confirming', async () => {
+    const trip = await repositories.trips.create(osaka);
+    for (const name of ['오사카성', '도톤보리']) {
+      await repositories.schedule.create({ tripId: trip.id, date: null, place: makePlace(name) });
+    }
     const { router, user } = renderApp(`/trips/${trip.id}`);
 
     const openConfirm = async () => {
       await user.click(await screen.findByRole('button', { name: '여행 메뉴' }));
       await user.click(screen.getByRole('button', { name: '여행 삭제' }));
-      expect(screen.getByText(/되돌릴 수 없어요/)).toBeInTheDocument();
+      expect(
+        screen.getByText('이 여행의 일정 2개도 함께 삭제되고, 되돌릴 수 없어요.'),
+      ).toBeInTheDocument();
     };
 
     await openConfirm();
@@ -84,6 +73,7 @@ describe('trip flows', () => {
     expect(await screen.findByText('아직 여행이 없어요')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/');
     expect(await repositories.trips.get(trip.id)).toBeUndefined();
+    expect(await repositories.schedule.listByTrip(trip.id)).toEqual([]);
   });
 
   it('shows a not-found state for an unknown trip', async () => {

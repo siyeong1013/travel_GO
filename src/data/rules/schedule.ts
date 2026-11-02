@@ -75,6 +75,13 @@ export function planRemove(tripItems: ScheduleItem[], id: ID, now: ISODateTime):
   );
 }
 
+/** `items` with `changed` swapped in by id, back in display order. */
+export function applyChanges(items: ScheduleItem[], changed: ScheduleItem[]): ScheduleItem[] {
+  if (changed.length === 0) return items;
+  const byId = new Map(changed.map((item) => [item.id, item]));
+  return items.map((item) => byId.get(item.id) ?? item).sort(compareItems);
+}
+
 /** Dated items outside the trip's dates. */
 export function findOutOfRange(
   trip: Pick<Trip, 'startDate' | 'endDate'>,

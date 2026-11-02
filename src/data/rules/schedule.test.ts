@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ScheduleItem } from '@/data/models';
 import {
+  applyChanges,
   compareItems,
   normalizeSchedule,
   planAppend,
@@ -95,6 +96,16 @@ describe('planAppend / planRemove', () => {
     const rest = items.filter((item) => item.id !== 'a');
 
     expect(layout(rest, changed)[DAY1]).toEqual(['b', 'c']);
+  });
+});
+
+describe('applyChanges', () => {
+  it('swaps in changed items and restores display order', () => {
+    const items = sampleItems();
+    const next = applyChanges(items, planMove(items, 'x', { date: DAY1, index: 0 }, NOW));
+
+    expect(next.map((item) => item.id)).toEqual(['x', 'a', 'b', 'c', 'i']);
+    expect(applyChanges(items, [])).toBe(items);
   });
 });
 
