@@ -1,10 +1,11 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PlusIcon } from '@/components/ui/icons';
-import type { ID, LocalDate, Trip } from '@/data/models';
+import { Snackbar } from '@/components/ui/Snackbar';
+import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
 import { AddPlaceSheet } from '@/features/schedule/AddPlaceSheet';
 import { DayTabs } from '@/features/schedule/DayTabs';
@@ -16,15 +17,26 @@ import {
   tabElementId,
 } from '@/features/schedule/dayTabs';
 import { EditItemSheet } from '@/features/schedule/EditItemSheet';
-import { ScheduleList } from '@/features/schedule/ScheduleList';
+import { ScheduleBoard } from '@/features/schedule/ScheduleBoard';
+import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { useSchedule } from '@/features/schedule/useSchedule';
+import { josa } from '@/lib/format';
+
+interface Notice {
+  id: number;
+  message: string;
+  undo?: () => Promise<void>;
+}
 
 /** Day tabs + the selected day's (or inbox's) items + "add place". */
 export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) {
   const { items, status, error, reload } = useSchedule(trip.id);
+  const move = useScheduleStore((state) => state.move);
   const [params, setParams] = useSearchParams();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<ID | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeCount = useRef(0);
   const idPrefix = useId();
   const panelId = `${idPrefix}-panel`;
 
@@ -43,6 +55,45 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       },
       { replace: true },
     );
+  }
+
+  function notify(message: string, undo?: () => Promise<void>) {
+    noticeCount.current += 1;
+    setNotice({ id: noticeCount.current, message, undo });
+  }
+
+  /** Within the item's group (at `index`) or to the end of another one, with undo for the latter. */
+  async function moveItem(
+    item: ScheduleItem,
+    date: LocalDate | null,
+    index = itemsOn(items, date).length,
+  ) {
+    const from = {
+      date: item.date,
+      index: itemsOn(items, item.date).findIndex((i) => i.id === item.id),
+    };
+    await move(item.id, { date, index });
+    if (date === item.date) return;
+    const target = tabs.find((tab) => tab.date === date)!;
+    notify(`${josa(item.place.name, '을/를')} ${josa(target.title, '으로/로')} 옮겼어요.`, () =>
+      move(item.id, from),
+    );
+  }
+
+  /** For drag and drop, where nobody awaits the move: failures become a notice. */
+  function dropItem(item: ScheduleItem, date: LocalDate | null, index?: number) {
+    moveItem(item, date, index).catch((err: unknown) => {
+      console.error(err);
+      notify('옮기지 못했어요. 다시 시도해 주세요.');
+    });
+  }
+
+  function undo(action: () => Promise<void>) {
+    setNotice(null);
+    action().catch((err: unknown) => {
+      console.error(err);
+      notify('되돌리지 못했어요.');
+    });
   }
 
   let content;
@@ -69,10 +120,14 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       );
   } else {
     content = (
-      <ScheduleList
+      <ScheduleBoard
         items={groupItems}
         numbered={selectedTab.date !== null}
+        targets={tabs.filter((tab) => tab.key !== selected)}
         onSelect={(item) => setEditingId(item.id)}
+        onDragStart={() => setNotice(null)}
+        onReorder={(item, index) => dropItem(item, item.date, index)}
+        onMoveToGroup={(item, target) => dropItem(item, target.date)}
       />
     );
   }
@@ -112,7 +167,17 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
           key={editing.id}
           item={editing}
           tabs={tabs}
+          onMove={(item, date) => moveItem(item, date)}
           onClose={() => setEditingId(null)}
+        />
+      )}
+      {notice && (
+        <Snackbar
+          key={notice.id}
+          message={notice.message}
+          actionLabel={notice.undo ? '되돌리기' : undefined}
+          onAction={notice.undo && (() => undo(notice.undo!))}
+          onClose={() => setNotice(null)}
         />
       )}
     </>

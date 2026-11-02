@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { TrashIcon } from '@/components/ui/icons';
-import type { ScheduleItem } from '@/data/models';
-import { itemsOn } from '@/data/rules/schedule';
+import type { LocalDate, ScheduleItem } from '@/data/models';
 import { type DayTab, dateOf, type GroupKey, keyOf, tabLabel } from '@/features/schedule/dayTabs';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
@@ -14,14 +13,14 @@ interface EditItemSheetProps {
   item: ScheduleItem;
   /** Days and the inbox, for the "move to" select. */
   tabs: DayTab[];
+  /** Moves the item to the end of another day or the inbox. */
+  onMove: (item: ScheduleItem, date: LocalDate | null) => Promise<void>;
   onClose: () => void;
 }
 
 /** Name, day (moves to the end of another day or the inbox), time, memo, delete. */
-export function EditItemSheet({ item, tabs, onClose }: EditItemSheetProps) {
-  const items = useScheduleStore((state) => state.items);
+export function EditItemSheet({ item, tabs, onMove, onClose }: EditItemSheetProps) {
   const update = useScheduleStore((state) => state.update);
-  const move = useScheduleStore((state) => state.move);
   const remove = useScheduleStore((state) => state.remove);
 
   const [name, setName] = useState(item.place.name);
@@ -56,9 +55,7 @@ export function EditItemSheet({ item, tabs, onClose }: EditItemSheetProps) {
     void run(async () => {
       await update(item.id, { place: { ...item.place, name: trimmed }, time: time || null, memo });
       const date = dateOf(groupKey);
-      if (date !== item.date) {
-        await move(item.id, { date, index: itemsOn(items, date).length });
-      }
+      if (date !== item.date) await onMove(item, date);
     });
   }
 

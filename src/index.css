@@ -18,6 +18,15 @@
       transform: translateY(100%);
     }
   }
+
+  /* Opacity only: drop targets must not move while dnd-kit measures them. */
+  --animate-fade-in: fade-in 150ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 @utility pb-safe {
