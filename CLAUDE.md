@@ -12,7 +12,7 @@
 - 드래그 정렬: dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`) — 터치 지원
 - 지도: Google Maps JavaScript API + Places API (New), React 바인딩은 `@vis.gl/react-google-maps`
 - PWA: `vite-plugin-pwa` (generateSW, autoUpdate)
-- 테스트: Vitest + `fake-indexeddb`
+- 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom
 
 ## 명령어
 
@@ -86,7 +86,8 @@ src/
 - 여행 기간이 줄어들면 범위 밖 날짜의 일정은 삭제하지 않고, **"보관함으로 이동 / 삭제"** 중 사용자가 선택한다.
 
 ### 데이터 보존
-- 앱 시작 시 `navigator.storage.persist()`를 요청한다 (지원 시).
+- 앱 시작 시 `navigator.storage.persist()`를 요청한다 (지원 시, `lib/storage.ts`). 결과는 콘솔에 `[travel GO] persistent storage: ...`로 찍는다.
+  - Chrome은 조용히 판단하고(설치된 PWA는 보통 허용), Firefox는 권한 팝업을 띄운다.
 - MVP에 **JSON 내보내기/가져오기** 기능을 포함한다 (백업 + 향후 서버 이전용).
   - 내보내기 형식에 `schemaVersion` 필드를 포함한다.
   - 가져오기는 기존 데이터와 **병합 / 덮어쓰기** 중 사용자가 선택하고, 실행 전 확인 단계를 둔다.
@@ -120,8 +121,12 @@ src/
 - 기준 폭 360~430px. 데스크톱은 가운데 정렬된 모바일 폭 컨테이너.
 - 주요 액션은 화면 **하단** (엄지 영역): 하단 고정 버튼/FAB, 바텀시트.
 - 터치 타깃 최소 44px. `env(safe-area-inset-*)` 반영.
-- 삭제 등 파괴적 동작은 확인 단계 필요.
-- UI 문구는 한국어.
+- 삭제 등 파괴적 동작은 확인 단계 필요. 확인은 `ConfirmSheet`(하단 시트, 취소/실행 버튼을 엄지 영역에 나란히)로 한다.
+- 메뉴·확인 창은 `components/ui/BottomSheet`(네이티브 `<dialog>`: 포커스 가두기, Esc·배경 탭으로 닫기)를 쓴다. 열려 있을 때만 마운트한다.
+- 입력칸 글자 크기는 16px 이상 (iOS Safari가 포커스 시 확대하지 않도록). 공용 `TextField`를 쓴다.
+- 폼 오류는 제출할 때 한꺼번에 보여주고, 첫 번째 오류 칸에 포커스를 옮긴다. 제출 버튼을 비활성화해서 막지 않는다.
+- 날짜 입력은 네이티브 `<input type="date">`를 쓴다 (모바일 기본 날짜 선택기). 시작일을 바꿨을 때 종료일이 비었거나 더 이르면 종료일도 같이 바꾼다.
+- UI 문구는 한국어. 데이터 레이어 에러는 `lib/errorMessage.ts`로 한국어 문구로 바꾼다.
 - 드래그 정렬:
   - dnd-kit `TouchSensor`에 activation delay(약 200ms, tolerance 5px)를 주거나 드래그 핸들을 사용해 **스크롤과 충돌하지 않게** 한다.
   - 같은 날짜 안의 이동과 **날짜 간(보관함 포함) 이동**을 모두 지원한다.
@@ -130,11 +135,19 @@ src/
 - 함수 컴포넌트 + 훅. default export 지양 (페이지 컴포넌트 제외 가능).
 - 경로 별칭 `@/` → `src/`.
 - Zustand 스토어는 feature 폴더 안에 (`features/trips/tripStore.ts`). 스토어 액션이 저장소를 호출.
+  - 형태: `createXxxStore(repos)` 팩토리 + 앱용 싱글턴(`xxxStore`) + `useXxxStore(selector)` 훅. 테스트는 팩토리에 테스트용 저장소를 넣어 만든다.
+  - 셀렉터는 상태의 값을 그대로 돌려준다. 셀렉터 안에서 새 배열·객체를 만들면 Zustand 5에서 무한 렌더가 난다. 파생 데이터는 컴포넌트에서 계산한다.
+  - `load()`는 동시에 여러 번 불려도 요청은 한 번만 보낸다 (StrictMode에서 effect가 두 번 실행되기 때문).
+- 화면 표시용 순수 함수(날짜 형식, D-day 등)는 `lib/format.ts`나 feature 폴더의 `*Display.ts`에 두고 단위 테스트한다.
 
 ### 테스트
 - 테스트 파일은 소스 옆에 `*.test.ts`로 둔다. `vitest`에서 `describe/it/expect`를 명시적으로 import 한다 (globals 미사용).
 - 데이터 레이어 테스트는 `src/test/fixtures.ts`의 `createTestRepositories()`를 쓴다. 테스트마다 새 DB를 쓰고, 끝나면 `db.delete()` 한다.
 - 시간은 `vi.useFakeTimers` 대신 `Clock` 주입(`testClock()`)으로 제어한다.
+- 화면 흐름 테스트(`*.test.tsx`)는 파일 맨 위에 `/** @vitest-environment happy-dom */`를 붙인다 (기본 환경은 node).
+  - `vi.mock('@/data', ...)`로 앱 싱글턴 저장소를 테스트용 DB로 바꾸고, `beforeEach`에서 스토어 상태와 데이터를 비운다 (`app/tripFlows.test.tsx` 참고).
+  - 라우팅은 `createMemoryRouter(routes)`로 실제 라우트를 그대로 쓴다.
+  - 쿼리는 역할·레이블 기준(`getByRole`, `getByLabelText`)으로 쓴다. 접근성 이름이 곧 테스트 계약이다.
 
 ## 진행 방식
 - 구현 단계별로 진행하고, 각 단계 끝에 실행/확인 방법을 제시한다.
@@ -148,3 +161,4 @@ src/
 - 2026-11-02: 0단계 완료. Vite 8 / React 19 / React Router 7 / Tailwind 4. TypeScript는 typescript-eslint 호환 때문에 `~6.0` 고정 (7.x 금지, typescript-eslint 지원 시 재검토).
 - 2026-11-02: git 원격 `origin` = https://github.com/siyeong1013/travel_GO
 - 2026-11-02: 1단계(데이터 레이어) 완료. Dexie 4 / Vitest 5. 계획의 `schedule.moveOutOfRange`는 `trips.update`의 `outOfRangeItems` 옵션으로 합침 (기간 변경과 일정 처리를 한 트랜잭션에서 처리). `PlaceSnapshot` 위치 정보는 nullable로 (직접 입력 장소). 저장소 에러 이름은 DOMException 이름과 겹치지 않게 함.
+- 2026-11-02: 2단계(여행 목록·생성·삭제) 완료. Zustand 5, 컴포넌트 테스트용 Testing Library + happy-dom 추가. 목록은 "다가오는 여행(진행 중 포함, 가까운 순) / 지난 여행(최근 순)"으로 나누고, 지난 여행 카드는 배지를 생략. 여행 삭제는 상세 화면 ⋯ 메뉴 → 확인 시트. 도시는 6단계 전까지 텍스트 입력.

@@ -46,6 +46,24 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </Icon>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+    </Icon>
+  );
+}
+
 export function MapPinIcon(props: IconProps) {
   return (
     <Icon {...props}>

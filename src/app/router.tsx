@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from '@/app/AppLayout';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { SettingsPage } from '@/pages/SettingsPage';
@@ -6,7 +6,7 @@ import { TripCreatePage } from '@/pages/TripCreatePage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
 import { TripListPage } from '@/pages/TripListPage';
 
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
     children: [
@@ -17,4 +17,6 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);

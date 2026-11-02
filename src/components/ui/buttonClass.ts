@@ -6,6 +6,10 @@ const variantClass: Record<ButtonVariant, string> = {
   danger: 'bg-red-500 text-white active:bg-red-600 disabled:bg-gray-300',
 };
 
+/** 44px round icon-only button (header actions). */
+export const iconButtonClass =
+  'flex size-11 shrink-0 items-center justify-center rounded-full text-gray-700 active:bg-gray-100';
+
 /** Shared button styles, also used for `<Link>`s that look like buttons. */
 export const buttonClass = (variant: ButtonVariant = 'primary', block = false) =>
   [

@@ -2,7 +2,12 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { router } from '@/app/router';
+import { requestPersistentStorage } from '@/lib/storage';
 import './index.css';
+
+void requestPersistentStorage().then((status) => {
+  console.info(`[travel GO] persistent storage: ${status}`);
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

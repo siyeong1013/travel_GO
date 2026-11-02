@@ -10,6 +10,14 @@
   --font-sans:
     'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
     'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+
+  --animate-sheet-in: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
 }
 
 @utility pb-safe {
@@ -29,5 +37,13 @@
   body {
     @apply bg-gray-100 text-gray-900 antialiased;
     overscroll-behavior-y: none;
+  }
+
+  /* iOS Safari centers date values and collapses empty date inputs. */
+  input[type='date'] {
+    @apply appearance-none text-left;
+  }
+  input[type='date']::-webkit-date-and-time-value {
+    text-align: left;
   }
 }

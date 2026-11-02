@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
+import { iconButtonClass } from '@/components/ui/buttonClass';
 import { ChevronLeftIcon } from '@/components/ui/icons';
 
 interface PageHeaderProps {
@@ -25,7 +26,7 @@ export function PageHeader({ title, back = false, right }: PageHeaderProps) {
             type="button"
             onClick={goBack}
             aria-label="뒤로"
-            className="flex size-11 items-center justify-center rounded-full active:bg-gray-100"
+            className={iconButtonClass}
           >
             <ChevronLeftIcon />
           </button>
