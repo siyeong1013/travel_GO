@@ -5,17 +5,16 @@ import {
   type TextareaHTMLAttributes,
   useId,
 } from 'react';
+import { controlClass } from '@/components/ui/fieldClass';
 import { ChevronDownIcon } from '@/components/ui/icons';
-
-// 16px text everywhere so iOS Safari does not zoom in on focus.
-const controlClass =
-  'w-full min-w-0 rounded-xl border border-gray-200 bg-white px-4 text-base outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 aria-[invalid=true]:border-red-400 aria-[invalid=true]:focus:ring-red-100';
 
 interface FieldProps {
   label: string;
   error?: string;
   /** Small control shown at the end of the label row, e.g. a "clear" button. */
   action?: ReactNode;
+  /** Help text under the control; the error takes its place when there is one. */
+  hint?: ReactNode;
   className?: string;
   id?: string;
 }
@@ -30,6 +29,7 @@ function FieldShell({
   label,
   error,
   action,
+  hint,
   className,
   id,
   children,
@@ -37,6 +37,7 @@ function FieldShell({
   const autoId = useId();
   const controlId = id ?? autoId;
   const errorId = `${controlId}-error`;
+  const hintId = `${controlId}-hint`;
 
   return (
     <div className={`flex min-w-0 flex-col gap-1.5 ${className ?? ''}`}>
@@ -49,12 +50,18 @@ function FieldShell({
       {children({
         id: controlId,
         'aria-invalid': error ? true : undefined,
-        'aria-describedby': error ? errorId : undefined,
+        'aria-describedby': error ? errorId : hint ? hintId : undefined,
       })}
-      {error && (
+      {error ? (
         <p id={errorId} className="text-sm text-red-500">
           {error}
         </p>
+      ) : (
+        hint && (
+          <p id={hintId} className="text-sm text-gray-500">
+            {hint}
+          </p>
+        )
       )}
     </div>
   );
@@ -62,9 +69,9 @@ function FieldShell({
 
 type TextFieldProps = FieldProps & Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'className'>;
 
-export function TextField({ label, error, action, className, id, ...props }: TextFieldProps) {
+export function TextField({ label, error, action, hint, className, id, ...props }: TextFieldProps) {
   return (
-    <FieldShell label={label} error={error} action={action} className={className} id={id}>
+    <FieldShell {...{ label, error, action, hint, className, id }}>
       {(a11y) => <input {...a11y} className={`h-12 ${controlClass}`} {...props} />}
     </FieldShell>
   );
@@ -73,9 +80,17 @@ export function TextField({ label, error, action, className, id, ...props }: Tex
 type TextAreaFieldProps = FieldProps &
   Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id' | 'className'>;
 
-export function TextAreaField({ label, error, action, className, id, ...props }: TextAreaFieldProps) {
+export function TextAreaField({
+  label,
+  error,
+  action,
+  hint,
+  className,
+  id,
+  ...props
+}: TextAreaFieldProps) {
   return (
-    <FieldShell label={label} error={error} action={action} className={className} id={id}>
+    <FieldShell {...{ label, error, action, hint, className, id }}>
       {(a11y) => <textarea {...a11y} className={`resize-none py-3 ${controlClass}`} {...props} />}
     </FieldShell>
   );
@@ -84,9 +99,9 @@ export function TextAreaField({ label, error, action, className, id, ...props }:
 type SelectFieldProps = FieldProps & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'id' | 'className'>;
 
 /** Native select (wheel picker on iOS, list dialog on Android). */
-export function SelectField({ label, error, action, className, id, ...props }: SelectFieldProps) {
+export function SelectField({ label, error, action, hint, className, id, ...props }: SelectFieldProps) {
   return (
-    <FieldShell label={label} error={error} action={action} className={className} id={id}>
+    <FieldShell {...{ label, error, action, hint, className, id }}>
       {(a11y) => (
         <div className="relative">
           <select {...a11y} className={`h-12 appearance-none pr-10 ${controlClass}`} {...props} />

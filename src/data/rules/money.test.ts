@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { convertAmount, isRate, parseAmount } from '@/data/rules/money';
+import {
+  convertAmount,
+  isRate,
+  parseAmount,
+  parseMinorUnits,
+  toDecimalString,
+} from '@/data/rules/money';
 
 describe('parseAmount', () => {
   it('reads amounts into minor units of the currency', () => {
@@ -20,6 +26,27 @@ describe('parseAmount', () => {
       ['1,000,000,000,001', 'KRW'],
     ]) {
       expect(parseAmount(text!, currency!), `${text} ${currency}`).toBeNull();
+    }
+  });
+});
+
+describe('parseMinorUnits', () => {
+  it('also accepts zero (an empty share)', () => {
+    expect(parseMinorUnits('0', 'KRW')).toBe(0);
+    expect(parseMinorUnits('0.5', 'USD')).toBe(50);
+    expect(parseMinorUnits('', 'KRW')).toBeNull();
+    expect(parseMinorUnits('1.5', 'KRW')).toBeNull();
+  });
+});
+
+describe('toDecimalString', () => {
+  it('writes minor units back as text that parses to the same amount', () => {
+    expect(toDecimalString(1234, 'USD')).toBe('12.34');
+    expect(toDecimalString(5, 'USD')).toBe('0.05');
+    expect(toDecimalString(1200, 'JPY')).toBe('1200');
+    expect(toDecimalString(-150, 'EUR')).toBe('-1.50');
+    for (const [amount, currency] of [[1234, 'USD'], [5, 'EUR'], [1200, 'JPY']] as const) {
+      expect(parseAmount(toDecimalString(amount, currency), currency)).toBe(amount);
     }
   });
 });

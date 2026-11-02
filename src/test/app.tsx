@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { routes } from '@/app/router';
 import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
+import { expenseStore } from '@/features/expenses/expenseStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
@@ -14,6 +15,7 @@ import { emptyData, T0 } from '@/test/fixtures';
 export function resetStores() {
   tripStore.setState(tripStore.getInitialState(), true);
   scheduleStore.setState(scheduleStore.getInitialState(), true);
+  expenseStore.setState(expenseStore.getInitialState(), true);
 }
 
 /** Empties the stores and the database. */

@@ -6,17 +6,19 @@ import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { MoreIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
 import { errorMessage } from '@/lib/errorMessage';
+import { josa } from '@/lib/format';
 
 interface TripActionsProps {
   trip: Trip;
-  /** Number of schedule items deleted along with the trip (shown in the confirmation). */
+  /** Schedule items and expenses deleted along with the trip (shown in the confirmation). */
   itemCount: number;
+  expenseCount: number;
   /** Errors thrown here are shown in the confirmation sheet. */
   onDelete: () => Promise<void>;
 }
 
 /** Header "⋯" button with the trip menu and the delete confirmation. */
-export function TripActions({ trip, itemCount, onDelete }: TripActionsProps) {
+export function TripActions({ trip, itemCount, expenseCount, onDelete }: TripActionsProps) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -71,11 +73,7 @@ export function TripActions({ trip, itemCount, onDelete }: TripActionsProps) {
       <ConfirmSheet
         open={confirmOpen}
         title={`'${trip.title}' 여행을 삭제할까요?`}
-        description={
-          itemCount > 0
-            ? `이 여행의 일정 ${itemCount}개도 함께 삭제되고, 되돌릴 수 없어요.`
-            : '되돌릴 수 없어요.'
-        }
+        description={deleteDescription(itemCount, expenseCount)}
         confirmLabel="삭제"
         tone="danger"
         busy={busy}
@@ -88,4 +86,14 @@ export function TripActions({ trip, itemCount, onDelete }: TripActionsProps) {
       />
     </>
   );
+}
+
+/** `이 여행의 일정 2개와 지출 3건도 함께 삭제되고, 되돌릴 수 없어요.` */
+function deleteDescription(itemCount: number, expenseCount: number): string {
+  const parts = [];
+  if (itemCount > 0) parts.push(`일정 ${itemCount}개`);
+  if (expenseCount > 0) parts.push(`지출 ${expenseCount}건`);
+  if (parts.length === 0) return '되돌릴 수 없어요.';
+  const what = parts.length === 2 ? `${josa(parts[0]!, '과/와')} ${parts[1]}` : parts[0];
+  return `이 여행의 ${what}도 함께 삭제되고, 되돌릴 수 없어요.`;
 }

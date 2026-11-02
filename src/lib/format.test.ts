@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDateRange, formatTripLength, josa, weekday } from '@/lib/format';
+import {
+  formatDate,
+  formatDateRange,
+  formatMoney,
+  formatTripLength,
+  josa,
+  weekday,
+} from '@/lib/format';
 
 const TODAY = '2026-11-02';
 
@@ -27,6 +34,18 @@ describe('format', () => {
     expect(josa('Day 10', '으로/로')).toBe('Day 10으로');
     expect(josa('Day 2', '은/는')).toBe('Day 2는');
     expect(josa('USJ', '을/를')).toBe('USJ을(를)');
+    expect(josa('일정 3개', '과/와')).toBe('일정 3개와');
+    expect(josa('철수', '과/와')).toBe('철수와');
+    expect(josa('영민', '과/와')).toBe('영민과');
+  });
+
+  it('writes won after the number and other currencies as a symbol before it', () => {
+    expect(formatMoney(1234567, 'KRW')).toBe('1,234,567원');
+    expect(formatMoney(-3000, 'KRW')).toBe('-3,000원');
+    expect(formatMoney(1200, 'JPY')).toBe('¥1,200');
+    expect(formatMoney(123456, 'USD')).toBe('$1,234.56');
+    expect(formatMoney(5, 'EUR')).toBe('€0.05');
+    expect(formatMoney(-150, 'TWD')).toBe('-NT$1.50');
   });
 
   it('describes the trip length as nights and days', () => {

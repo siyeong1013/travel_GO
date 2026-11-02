@@ -1,4 +1,5 @@
-import type { LocalDate } from '@/data/models';
+import type { CurrencyCode, LocalDate } from '@/data/models';
+import { currencyInfo, toDecimalString } from '@/data/rules/money';
 import { diffDays } from '@/lib/dates';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -26,7 +27,7 @@ export function formatDateRange(start: LocalDate, end: LocalDate, today: LocalDa
   return `${startText} – ${formatDate(end, end.slice(0, 4) !== start.slice(0, 4))}`;
 }
 
-type Josa = '을/를' | '이/가' | '은/는' | '으로/로';
+type Josa = '을/를' | '이/가' | '은/는' | '과/와' | '으로/로';
 
 // Korean readings of a final digit: 영 일 이 삼 사 오 육 칠 팔 구 (10, 100… end in 십/백 too).
 const DIGIT_HAS_FINAL = [true, true, false, true, false, false, true, true, true, false];
@@ -62,4 +63,13 @@ export function josa(word: string, particle: Josa): string {
 export function formatTripLength(start: LocalDate, end: LocalDate): string {
   const nights = diffDays(start, end);
   return nights === 0 ? '당일치기' : `${nights}박 ${nights + 1}일`;
+}
+
+/** `12,000원` for won, `¥1,200` / `$12.34` for other currencies. `amount` is in minor units. */
+export function formatMoney(amount: number, currency: CurrencyCode): string {
+  const text = toDecimalString(Math.abs(amount), currency);
+  const [whole, fraction] = text.split('.') as [string, string | undefined];
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (fraction ? `.${fraction}` : '');
+  const sign = amount < 0 ? '-' : '';
+  return currency === 'KRW' ? `${sign}${grouped}원` : `${sign}${currencyInfo(currency).symbol}${grouped}`;
 }
