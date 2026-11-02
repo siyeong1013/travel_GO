@@ -10,6 +10,9 @@ export type LocalTime = string;
 /** ISO 8601 timestamp, e.g. `2026-11-02T09:00:00.000Z`. */
 export type ISODateTime = string;
 
+/** ISO 4217 code from the supported list (`CURRENCIES` in data/rules/money). */
+export type CurrencyCode = string;
+
 export interface GeoPoint {
   lat: number;
   lng: number;

@@ -1,7 +1,8 @@
 import type { ID, Trip } from '@/data/models';
 
+/** New trips start with settlement currency KRW, no budget, and a "나" companion. */
 export type NewTrip = Pick<Trip, 'title' | 'city' | 'startDate' | 'endDate'>;
-export type TripPatch = Partial<NewTrip>;
+export type TripPatch = Partial<NewTrip & Pick<Trip, 'settlementCurrency' | 'budget'>>;
 
 export interface TripUpdateOptions {
   /**
@@ -16,7 +17,11 @@ export interface TripRepository {
   list(): Promise<Trip[]>;
   get(id: ID): Promise<Trip | undefined>;
   create(input: NewTrip): Promise<Trip>;
+  /**
+   * Throws `OutOfRangeItemsError` (see options) and `CurrencyLockedError` when changing the
+   * settlement currency of a trip that has expenses or settlements.
+   */
   update(id: ID, patch: TripPatch, options?: TripUpdateOptions): Promise<Trip>;
-  /** Also deletes the trip's schedule items. No-op if the trip does not exist. */
+  /** Also deletes everything that belongs to the trip. No-op if the trip does not exist. */
   delete(id: ID): Promise<void>;
 }

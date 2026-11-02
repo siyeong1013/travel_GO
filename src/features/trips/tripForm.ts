@@ -64,7 +64,7 @@ export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
 export function toNewTrip(values: TripFormValues): NewTrip {
   return {
     title: values.title.trim(),
-    // Typed by hand until place search (step 6) fills in placeId/location.
+    // Typed by hand until place search fills in placeId/location.
     city: { name: values.city.trim(), placeId: null, location: null },
     startDate: values.startDate,
     endDate: values.endDate,

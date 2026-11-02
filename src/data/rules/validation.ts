@@ -1,6 +1,21 @@
-import type { GeoPoint, LocalTime, PlaceSnapshot } from '@/data/models';
+import type { CurrencyCode, GeoPoint, LocalTime, PlaceSnapshot } from '@/data/models';
 import { type NewTrip, ValidationError } from '@/data/repositories';
+import { isCurrency, MAX_AMOUNT } from '@/data/rules/money';
 import { isLocalDate, isLocalTime } from '@/lib/dates';
+
+export function cleanSettlementCurrency(code: CurrencyCode): CurrencyCode {
+  if (!isCurrency(code)) throw new ValidationError(`unsupported currency: ${code}`);
+  return code;
+}
+
+/** null (no budget) or a whole number of minor units, 0 allowed. */
+export function cleanBudget(budget: number | null): number | null {
+  if (budget === null) return null;
+  if (!Number.isSafeInteger(budget) || budget < 0 || budget > MAX_AMOUNT) {
+    throw new ValidationError('budget must be a whole number of minor units');
+  }
+  return budget;
+}
 
 export function isGeoPoint(value: unknown): value is GeoPoint {
   if (typeof value !== 'object' || value === null) return false;

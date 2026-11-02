@@ -15,7 +15,7 @@ interface AddPlaceSheetProps {
 }
 
 /**
- * Adds a place by typing its name. Place search (step 6) will sit on top of this,
+ * Adds a place by typing its name. Place search will sit on top of this,
  * and this form stays as the "enter manually" fallback.
  */
 export function AddPlaceSheet({ tripId, target, onClose }: AddPlaceSheetProps) {

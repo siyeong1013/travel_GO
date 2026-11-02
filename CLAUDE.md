@@ -12,7 +12,7 @@
 - 드래그 정렬: dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`) — 터치 지원
 - 지도: Google Maps JavaScript API + Places API (New), React 바인딩은 `@vis.gl/react-google-maps`
 - PWA: `vite-plugin-pwa` (generateSW, autoUpdate)
-- 환율: (미정) 추천 open.er-api.com — 무료·키 없음·CORS 허용·166개 통화(TWD·VND 포함)·하루 1회 갱신·출처 표기 필요. 대안 Frankfurter(ECB, 29개 통화, TWD·VND 없음).
+- 환율: open.er-api.com (무료·키 없음·CORS 허용·166개 통화·하루 1회 갱신). 화면에 출처(ExchangeRate-API) 표기 필요.
 - 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom
 
 ## 명령어
@@ -68,7 +68,7 @@ src/
 - 기존 `version` 정의는 **삭제하거나 수정하지 않는다** (기존 사용자 데이터 마이그레이션 보장).
 - IndexedDB는 `null`을 인덱싱하지 못한다. 그래서 `scheduleItems.date`(보관함 = null)는 인덱스에 넣지 않고, `tripId`로 조회한 뒤 메모리에서 거른다.
 - 저장소가 불변식을 지킨다: 날짜가 있는 일정은 항상 여행 기간 안에 있고, `order`는 그룹마다 0..n-1로 연속된다.
-  - `trips.update`가 기간 밖 일정을 만들게 되면 `OutOfRangeItemsError(count)`를 던지고 아무것도 바꾸지 않는다. UI는 사용자에게 선택을 받아 `{ outOfRangeItems: 'moveToInbox' | 'delete' }`로 다시 호출한다.
+  - `trips.update`가 기간 밖 일정을 만들게 되면 `OutOfRangeItemsError(count, dates)`를 던지고 아무것도 바꾸지 않는다. UI는 사용자에게 선택을 받아 `{ outOfRangeItems: 'moveToInbox' | 'delete' }`로 다시 호출한다.
 - 순수 규칙(정렬·이동·병합·백업 검증)은 `data/rules/`에 둔다. 저장소 구현과 스토어(낙관적 업데이트)가 같은 함수를 쓴다.
 - 구현은 클래스 대신 팩토리 함수(`createLocalXxxRepository(db, now)`)로 만든다. 메서드를 떼어 써도 `this` 문제가 없고, 시계(`Clock`)를 주입받으므로 테스트 결과가 매번 같다.
 - 에러는 `RepositoryError` 하위 클래스로 던지고 `code`를 붙인다. UI는 `code`를 한국어 문구로 바꿔 보여준다.
@@ -89,7 +89,7 @@ src/
   - 보관함 ↔ 날짜(또는 날짜 ↔ 날짜)로 옮기면 출발지·도착지 양쪽의 `order`를 재부여한다.
 - 여행 기간이 줄어들면 범위 밖 날짜의 일정은 삭제하지 않고, **"보관함으로 이동 / 삭제"** 중 사용자가 선택한다.
 
-### 가계부·정산 (설계 확정 전 — 아래 "미정" 참고)
+### 가계부·정산
 - 모델: `Companion`, `Expense`, `ExpenseShare`, `Settlement`. 기존 규칙(UUID, 날짜 문자열, `createdAt/updatedAt`, 값 없음은 `null`, 저장소 인터페이스 경유)을 그대로 따른다.
   - `Trip`에 `settlementCurrency`(정산 통화, 기본 `'KRW'`)와 `budget`(정산 통화 최소 단위 정수 | `null`)을 추가한다.
   - `Companion { tripId, name, isMe, order }`: 여행을 만들면 "나"(`isMe`)가 자동으로 생긴다. "나"는 이름만 바꿀 수 있고 삭제할 수 없다. 이름은 한 여행 안에서 겹치지 않게 한다.
@@ -116,16 +116,17 @@ src/
   - 계산은 모두 `data/rules`의 순수 함수로 두고 Vitest로 테스트한다 (균등 나머지, 결제자가 분담 대상이 아닌 경우, 다통화 반올림, 최소 송금, 송금 기록 반영).
   - 정산 결과는 텍스트로 복사한다 (카톡 공유용). 클립보드 API는 보안 컨텍스트에서만 되므로, 실패하면 공유 시트나 텍스트 직접 선택으로 대신한다.
 - 환율: 지출을 기록할 때의 환율을 지출에 스냅샷으로 저장하고, 사용자가 언제든 고칠 수 있다. 온라인이면 API 값, 실패하거나 오프라인이면 같은 통화로 마지막에 쓴 환율, 그것도 없으면 직접 입력.
-- 저장: Dexie `version(2)`로 `companions`, `expenses`, `expenseShares`, `settlements`를 추가한다. `upgrade()`에서 기존 여행에 기본값과 "나"를 넣는다. 이때 "나"의 id는 여행 id로부터 **결정적으로** 만든다 (기기나 백업 변환이 달라도 같은 id가 되도록).
+- 저장: Dexie `version(2)`로 `companions`, `expenses`, `expenseShares`, `settlements`를 추가한다. `upgrade()`에서 기존 여행에 기본값과 "나"를 넣는다 (여행의 `updatedAt`은 그대로 둔다. 사용자 수정이 아니므로 병합에서 이기면 안 됨).
+  - "나"의 id는 `meCompanionId(tripId)`(= `lib/id.ts`의 `derivedId`, UUID v8)로 여행 id에서 **결정적으로** 만든다. 새 여행·DB 마이그레이션·v1 백업 변환 어디서 만들어도 같은 id가 되어, 병합해도 "나"가 둘이 되지 않는다. 마이그레이션·변환으로 만든 "나"의 시각은 여행의 `createdAt`을 쓴다.
+- 저장소: `companions`(목록·추가·이름 변경·`usage`·삭제), `expenses`(입력은 분담 대상 `participants`, 분담액은 저장소가 `splitExpense`로 계산), `settlements`. 일정 항목을 지우면(직접 또는 기간 축소 시 삭제) 연결된 지출의 `scheduleItemId`만 `null`로 바꾼다. 여행을 지우면 딸린 것을 모두 지운다.
+- 순수 규칙: `data/rules/money.ts`(통화 표·`parseAmount`·`convertAmount`), `split.ts`(`splitExpense`·`participantsFromShares`), `expense.ts`(입력 검증), `companion.ts`, `ledger.ts`(`buildLedger`: 합계·카테고리·날짜·동행자별 낸 돈/쓴 돈·잔액), `settlementPlan.ts`(`planTransfers`).
 - 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다. v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
-- 미정 (결정 필요, 괄호 안은 추천):
-  - 지출에 연결된 동행자 삭제 (결제자이거나 금액 지정 분담·송금 기록에 들어 있으면 삭제를 막고 해당 지출을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다)
-  - 환율 API (open.er-api.com)
-  - 정산 통화 변경 (지출이 하나라도 있으면 변경 불가)
-  - 예산 기준 (여행 전체 지출 합계, 개인 예산은 범위 밖)
-  - 지출 날짜 (여행 기간 밖도 허용 — 항공권·숙소 선결제. 날짜별 합계에서는 "여행 전/후"로 묶음)
-  - 지원 통화 (KRW JPY USD EUR CNY TWD HKD THB VND SGD PHP GBP AUD)
-  - 단계 배치 (아래 구현 단계 표의 6~9단계)
+- 동행자 삭제: "나"는 삭제 불가. 결제자이거나, 금액 지정 분담·송금 기록에 들어 있거나, 빼면 분담 대상이 아무도 안 남는 지출이 있으면 삭제를 막고(`CompanionInUseError`에 해당 지출·송금 목록) 화면이 그 목록을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다. 확인 화면에 쓸 영향 범위는 `companions.usage()`로 미리 조회한다.
+- 정산 통화: 지출이나 송금 기록이 하나라도 있으면 바꿀 수 없다 (`CurrencyLockedError`). 환율 스냅샷이 기존 정산 통화 기준이기 때문.
+- 예산: 여행 전체(동행자 모두의 지출 합계) 기준. 개인 예산은 범위 밖.
+- 지출 날짜: 여행 기간 밖도 허용한다 (항공권·숙소 선결제). 날짜별 합계에서는 "여행 전/후"로 묶는다.
+- 지원 통화: KRW JPY USD EUR CNY TWD HKD THB VND SGD PHP GBP AUD (`data/rules/money.ts`).
+- 환율의 `quote`가 여행의 정산 통화와 다른 지출(백업 병합 등으로 생길 수 있음)은 합계에서 빼고 "환율을 다시 입력해야 하는 지출"로 따로 알린다.
 
 ### 데이터 보존
 - 앱 시작 시 `navigator.storage.persist()`를 요청한다 (지원 시, `lib/storage.ts`). 결과는 콘솔에 `[travel GO] persistent storage: ...`로 찍는다.
@@ -227,7 +228,7 @@ src/
 | 3 | 날짜별 일정 + 보관함 | 완료 |
 | 4 | 드래그 정렬 (같은 날 + 날짜 간 이동) | 완료 |
 | 5 | 여행 수정 + 기간 축소 처리 | 완료 |
-| 6 | 가계부 데이터 레이어: 모델, Dexie v2 + 마이그레이션, 저장소, 백업 v2, 금액·환산·분담·잔액·최소 송금 순수 함수 + 테스트 | 예정 (배치 미정) |
+| 6 | 가계부 데이터 레이어: 모델, Dexie v2 + 마이그레이션, 저장소, 백업 v2, 금액·환산·분담·잔액·최소 송금 순수 함수 + 테스트 | 완료 |
 | 7 | 동행자 + 지출 기록 화면: 일정/가계부 탭, 동행자 관리, 지출 폼(3가지 분담 방식, 검증), 날짜별 목록, 일정 연결, 환율 직접 입력 | 예정 |
 | 8 | 환율 자동 입력(오프라인 대체) + 예산·요약(카테고리/날짜/동행자별) | 예정 |
 | 9 | 정산: 잔액, 최소 송금안, 텍스트 복사·공유, 송금 완료 기록 | 예정 |
@@ -255,3 +256,5 @@ src/
 - 할 일 (마지막 다듬기 단계): 번들이 500KB(min)를 넘었다 (gzip 160KB). 라우트 단위 지연 로딩으로 나눈다.
 - 2026-11-02: 5단계(여행 수정 + 기간 축소) 완료. 수정은 별도 화면(`/trips/:id/edit`), 변경 없으면 저장 생략, 범위 밖 일정은 보관함/삭제/취소 시트. `OutOfRangeItemsError`에 날짜 목록 추가. 뒤로 가기 규칙은 `lib/useGoBack.ts`로 통일.
 - 2026-11-02: MVP에 여행 가계부 + 동행자 정산 추가 (모델 `Companion`·`Expense`·`ExpenseShare`·`Settlement`, 금액은 최소 단위 정수, 환율 스냅샷, 나머지는 결제자, 최소 송금 정산안). 설계 초안과 단계 배치 제안 — 미정 항목은 "가계부·정산" 섹션 참고.
+- 2026-11-02: 가계부 미정 항목을 추천안대로 확정 (연결된 동행자 삭제 규칙, 환율 open.er-api.com, 정산 통화 잠금, 여행 전체 예산, 기간 밖 지출 허용, 통화 13종, 6~9단계 배치).
+- 2026-11-02: 6단계(가계부 데이터 레이어) 완료. 정산 통화 잠금은 지출뿐 아니라 송금 기록이 있어도 적용. 환율 `quote`가 정산 통화와 다른 지출은 `buildLedger`가 `unconvertible`로 따로 돌려준다. ESLint `no-unused-vars`에 `ignoreRestSiblings` (필드 제거용 구조 분해 허용).

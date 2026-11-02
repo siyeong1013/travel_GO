@@ -8,7 +8,7 @@ import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { tripStore } from '@/features/trips/tripStore';
-import { T0 } from '@/test/fixtures';
+import { emptyData, T0 } from '@/test/fixtures';
 
 /** Simulates a fresh page load: empty stores, data only in IndexedDB. */
 export function resetStores() {
@@ -19,7 +19,7 @@ export function resetStores() {
 /** Empties the stores and the database. */
 export async function resetApp() {
   resetStores();
-  await repositories.backup.importAll(createBackupFile([], [], T0), 'overwrite');
+  await repositories.backup.importAll(createBackupFile(emptyData(), T0), 'overwrite');
 }
 
 export function renderApp(path = '/') {

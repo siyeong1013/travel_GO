@@ -1,4 +1,4 @@
-import type { GeoPoint, ID, ISODateTime, LocalDate } from '@/data/models/common';
+import type { CurrencyCode, GeoPoint, ID, ISODateTime, LocalDate } from '@/data/models/common';
 
 export interface TripCity {
   name: string;
@@ -14,6 +14,10 @@ export interface Trip {
   startDate: LocalDate;
   /** Inclusive. */
   endDate: LocalDate;
+  /** Balances and settlements are computed in it. Locked once the trip has expenses. */
+  settlementCurrency: CurrencyCode;
+  /** Whole-trip budget, in the settlement currency's minor unit. */
+  budget: number | null;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

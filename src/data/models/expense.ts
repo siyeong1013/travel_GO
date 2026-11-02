@@ -1,0 +1,87 @@
+import type { CurrencyCode, ID, ISODateTime, LocalDate } from '@/data/models/common';
+
+export type ExpenseCategory =
+  | 'food'
+  | 'transport'
+  | 'lodging'
+  | 'shopping'
+  | 'sightseeing'
+  | 'other';
+export type PaymentMethod = 'cash' | 'card';
+export type SplitMethod = 'equal' | 'amount' | 'ratio';
+export type ExchangeRateSource = 'same' | 'api' | 'last' | 'manual';
+
+/** Someone on the trip. Names only; no accounts. */
+export interface Companion {
+  id: ID;
+  tripId: ID;
+  name: string;
+  /** "나", the person using the app: one per trip, created with it. Renamable, not deletable. */
+  isMe: boolean;
+  order: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/** The rate when the expense was recorded: 1 unit of the expense currency = `rate` × `quote`. */
+export interface ExchangeRateSnapshot {
+  /** Positive decimal string, e.g. "9.0412". "1" when the expense is in the settlement currency. */
+  rate: string;
+  /** The trip's settlement currency at the time. */
+  quote: CurrencyCode;
+  source: ExchangeRateSource;
+  fetchedAt: ISODateTime | null;
+}
+
+export interface Expense {
+  id: ID;
+  tripId: ID;
+  /** May fall outside the trip's dates (flights or hotels paid in advance). */
+  date: LocalDate;
+  /** Positive integer in the currency's minor unit (JPY 1,200 → 1200; USD 12.34 → 1234). */
+  amount: number;
+  currency: CurrencyCode;
+  exchangeRate: ExchangeRateSnapshot;
+  category: ExpenseCategory;
+  paymentMethod: PaymentMethod;
+  payerId: ID;
+  splitMethod: SplitMethod;
+  memo: string;
+  scheduleItemId: ID | null;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/**
+ * One person's part of an expense; the shares of an expense always add up to its amount.
+ * `weight` is 1 for equal splits, the entered weight for ratio splits, null for amount splits,
+ * and 0 for a payer who isn't a participant but carries the rounding remainder.
+ */
+export interface ExpenseShare {
+  id: ID;
+  tripId: ID;
+  expenseId: ID;
+  companionId: ID;
+  weight: number | null;
+  /** In the expense currency's minor unit. */
+  amount: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface ExpenseWithShares extends Expense {
+  shares: ExpenseShare[];
+}
+
+/** A transfer marked as done ("송금 완료"). Counts toward balances. */
+export interface Settlement {
+  id: ID;
+  tripId: ID;
+  fromId: ID;
+  toId: ID;
+  /** In `currency` (the trip's settlement currency), minor unit. */
+  amount: number;
+  currency: CurrencyCode;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}

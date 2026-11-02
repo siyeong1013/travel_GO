@@ -1,5 +1,15 @@
 import { createLocalRepositories, createTravelGoDB } from '@/data/local';
-import type { PlaceSnapshot, ScheduleItem, Trip } from '@/data/models';
+import type {
+  BackupData,
+  Companion,
+  Expense,
+  ExpenseWithShares,
+  PlaceSnapshot,
+  ScheduleItem,
+  Trip,
+} from '@/data/models';
+import { makeMeCompanion } from '@/data/rules/companion';
+import type { ShareDraft } from '@/data/rules/split';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
 
@@ -28,6 +38,8 @@ export function makeTrip(overrides: Partial<Trip> = {}): Trip {
     city: { name: '오사카', placeId: null, location: null },
     startDate: '2026-11-10',
     endDate: '2026-11-12',
+    settlementCurrency: 'KRW',
+    budget: null,
     createdAt: T0,
     updatedAt: T0,
     ...overrides,
@@ -47,6 +59,65 @@ export function makeItem(
     createdAt: T0,
     updatedAt: T0,
     ...overrides,
+  };
+}
+
+export function makeCompanion(
+  overrides: Partial<Companion> & Pick<Companion, 'tripId' | 'name'>,
+): Companion {
+  return { id: newId(), isMe: false, order: 1, createdAt: T0, updatedAt: T0, ...overrides };
+}
+
+/** An expense in KRW (unless overridden) with the given shares. */
+export function makeExpense(
+  overrides: Partial<Expense> & Pick<Expense, 'tripId' | 'payerId' | 'amount'>,
+  shares: ShareDraft[],
+): ExpenseWithShares {
+  const expense: Expense = {
+    id: newId(),
+    date: '2026-11-10',
+    currency: 'KRW',
+    exchangeRate: { rate: '1', quote: 'KRW', source: 'same', fetchedAt: null },
+    category: 'food',
+    paymentMethod: 'card',
+    splitMethod: 'equal',
+    memo: '',
+    scheduleItemId: null,
+    createdAt: T0,
+    updatedAt: T0,
+    ...overrides,
+  };
+  return {
+    ...expense,
+    shares: shares.map((share) => ({
+      id: newId(),
+      tripId: expense.tripId,
+      expenseId: expense.id,
+      ...share,
+      createdAt: T0,
+      updatedAt: T0,
+    })),
+  };
+}
+
+export function emptyData(): BackupData {
+  return {
+    trips: [],
+    scheduleItems: [],
+    companions: [],
+    expenses: [],
+    expenseShares: [],
+    settlements: [],
+  };
+}
+
+/** Backup data with the given records; each trip gets its "나" unless companions are given. */
+export function backupData(data: Partial<BackupData>): BackupData {
+  const trips = data.trips ?? [];
+  return {
+    ...emptyData(),
+    companions: trips.map((trip) => makeMeCompanion(trip.id, trip.createdAt)),
+    ...data,
   };
 }
 

@@ -1,20 +1,67 @@
 import { describe, expect, it } from 'vitest';
+import type { BackupFile, Settlement } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
 import {
   BACKUP_SCHEMA_VERSION,
   createBackupFile,
   parseBackupFile,
 } from '@/data/rules/backupFormat';
-import { makeItem, makePlace, makeTrip } from '@/test/fixtures';
+import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
+import { newId } from '@/lib/id';
+import {
+  backupData,
+  makeCompanion,
+  makeExpense,
+  makeItem,
+  makePlace,
+  makeTrip,
+  T0,
+} from '@/test/fixtures';
 
-function sampleFile() {
-  const trip = makeTrip({ city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 } } });
-  return createBackupFile(
-    [trip],
+function sampleFile(): BackupFile {
+  const trip = makeTrip({
+    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 } },
+    budget: 500_000,
+  });
+  const me = makeMeCompanion(trip.id, T0);
+  const friend = makeCompanion({ tripId: trip.id, name: '철수' });
+  const item = makeItem({ tripId: trip.id, place: makePlace('오사카성'), time: '09:30', memo: '입장권' });
+  const { shares, ...expense } = makeExpense(
+    {
+      tripId: trip.id,
+      payerId: me.id,
+      amount: 1234,
+      currency: 'JPY',
+      exchangeRate: { rate: '9.0412', quote: 'KRW', source: 'api', fetchedAt: T0 },
+      scheduleItemId: item.id,
+    },
     [
-      makeItem({ tripId: trip.id, place: makePlace('오사카성'), time: '09:30', memo: '입장권' }),
-      makeItem({ tripId: trip.id, date: null, place: makePlace('직접 입력', { placeId: null, location: null }) }),
+      { companionId: me.id, weight: 1, amount: 617 },
+      { companionId: friend.id, weight: 1, amount: 617 },
     ],
+  );
+  const settlement: Settlement = {
+    id: newId(),
+    tripId: trip.id,
+    fromId: friend.id,
+    toId: me.id,
+    amount: 5000,
+    currency: 'KRW',
+    createdAt: T0,
+    updatedAt: T0,
+  };
+  return createBackupFile(
+    backupData({
+      trips: [trip],
+      scheduleItems: [
+        item,
+        makeItem({ tripId: trip.id, date: null, place: makePlace('직접 입력', { placeId: null, location: null }) }),
+      ],
+      companions: [me, friend],
+      expenses: [expense],
+      expenseShares: shares,
+      settlements: [settlement],
+    }),
     '2026-11-02T00:00:00.000Z',
   );
 }
@@ -67,14 +114,59 @@ describe('backup file format', () => {
 
     const badTime = { ...file, scheduleItems: [{ ...file.scheduleItems[0], time: '25:00' }] };
     expectInvalid(badTime, 'backup_invalid', '$.scheduleItems[0].time');
+
+    const fractional = { ...file, expenses: [{ ...file.expenses[0], amount: 12.5 }] };
+    expectInvalid(fractional, 'backup_invalid', '$.expenses[0].amount');
+
+    const unknownCurrency = { ...file, expenses: [{ ...file.expenses[0], currency: 'XYZ' }] };
+    expectInvalid(unknownCurrency, 'backup_invalid', '$.expenses[0].currency');
   });
 
-  it('rejects dangling trip references and duplicate ids', () => {
+  it('rejects dangling references and duplicate ids', () => {
     const file = sampleFile();
     const dangling = { ...file, scheduleItems: [{ ...file.scheduleItems[0], tripId: 'nope' }] };
     expectInvalid(dangling, 'backup_invalid', '$.scheduleItems[0].tripId');
 
     const duplicate = { ...file, trips: [file.trips[0], file.trips[0]] };
     expectInvalid(duplicate, 'backup_invalid', '$.trips[1].id');
+
+    const strangerPays = { ...file, expenses: [{ ...file.expenses[0], payerId: 'nope' }] };
+    expectInvalid(strangerPays, 'backup_invalid', '$.expenses[0].payerId');
+
+    const toSelf = {
+      ...file,
+      settlements: [{ ...file.settlements[0], toId: file.settlements[0]!.fromId }],
+    };
+    expectInvalid(toSelf, 'backup_invalid', '$.settlements[0].toId');
+  });
+
+  it("requires every expense's shares to add up and every trip to have one 나", () => {
+    const file = sampleFile();
+    const short = { ...file, expenseShares: [{ ...file.expenseShares[0], amount: 1 }, file.expenseShares[1]] };
+    expectInvalid(short, 'backup_invalid', '$.expenses[0].amount');
+
+    const noMe = { ...file, companions: file.companions.filter((c) => !c.isMe) };
+    expectInvalid(noMe, 'backup_invalid', '"나"');
+  });
+
+  it('converts v1 files: trip defaults and the same "나" every time', () => {
+    const trip = makeTrip();
+    const { settlementCurrency, budget, ...v1Trip } = trip;
+    const v1 = {
+      app: 'travel-go',
+      schemaVersion: 1,
+      exportedAt: T0,
+      trips: [v1Trip],
+      scheduleItems: [makeItem({ tripId: trip.id })],
+    };
+
+    const parsed = roundTrip(v1);
+
+    expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
+    expect(parsed.trips[0]).toMatchObject({ settlementCurrency: 'KRW', budget: null });
+    expect(parsed.companions).toEqual([makeMeCompanion(trip.id, trip.createdAt)]);
+    expect(parsed.companions[0]!.id).toBe(meCompanionId(trip.id));
+    expect(parsed.expenses).toEqual([]);
+    expect(roundTrip(v1)).toEqual(parsed);
   });
 });

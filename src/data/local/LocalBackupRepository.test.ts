@@ -29,14 +29,47 @@ const viaJson = (file: BackupFile) => parseBackupFile(JSON.parse(JSON.stringify(
 
 async function dump(repos: Repositories) {
   const trips = await repos.trips.list();
-  const items = await Promise.all(trips.map((trip) => repos.schedule.listByTrip(trip.id)));
-  return { trips, items: items.flat() };
+  const perTrip = async <T,>(list: (tripId: string) => Promise<T[]>) =>
+    (await Promise.all(trips.map((trip) => list(trip.id)))).flat();
+  return {
+    trips,
+    items: await perTrip(repos.schedule.listByTrip),
+    companions: await perTrip(repos.companions.listByTrip),
+    expenses: await perTrip(repos.expenses.listByTrip),
+    settlements: await perTrip(repos.settlements.listByTrip),
+  };
 }
 
 async function seed(repos: Repositories, title: string) {
   const trip = await repos.trips.create(newTrip(title));
-  await repos.schedule.create({ tripId: trip.id, date: '2026-11-10', place: makePlace('오사카성'), time: '09:00' });
+  const castle = await repos.schedule.create({
+    tripId: trip.id,
+    date: '2026-11-10',
+    place: makePlace('오사카성'),
+    time: '09:00',
+  });
   await repos.schedule.create({ tripId: trip.id, date: null, place: makePlace('도톤보리'), memo: '저녁' });
+
+  const [me] = await repos.companions.listByTrip(trip.id);
+  const friend = await repos.companions.create({ tripId: trip.id, name: '철수' });
+  await repos.expenses.create({
+    tripId: trip.id,
+    date: '2026-11-10',
+    amount: 1_200,
+    currency: 'JPY',
+    exchangeRate: { rate: '9.0412', source: 'manual', fetchedAt: null },
+    category: 'sightseeing',
+    paymentMethod: 'cash',
+    payerId: me!.id,
+    splitMethod: 'ratio',
+    participants: [
+      { companionId: me!.id, value: 2 },
+      { companionId: friend.id, value: 1 },
+    ],
+    memo: '천수각 입장권',
+    scheduleItemId: castle.id,
+  });
+  await repos.settlements.create({ tripId: trip.id, fromId: friend.id, toId: me!.id, amount: 3_000 });
   return trip;
 }
 

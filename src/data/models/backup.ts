@@ -1,13 +1,22 @@
 import type { ISODateTime } from '@/data/models/common';
+import type { Companion, Expense, ExpenseShare, Settlement } from '@/data/models/expense';
 import type { ScheduleItem } from '@/data/models/schedule';
 import type { Trip } from '@/data/models/trip';
 
-export interface BackupFile {
+/** Everything the app stores. */
+export interface BackupData {
+  trips: Trip[];
+  scheduleItems: ScheduleItem[];
+  companions: Companion[];
+  expenses: Expense[];
+  expenseShares: ExpenseShare[];
+  settlements: Settlement[];
+}
+
+export interface BackupFile extends BackupData {
   app: 'travel-go';
   schemaVersion: number;
   exportedAt: ISODateTime;
-  trips: Trip[];
-  scheduleItems: ScheduleItem[];
 }
 
 /** `merge`: keep the newer record per id. `overwrite`: replace all local data with the file. */
@@ -28,6 +37,10 @@ export interface ImportSummary {
   mode: ImportMode;
   trips: ImportCounts;
   scheduleItems: ImportCounts;
+  companions: ImportCounts;
+  /** Expenses together with their shares. */
+  expenses: ImportCounts;
+  settlements: ImportCounts;
   /** Items that ended up outside their trip's dates and were moved to the inbox. */
   movedToInbox: number;
 }

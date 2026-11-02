@@ -1,4 +1,5 @@
 import type { TravelGoDB } from '@/data/local/db';
+import { unlinkExpenses } from '@/data/local/expenseRecords';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { EntityNotFoundError, type ScheduleRepository, ValidationError } from '@/data/repositories';
 import { compareItems, planAppend, planMove, planRemove } from '@/data/rules/schedule';
@@ -71,12 +72,14 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
     },
 
     delete(id) {
-      return db.transaction('rw', db.scheduleItems, async () => {
+      return db.transaction('rw', db.scheduleItems, db.expenses, async () => {
         const item = await db.scheduleItems.get(id);
         if (!item) return;
-        const changed = planRemove(await itemsOfTrip(item.tripId), id, now());
+        const timestamp = now();
+        const changed = planRemove(await itemsOfTrip(item.tripId), id, timestamp);
         await db.scheduleItems.delete(id);
         await db.scheduleItems.bulkPut(changed);
+        await unlinkExpenses(db, [id], timestamp);
       });
     },
 
