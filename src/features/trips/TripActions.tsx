@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { BottomSheet, SheetAction } from '@/components/ui/BottomSheet';
 import { iconButtonClass } from '@/components/ui/buttonClass';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
-import { MoreIcon, TrashIcon } from '@/components/ui/icons';
+import { MoreIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
 import { errorMessage } from '@/lib/errorMessage';
 
@@ -16,6 +17,7 @@ interface TripActionsProps {
 
 /** Header "⋯" button with the trip menu and the delete confirmation. */
 export function TripActions({ trip, itemCount, onDelete }: TripActionsProps) {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,6 +47,15 @@ export function TripActions({ trip, itemCount, onDelete }: TripActionsProps) {
       </button>
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="여행 관리">
+        <SheetAction
+          icon={<PencilIcon width={20} height={20} />}
+          onClick={() => {
+            setMenuOpen(false);
+            void navigate(`/trips/${trip.id}/edit`);
+          }}
+        >
+          여행 정보 수정
+        </SheetAction>
         <SheetAction
           tone="danger"
           icon={<TrashIcon width={20} height={20} />}

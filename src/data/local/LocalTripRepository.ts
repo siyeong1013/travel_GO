@@ -55,7 +55,8 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
           } else if (options.outOfRangeItems === 'moveToInbox') {
             await db.scheduleItems.bulkPut(normalizeSchedule([next], items, timestamp).changed);
           } else {
-            throw new OutOfRangeItemsError(outside.length);
+            const dates = [...new Set(outside.map((item) => item.date!))].sort();
+            throw new OutOfRangeItemsError(outside.length, dates);
           }
         }
 

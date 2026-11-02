@@ -1,4 +1,5 @@
-import type { NewTrip } from '@/data/repositories';
+import type { Trip } from '@/data/models';
+import type { NewTrip, TripPatch } from '@/data/repositories';
 import { isLocalDate } from '@/lib/dates';
 
 export interface TripFormValues {
@@ -34,6 +35,29 @@ export function withStartDate(values: TripFormValues, startDate: string): TripFo
   const endDate =
     startDate && (!values.endDate || values.endDate < startDate) ? startDate : values.endDate;
   return { ...values, startDate, endDate };
+}
+
+export function toFormValues(trip: Trip): TripFormValues {
+  return {
+    title: trip.title,
+    city: trip.city.name,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+  };
+}
+
+/**
+ * Only the fields that changed (empty when nothing did). Keeps the city's place data unless
+ * its name changed. Call only with values that passed `validateTripForm`.
+ */
+export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
+  const next = toNewTrip(values);
+  const patch: TripPatch = {};
+  if (next.title !== trip.title) patch.title = next.title;
+  if (next.city.name !== trip.city.name) patch.city = next.city;
+  if (next.startDate !== trip.startDate) patch.startDate = next.startDate;
+  if (next.endDate !== trip.endDate) patch.endDate = next.endDate;
+  return patch;
 }
 
 /** Call only with values that passed `validateTripForm`. */

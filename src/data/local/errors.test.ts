@@ -15,7 +15,7 @@ describe('repository errors', () => {
       new RepositoryError('validation', 'base'),
       new EntityNotFoundError('trip', 'x'),
       new ValidationError('x'),
-      new OutOfRangeItemsError(1),
+      new OutOfRangeItemsError(1, ['2026-11-12']),
       new BackupFormatError('backup_invalid', 'x'),
     ];
 

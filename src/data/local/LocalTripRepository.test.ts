@@ -78,7 +78,7 @@ describe('LocalTripRepository', () => {
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(OutOfRangeItemsError);
-      expect((error as OutOfRangeItemsError).count).toBe(2);
+      expect(error).toMatchObject({ count: 2, dates: ['2026-11-12'] });
       expect(await repos.trips.get(trip.id)).toEqual(trip);
       expect(await names(trip.id)).toEqual(before);
     });

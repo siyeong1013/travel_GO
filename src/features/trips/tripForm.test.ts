@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   emptyTripForm,
+  toFormValues,
   toNewTrip,
+  toTripPatch,
   type TripFormValues,
   validateTripForm,
   withStartDate,
 } from '@/features/trips/tripForm';
+import { makeTrip } from '@/test/fixtures';
 
 const valid: TripFormValues = {
   title: '오사카 여행',
@@ -53,6 +56,30 @@ describe('toNewTrip', () => {
       city: { name: '오사카', placeId: null, location: null },
       startDate: '2026-11-10',
       endDate: '2026-11-12',
+    });
+  });
+});
+
+describe('toTripPatch', () => {
+  const trip = makeTrip({
+    title: '오사카 여행',
+    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 } },
+    startDate: '2026-11-10',
+    endDate: '2026-11-12',
+  });
+
+  it('is empty when nothing changed', () => {
+    expect(toTripPatch(toFormValues(trip), trip)).toEqual({});
+  });
+
+  it('has only the changed fields, and keeps the city place data unless its name changed', () => {
+    const values = toFormValues(trip);
+    expect(toTripPatch({ ...values, title: ' 간사이 여행 ' }, trip)).toEqual({ title: '간사이 여행' });
+    expect(toTripPatch({ ...values, endDate: '2026-11-11' }, trip)).toEqual({
+      endDate: '2026-11-11',
+    });
+    expect(toTripPatch({ ...values, city: '교토' }, trip)).toEqual({
+      city: { name: '교토', placeId: null, location: null },
     });
   });
 });

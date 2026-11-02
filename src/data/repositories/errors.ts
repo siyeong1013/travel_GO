@@ -1,4 +1,4 @@
-import type { ID } from '@/data/models';
+import type { ID, LocalDate } from '@/data/models';
 
 export type RepositoryErrorCode =
   | 'not_found'
@@ -39,10 +39,13 @@ export class ValidationError extends RepositoryError {
 /** A trip's new dates would leave dated items outside the trip. See `TripUpdateOptions`. */
 export class OutOfRangeItemsError extends RepositoryError {
   readonly count: number;
+  /** Days those items are on, ascending. */
+  readonly dates: LocalDate[];
 
-  constructor(count: number) {
+  constructor(count: number, dates: LocalDate[]) {
     super('out_of_range_items', `${count} schedule item(s) fall outside the new trip dates`);
     this.count = count;
+    this.dates = dates;
   }
 }
 

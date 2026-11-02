@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TravelGoDB } from '@/data/local';
-import type { NewTrip, Repositories } from '@/data/repositories';
+import { type NewTrip, OutOfRangeItemsError, type Repositories } from '@/data/repositories';
 import { createTripStore } from '@/features/trips/tripStore';
-import { createTestRepositories } from '@/test/fixtures';
+import { createTestRepositories, makePlace } from '@/test/fixtures';
 
 let db: TravelGoDB;
 let repos: Repositories;
@@ -48,6 +48,21 @@ describe('tripStore', () => {
     await store.getState().remove(later.id);
     expect(store.getState().trips.map((trip) => trip.title)).toEqual(['sooner']);
     expect(await repos.trips.get(later.id)).toBeUndefined();
+  });
+
+  it('updates a trip in place, re-sorting, and passes date conflicts to the caller', async () => {
+    await store.getState().load();
+    const a = await store.getState().create(newTrip('A', '2026-11-10'));
+    await store.getState().create(newTrip('B', '2026-12-01'));
+
+    await store.getState().update(a.id, { startDate: '2027-01-01', endDate: '2027-01-02' });
+    expect(store.getState().trips.map((trip) => trip.title)).toEqual(['B', 'A']);
+
+    await repos.schedule.create({ tripId: a.id, date: '2027-01-02', place: makePlace('x') });
+    await expect(store.getState().update(a.id, { endDate: '2027-01-01' })).rejects.toBeInstanceOf(
+      OutOfRangeItemsError,
+    );
+    expect(store.getState().trips.find((trip) => trip.id === a.id)?.endDate).toBe('2027-01-02');
   });
 
   it('reports load failures with a user-facing message', async () => {

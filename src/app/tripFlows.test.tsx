@@ -81,3 +81,102 @@ describe('trip flows', () => {
     expect(await screen.findByText('여행을 찾을 수 없어요')).toBeInTheDocument();
   });
 });
+
+describe('editing a trip', () => {
+  const openEdit = async (user: ReturnType<typeof renderApp>['user']) => {
+    await user.click(await screen.findByRole('button', { name: '여행 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '여행 정보 수정' }));
+  };
+
+  it('saves new details and returns to the trip', async () => {
+    const trip = await repositories.trips.create(osaka);
+    const { router, user } = renderApp(`/trips/${trip.id}`);
+
+    await openEdit(user);
+    const title = await screen.findByLabelText('여행 이름');
+    expect(title).toHaveValue('오사카 여행');
+    await user.clear(title);
+    await user.type(title, '간사이 여행');
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-11-13' } });
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    expect(await screen.findByRole('heading', { name: '간사이 여행' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/trips/${trip.id}`);
+    expect(screen.getByText('11.10 (화) – 11.13 (금) · 3박 4일')).toBeInTheDocument();
+  });
+
+  it('does not touch the trip when nothing changed', async () => {
+    const trip = await repositories.trips.create(osaka);
+    const { router, user } = renderApp(`/trips/${trip.id}/edit`);
+
+    await user.click(await screen.findByRole('button', { name: '저장' }));
+
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(`/trips/${trip.id}`));
+    expect((await repositories.trips.get(trip.id))?.updatedAt).toBe(trip.updatedAt);
+  });
+
+  describe('shortening the dates', () => {
+    async function tripWithItems() {
+      const trip = await repositories.trips.create({ ...osaka, endDate: '2026-11-14' });
+      for (const [date, name] of [
+        ['2026-11-10', '오사카성'],
+        ['2026-11-13', '교토'],
+        ['2026-11-14', '간사이 공항'],
+      ] as const) {
+        await repositories.schedule.create({ tripId: trip.id, date, place: makePlace(name) });
+      }
+      return trip;
+    }
+
+    async function shortenTo12th(user: ReturnType<typeof renderApp>['user']) {
+      fireEvent.change(await screen.findByLabelText('종료일'), { target: { value: '2026-11-12' } });
+      await user.click(screen.getByRole('button', { name: '저장' }));
+      expect(
+        await screen.findByRole('heading', { name: '여행 기간 밖 일정 2개' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/빠지는 날짜: 11\.13 \(금\), 11\.14 \(토\)/)).toBeInTheDocument();
+    }
+
+    const stored = async (tripId: string) =>
+      (await repositories.schedule.listByTrip(tripId)).map((item) => [item.date, item.place.name]);
+
+    it('changes nothing when cancelled', async () => {
+      const trip = await tripWithItems();
+      const { router, user } = renderApp(`/trips/${trip.id}/edit`);
+
+      await shortenTo12th(user);
+      await user.click(screen.getByRole('button', { name: '취소' }));
+
+      expect(router.state.location.pathname).toBe(`/trips/${trip.id}/edit`);
+      expect((await repositories.trips.get(trip.id))?.endDate).toBe('2026-11-14');
+      expect(await stored(trip.id)).toHaveLength(3);
+    });
+
+    it('can move the items to the inbox', async () => {
+      const trip = await tripWithItems();
+      const { user } = renderApp(`/trips/${trip.id}/edit`);
+
+      await shortenTo12th(user);
+      await user.click(screen.getByRole('button', { name: '보관함으로 옮기기' }));
+
+      expect(await screen.findByRole('tab', { name: /보관함/ })).toHaveTextContent('일정 2개');
+      expect(screen.queryByRole('tab', { name: /Day 4/ })).not.toBeInTheDocument();
+      expect(await stored(trip.id)).toEqual([
+        ['2026-11-10', '오사카성'],
+        [null, '교토'],
+        [null, '간사이 공항'],
+      ]);
+    });
+
+    it('can delete the items', async () => {
+      const trip = await tripWithItems();
+      const { user } = renderApp(`/trips/${trip.id}/edit`);
+
+      await shortenTo12th(user);
+      await user.click(screen.getByRole('button', { name: '일정 2개 삭제' }));
+
+      expect(await screen.findByRole('tab', { name: /Day 3/ })).toBeInTheDocument();
+      expect(await stored(trip.id)).toEqual([['2026-11-10', '오사카성']]);
+    });
+  });
+});

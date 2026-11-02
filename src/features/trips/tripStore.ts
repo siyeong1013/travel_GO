@@ -1,7 +1,12 @@
 import { createStore, useStore } from 'zustand';
 import { repositories } from '@/data';
 import type { ID, Trip } from '@/data/models';
-import type { NewTrip, Repositories } from '@/data/repositories';
+import type {
+  NewTrip,
+  Repositories,
+  TripPatch,
+  TripUpdateOptions,
+} from '@/data/repositories';
 import { compareTrips } from '@/data/rules/trip';
 import { errorMessage } from '@/lib/errorMessage';
 
@@ -16,6 +21,8 @@ export interface TripState {
   load: () => Promise<void>;
   /** Throws repository errors to the caller (forms show them). */
   create: (input: NewTrip) => Promise<Trip>;
+  /** Throws `OutOfRangeItemsError` when the new dates would strand items; see `TripUpdateOptions`. */
+  update: (id: ID, patch: TripPatch, options?: TripUpdateOptions) => Promise<Trip>;
   remove: (id: ID) => Promise<void>;
 }
 
@@ -45,6 +52,14 @@ export function createTripStore(repos: Pick<Repositories, 'trips'>) {
     async create(input) {
       const trip = await repos.trips.create(input);
       set((state) => ({ trips: [...state.trips, trip].sort(compareTrips) }));
+      return trip;
+    },
+
+    async update(id, patch, options) {
+      const trip = await repos.trips.update(id, patch, options);
+      set((state) => ({
+        trips: state.trips.map((t) => (t.id === id ? trip : t)).sort(compareTrips),
+      }));
       return trip;
     },
 

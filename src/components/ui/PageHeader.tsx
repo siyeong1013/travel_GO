@@ -1,22 +1,19 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router';
 import { iconButtonClass } from '@/components/ui/buttonClass';
 import { ChevronLeftIcon } from '@/components/ui/icons';
+import { useGoBack } from '@/lib/useGoBack';
 
 interface PageHeaderProps {
   title: string;
-  /** Show a back button. Falls back to `/` when there is no history. */
+  /** Show a back button. */
   back?: boolean;
+  /** Where "back" goes when there is no history to go back to. */
+  backFallback?: string;
   right?: ReactNode;
 }
 
-export function PageHeader({ title, back = false, right }: PageHeaderProps) {
-  const navigate = useNavigate();
-
-  const goBack = () => {
-    if (window.history.state?.idx > 0) navigate(-1);
-    else navigate('/', { replace: true });
-  };
+export function PageHeader({ title, back = false, backFallback = '/', right }: PageHeaderProps) {
+  const goBack = useGoBack(backFallback);
 
   return (
     <header className="pt-safe sticky top-0 z-10 border-b border-gray-100 bg-white/95 backdrop-blur">
