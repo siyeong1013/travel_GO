@@ -9,3 +9,8 @@ createRoot(document.getElementById('root')!).render(
     <RouterProvider router={router} />
   </StrictMode>,
 );
+
+// Dev only: poke the data layer from the browser console, e.g. `await travelGo.trips.list()`.
+if (import.meta.env.DEV) {
+  void import('@/data').then(({ repositories }) => Object.assign(window, { travelGo: repositories }));
+}
