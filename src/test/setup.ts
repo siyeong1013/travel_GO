@@ -12,6 +12,7 @@ beforeEach(() => {
   );
   // Vitest also reads .env.local: tests must not depend on whether a real key is set there.
   vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
+  vi.stubEnv('VITE_GOOGLE_MAPS_MAP_ID', '');
 });
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -6,6 +6,14 @@ export function googleMapsApiKey(): string {
   return import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 }
 
+/**
+ * Map ID from `.env.local` (`VITE_GOOGLE_MAPS_MAP_ID`). Advanced markers need one; without it the
+ * map uses `DEMO_MAP_ID`, Google's ID for trying them out (fine for development, not for release).
+ */
+export function googleMapsMapId(): string {
+  return import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID';
+}
+
 type ImportLibrary = (name: string) => Promise<unknown>;
 
 interface MapsNamespace {

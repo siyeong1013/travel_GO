@@ -7,6 +7,7 @@ import { PlusIcon } from '@/components/ui/icons';
 import { Snackbar } from '@/components/ui/Snackbar';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
+import { DayMap } from '@/features/map/DayMap';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { searchBias } from '@/features/places/placeSearch';
 import { AddPlaceSheet } from '@/features/schedule/AddPlaceSheet';
@@ -124,6 +125,8 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   } else {
     content = (
       <>
+        {/* The inbox has no order, so no route. */}
+        {selectedTab.date !== null && <DayMap items={groupItems} />}
         <ScheduleBoard
           items={groupItems}
           numbered={selectedTab.date !== null}

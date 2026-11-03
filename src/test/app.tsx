@@ -12,6 +12,7 @@ import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
+import { fakeMapsApi } from '@/test/maps';
 import { type FakePlace, fakePlacesApi, type FakePlacesOptions } from '@/test/places';
 
 /** Simulates a fresh page load: empty stores, data only in IndexedDB (and localStorage). */
@@ -42,14 +43,34 @@ export function stubRatesApi(respond: () => unknown | Promise<unknown>) {
   return fetch;
 }
 
+/** An API key, and a fake Maps JavaScript API on the page that serves `libraries` by name. */
+function stubGoogleMaps(libraries: Record<string, unknown>) {
+  vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
+  vi.stubGlobal('google', {
+    maps: {
+      importLibrary: async (name: string) => {
+        if (!(name in libraries)) throw new Error(`no fake "${name}" library`);
+        return libraries[name];
+      },
+    },
+  });
+}
+
 /**
  * Puts place search online for this test: an API key, and a fake Places API that knows `places`
  * (`test/places.ts`). Returns its request log. Without it there is no key and no search.
+ * Days with found places show a (fake) map as well.
  */
 export function stubPlacesApi(places: FakePlace[], options?: FakePlacesOptions) {
   const api = fakePlacesApi(places, options);
-  vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
-  vi.stubGlobal('google', { maps: { importLibrary: async () => api.library } });
+  stubGoogleMaps({ places: api.library, ...fakeMapsApi().libraries });
+  return api;
+}
+
+/** Puts the map online for this test (`test/maps.ts`): returns what it draws. */
+export function stubMapsApi() {
+  const api = fakeMapsApi();
+  stubGoogleMaps(api.libraries);
   return api;
 }
 

@@ -10,7 +10,7 @@
 - 라우팅: React Router
 - 로컬 DB: IndexedDB (Dexie)
 - 드래그 정렬: dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`) — 터치 지원
-- 지도: Google Maps JavaScript API + Places API (New), React 바인딩은 `@vis.gl/react-google-maps`
+- 지도: Google Maps JavaScript API + Places API (New). React 바인딩 라이브러리 없이 `lib/googleMaps.ts` 로더로 직접 쓴다 (11단계 결정 참고)
 - PWA: `vite-plugin-pwa` (generateSW, autoUpdate)
 - 환율: open.er-api.com (무료·키 없음·CORS 허용·166개 통화·하루 1회 갱신). 약관상 출처 링크 표기 필요, 캐시 허용, 1시간에 1번 이하로 요청 (넘으면 20분간 429).
 - 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom
@@ -159,12 +159,12 @@ src/
   - 키 하나로 지도와 장소 검색을 모두 쓴다. JS API가 Places 요청에도 스크립트를 로드한 키를 쓰기 때문이다. 그래서 그 키에 **Maps JavaScript API**와 **Places API (New)**가 둘 다 허용돼야 한다.
   - 브라우저 번들에 그대로 실리는 키라서, 콘솔에서 HTTP 리퍼러 제한(`http://localhost:5173/*`, 확인용 `http://localhost:5174/*`, 배포 주소)과 API 제한(위 두 API)을 건다.
   - Vite 개발 서버는 `.env.local`이 바뀌면 스스로 재시작해서 새 키를 읽는다.
-- Map ID가 필요한 기능(Advanced Marker)은 `VITE_GOOGLE_MAPS_MAP_ID`.
+- Map ID가 필요한 기능(Advanced Marker)은 `VITE_GOOGLE_MAPS_MAP_ID`(`googleMapsMapId()`). 비어 있으면 Google이 시험용으로 주는 `DEMO_MAP_ID`를 쓴다. 개발에는 충분하지만, 출시 전에는 콘솔에서 Map ID를 만들어 넣는다.
 - Places는 **Places API (New)** 사용 (`AutocompleteSuggestion`, `Place.fetchFields`). 레거시 Autocomplete 위젯 사용 금지.
 - 고른 장소의 상세는 **`formattedAddress, location`만** 요청한다(Place Details Essentials). 이름은 자동완성 제안의 `mainText`를 쓴다. `displayName`(Pro)을 요청하면 세션을 끝내는 호출이 가장 비싼 SKU(Enterprise + Atmosphere)로 청구된다.
 - 자동완성은 세션 토큰을 쓴다. 검색 한 번(첫 요청부터 고를 때까지)이 토큰 하나다. `placePrediction.toPlace().fetchFields()`가 같은 토큰으로 세션을 끝내고, 다음 검색은 새 토큰으로 한다. 고르지 않고 닫으면 요청마다 청구된다.
 - 키가 없거나 오프라인이면 지도/검색 영역에 안내 상태를 보여주고 앱은 정상 동작해야 한다.
-- 로더: `lib/googleMaps.ts`의 `importMapsLibrary(name)`. Google의 "dynamic library import" 방식이라 처음 쓸 때 스크립트를 한 번만 넣는다(`language=ko`). 로드에 실패하면(오프라인 등) 다음 호출에서 다시 시도한다. 페이지에 이미 `google.maps.importLibrary`가 있으면 그걸 쓴다. 지도(11단계)도 이 로더를 거쳐 API를 두 번 로드하지 않게 한다.
+- 로더: `lib/googleMaps.ts`의 `importMapsLibrary(name)`. Google의 "dynamic library import" 방식이라 처음 쓸 때 스크립트를 한 번만 넣는다(`language=ko`). 로드에 실패하면(오프라인 등) 다음 호출에서 다시 시도한다. 페이지에 이미 `google.maps.importLibrary`가 있으면 그걸 쓴다. 지도도 이 로더로 `maps`·`marker` 라이브러리를 받는다.
 - 장소 검색 (`features/places/`)
   - `placeSearch.ts`: `createPlaceSearch()`/`placeSearch`(세션 단위 `suggest`·`pick`), `searchBias(trip, items)`. 편향은 여행 도시 위치, 없으면 위치가 있는 일정 중 마지막에 추가한 곳을 중심으로 반경 30km다(제한이 아니라 우선순위).
   - `usePlaceSearch(text, { kind, bias })` 훅: 입력이 멈추고 300ms 뒤에 검색하고, 2글자 미만은 검색하지 않는다. 늦게 온 이전 응답은 버린다. 이어서 입력하는 동안은 이전 결과를 계속 보여준다(`refines`, 조합 중인 마지막 글자 허용). 실패하면 "다시 시도"를 띄운다.
@@ -182,6 +182,18 @@ src/
 - 경로선: MVP는 일정 순서대로 장소를 **직선(Polyline)** 으로 연결한다.
 - Directions/Routes API는 **사용하지 않는다** (별도 과금).
 - 실제 길찾기는 구간별 "구글맵에서 길찾기" 외부 링크(`https://www.google.com/maps/dir/?api=1&...`)로 제공한다.
+- 지도 (`features/map/`)
+  - `DayMap`: 날짜 탭의 일정 목록 위에 그 날 장소를 보여준다(높이 192px 카드). 보관함은 순서가 없어서 지도도 없다. 위치가 있는 일정이 하나도 없으면 아무것도 그리지 않고 API도 부르지 않는다.
+  - 마커는 카드와 같은 번호(목록 순서 + 1)이고, 위치가 없는 일정은 건너뛴다. 그래서 번호가 빌 수 있어서 지도 아래에 "2번은 위치가 없어서 지도에 없어요."를 둔다. 선은 위치가 있는 장소를 순서대로 잇는다.
+  - 순수 규칙은 `route.ts`(`routeStops`, `unplacedNumbers`, `routeLegs`, `directionsUrl`, `routeFrame`), 지도 조작은 `routeMap.ts`(`createRouteMap(container, libraries)` → `show(stops)`·`destroy()`)에 둔다.
+  - 마커는 Advanced Marker에 번호 원(`div`, Tailwind 클래스)을 넣는다. 마커는 기본으로 점 위에 서므로 원을 반만큼 내려서 가운데가 점에 오게 한다. `title`이 "1번 오사카성"(접근성 이름)이다.
+  - 카메라: 장소들이 다 보이게 맞춘다(여백 24px). 한 곳이거나 모두 약 200m 안이면 줌 16으로 가운데에 둔다(끝까지 확대되지 않게). 장소 구성이 바뀔 때만 다시 맞추고, 순서만 바뀌면 사용자가 옮긴 화면을 그대로 둔다.
+  - 지도 옵션: `gestureHandling: 'cooperative'`(한 손가락은 페이지 스크롤, 두 손가락이 지도), `clickableIcons: false`, 기본 UI 없이 전체 화면 버튼만.
+  - 같은 카드 안에서 날짜를 바꾸면 지도 하나를 그대로 쓰고 마커만 다시 그린다(지도를 새로 만들 때마다 Dynamic Maps 1회 청구). 빈 날이나 보관함을 거쳐 돌아오면 새로 만든다.
+  - 상태: 키가 없거나 지도가 아직 없을 때 오프라인이면 안내 문구, 불러오는 중에는 회색 상자, 실패하면 "지도를 불러오지 못했어요 · 다시 시도". 한 번 뜬 지도는 오프라인이 돼도 그대로 둔다.
+  - 구간별 길찾기: 지도 아래 가로로 넘기는 "1 → 3 길찾기" 링크(`nav` "구간별 길찾기", 새 탭). 같은 자리로 가는 구간(예: 같은 호텔)은 뺀다. 이동 수단은 Google 지도가 고른다.
+    - Google 장소는 `origin`/`destination`에 **이름**, `*_place_id`에 place ID를 넣는다. 지도는 ID로 장소를 찾고, 이름은 ID를 못 찾을 때만 쓴다(이름을 "성 구경"으로 바꿔도 오사카성으로 감). 좌표를 넣으면 ID를 무시하고 그 좌표에서 가장 가까운 곳(예: 근처 가게)으로 잡으므로, 좌표는 place ID가 없는 장소에만 쓴다. 실제 Google 지도로 확인함.
+    - 링크는 목록 항목(`li`)으로 만들지 않는다. 화면 흐름 테스트가 탭 패널의 `listitem`을 일정 카드로 센다.
 
 ### PWA / 오프라인
 - 앱 셸은 서비스워커로 프리캐시. 여행/일정 조회는 IndexedDB 기반이라 오프라인 동작.
@@ -275,7 +287,9 @@ src/
 - 메모리 라우터에는 브라우저 기록(`history.state.idx`)이 없어서, 테스트에서 저장 후 "뒤로"는 항상 대체 경로(`backFallback`)로 간다.
 - 테스트는 네트워크에 나가지 않는다. `test/setup.ts`가 테스트마다 `fetch`를 실패하게 바꿔서 환율 API는 오프라인처럼 보인다. API 응답이 필요하면 `stubRatesApi(() => latestRatesBody('JPY', { KRW: 8.510259 }))`(`test/app.tsx`, `test/fixtures.ts`)를 쓴다. `resetApp()`은 localStorage(기기에 둔 환율)도 비운다.
 - 숨긴 radio 칩(`ChoiceGroup`)은 Playwright 같은 실제 브라우저 자동화에서 radio가 아니라 `label`을 눌러야 한다. 송금 체크박스는 체크하면 그 줄이 목록에서 빠지므로 `check()`가 아니라 `click()`을 쓴다 (`check()`는 같은 자리의 다음 줄을 다시 누른다).
-- 장소 검색: 테스트는 API 키가 없는 상태로 시작한다. Vitest가 `.env.local`도 읽으므로 `test/setup.ts`가 `VITE_GOOGLE_MAPS_API_KEY`를 매번 비운다. 검색이 필요하면 `stubPlacesApi([OSAKA_CASTLE, ...])`(`test/app.tsx`)를 쓴다. 테스트 키와 가짜 `google.maps.importLibrary`(`test/places.ts`의 `fakePlacesApi`: 이름에 입력이 들어간 장소를 제안, `failSearch`·`failPick` 옵션)를 넣고 요청 기록(`requests`, `fetched`)을 돌려준다.
+- 장소 검색: 테스트는 API 키가 없는 상태로 시작한다. Vitest가 `.env.local`도 읽으므로 `test/setup.ts`가 `VITE_GOOGLE_MAPS_API_KEY`(와 `VITE_GOOGLE_MAPS_MAP_ID`)를 매번 비운다. 검색이 필요하면 `stubPlacesApi([OSAKA_CASTLE, ...])`(`test/app.tsx`)를 쓴다. 테스트 키와 가짜 `google.maps.importLibrary`(`test/places.ts`의 `fakePlacesApi`: 이름에 입력이 들어간 장소를 제안, `failSearch`·`failPick` 옵션)를 넣고 요청 기록(`requests`, `fetched`)을 돌려준다. 가짜 `importLibrary`는 라이브러리 이름별로 답하고, 장소 검색 스텁에도 가짜 지도가 들어 있다.
+- 지도: `stubMapsApi()`(`test/app.tsx`)가 테스트 키와 가짜 `maps`·`marker` 라이브러리(`test/maps.ts`의 `fakeMapsApi`)를 넣고, 그린 것을 돌려준다: `maps`(만든 지도, `cameras`), `markers()`(지도에 있는 마커의 `[번호, title]`), `lines`(`path`). 단위 테스트는 `createRouteMap(div, fakeMapsApi().libraries)`. 로드 실패는 `vi.spyOn(google.maps, 'importLibrary').mockRejectedValueOnce(...)`(`app/mapFlows.test.tsx`).
+  - 지도를 띄우는 테스트의 Google 장소는 `fetchedAt`을 실제 현재 시각으로 찍는다. 키가 있으면 여행 화면이 7일 지난 장소를 다시 받으려 하는데, 지도 스텁에는 장소 라이브러리가 없다.
   - happy-dom은 외부 스크립트를 받지 않는다(`vite.config.ts`의 `disableJavaScriptFileLoading`). 로더 테스트는 `document.head.append`를 가로챈다.
   - 검색은 입력이 멈추고 300ms 뒤에 하므로 `findBy*`로 기다린다. happy-dom에는 CSS가 없어 제안 버튼의 접근성 이름이 "오사카성일본 …"처럼 붙어서 나온다. 그래서 `/^오사카성/`처럼 앞부분으로 찾는다.
   - 오프라인은 `vi.spyOn(navigator, 'onLine', 'get')` + `fireEvent(window, new Event('online'|'offline'))`.
@@ -299,7 +313,7 @@ src/
 | 8 | 환율 자동 입력(오프라인 대체) + 예산·요약(카테고리/날짜/동행자별) | 완료 |
 | 9 | 정산: 잔액, 최소 송금안, 텍스트 복사·공유, 송금 완료 기록 | 완료 |
 | 10 | 장소 검색 (Places API) | 완료 |
-| 11 | 지도 (번호 마커, 직선 경로, 구간별 길찾기 링크) | 예정 |
+| 11 | 지도 (번호 마커, 직선 경로, 구간별 길찾기 링크) | 완료 |
 | 12 | 설정 + 백업 내보내기/가져오기 화면 (가계부 포함) | 예정 |
 | 13 | PWA·오프라인·iOS 설치 안내 | 예정 |
 | 14 | 다듬기 (번들 분할 등) | 예정 |
@@ -330,3 +344,4 @@ src/
 - 2026-11-03: 10단계(장소 검색) 완료. Places API (New) 데이터 API(`AutocompleteSuggestion` + `fetchFields`)를 직접 쓰고 목록 UI는 앱에서 그린다. 상세 필드에서 `displayName`을 빼고 이름은 제안의 `mainText`를 쓴다(세션 청구가 Enterprise + Atmosphere → Essentials로 내려감). 여행 도시도 검색으로 고르고(`(regions)`), 장소 검색은 그 근처 30km를 우선한다. 직접 입력은 "그대로 추가"로 남긴다. 편집 시트에서 기존 일정에 장소를 연결할 수 있다(이름 유지 선택 가능). 출처는 "Google Maps" 텍스트. `@types/google.maps` 3.66.7(dev). `@vis.gl/react-google-maps`는 11단계에서 지도와 함께 넣는다. 실제 키로 확인했다. 검색 한 번은 자동완성 1회 + 상세 1회였고, 상세 요청도 `ko`와 같은 세션 토큰으로 갔다. 일본 주소는 한국어로 요청해도 "1-1 Ōsakajō, Chuo Ward, Osaka, 540-0002 일본"처럼 로마자가 섞여 온다(Google 데이터 그대로).
 - 2026-11-03: Google 약관을 지키기로 함(사용자 결정). Google에서 받은 주소·좌표에 받은 시각을 두고, 7일이 지나면 온라인일 때 다시 받고, 30일이 지나면 지운다. 이름은 일정·여행 제목으로 보고 남긴다. Dexie v3, 백업 v3(이전 데이터의 받은 시각은 `createdAt`). 갱신·삭제는 `updatedAt`을 바꾸지 않는다. 실제 API로 확인함(8일 지난 장소를 열자 `GetPlace` 1회로 주소·좌표·받은 시각만 바뀜).
 - 2026-11-03: 카테고리 이모지를 모두 뺌(사용자 요청). 지출 폼의 카테고리 선택은 동그라미 체크(`ChoiceGroup`의 `appearance="checks"`, 카테고리에만 씀). 가계부 목록은 왼쪽 이모지 칸을 없애고, 메모가 제목인 지출은 아랫줄 맨 앞에 카테고리 이름을 둔다(메모가 없으면 제목이 곧 카테고리라 반복하지 않음). 지출 요약의 카테고리별 줄은 이름만.
+- 2026-11-03: 11단계(지도) 완료. 날짜 탭의 일정 목록 위에 지도 카드(번호 마커, 순서대로 직선, 구간별 "1 → 3 길찾기" 링크)를 둔다. 보관함에는 지도가 없다. 계획했던 `@vis.gl/react-google-maps`는 쓰지 않고 로더(`importMapsLibrary`)와 Maps JS API로 직접 그린다. 필요한 건 지도 하나와 마커·선뿐이고, @vis.gl의 로더는 실패한 로드를 다시 시도하지 않으며, 그 `<Map>`은 우리 로더가 먼저 넣은 `importLibrary`를 보면 로드가 끝난 것으로 본다. Map ID가 없으면 `DEMO_MAP_ID`. 길찾기 링크는 이름 + place ID로 만든다(좌표를 넣으면 Google 지도가 ID를 무시하고 근처 가게로 잡는 것을 실제로 확인함). 실제 키로 확인함(오류 없음, 검색 3번 = 자동완성 3 + 상세 3).
