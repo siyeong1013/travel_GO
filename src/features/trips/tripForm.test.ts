@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   emptyTripForm,
+  linkedCity,
   toFormValues,
   toNewTrip,
   toTripPatch,
@@ -13,6 +14,7 @@ import { makeTrip } from '@/test/fixtures';
 const valid: TripFormValues = {
   title: '오사카 여행',
   city: '오사카',
+  cityPlace: null,
   startDate: '2026-11-10',
   endDate: '2026-11-12',
 };
@@ -49,8 +51,10 @@ describe('withStartDate', () => {
   });
 });
 
+const OSAKA = { name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 } };
+
 describe('toNewTrip', () => {
-  it('trims text and leaves the city unlinked to a place for now', () => {
+  it('trims text; a typed city has no place', () => {
     expect(toNewTrip({ ...valid, title: ' 오사카 여행 ', city: ' 오사카 ' })).toEqual({
       title: '오사카 여행',
       city: { name: '오사카', placeId: null, location: null },
@@ -58,12 +62,22 @@ describe('toNewTrip', () => {
       endDate: '2026-11-12',
     });
   });
+
+  it('keeps the found city while the field reads its name', () => {
+    expect(toNewTrip({ ...valid, city: '오사카 ', cityPlace: OSAKA }).city).toEqual(OSAKA);
+    expect(linkedCity({ ...valid, city: '오사', cityPlace: OSAKA })).toBeNull();
+    expect(toNewTrip({ ...valid, city: '교토', cityPlace: OSAKA }).city).toEqual({
+      name: '교토',
+      placeId: null,
+      location: null,
+    });
+  });
 });
 
 describe('toTripPatch', () => {
   const trip = makeTrip({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 } },
+    city: OSAKA,
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -81,5 +95,17 @@ describe('toTripPatch', () => {
     expect(toTripPatch({ ...values, city: '교토' }, trip)).toEqual({
       city: { name: '교토', placeId: null, location: null },
     });
+    // Typed back to the same name: still the same place.
+    expect(toTripPatch({ ...values, city: '오사카' }, trip)).toEqual({});
+  });
+
+  it('saves a newly found city, or one linked to a typed city', () => {
+    const kyoto = { name: '교토', placeId: 'kyoto', location: { lat: 35.01, lng: 135.77 } };
+    expect(toTripPatch({ ...toFormValues(trip), city: '교토', cityPlace: kyoto }, trip)).toEqual({
+      city: kyoto,
+    });
+    const typed = makeTrip({ city: { name: '오사카', placeId: null, location: null } });
+    expect(toFormValues(typed).cityPlace).toBeNull();
+    expect(toTripPatch({ ...toFormValues(typed), cityPlace: OSAKA }, typed)).toEqual({ city: OSAKA });
   });
 });

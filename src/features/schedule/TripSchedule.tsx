@@ -7,6 +7,8 @@ import { PlusIcon } from '@/components/ui/icons';
 import { Snackbar } from '@/components/ui/Snackbar';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
+import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
+import { searchBias } from '@/features/places/placeSearch';
 import { AddPlaceSheet } from '@/features/schedule/AddPlaceSheet';
 import { DayTabs } from '@/features/schedule/DayTabs';
 import {
@@ -45,6 +47,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const selectedTab = tabs.find((tab) => tab.key === selected)!;
   const groupItems = itemsOn(items, dateOf(selected));
   const editing = items.find((item) => item.id === editingId);
+  const bias = searchBias(trip, items);
 
   function select(key: GroupKey) {
     setParams(
@@ -120,15 +123,20 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       );
   } else {
     content = (
-      <ScheduleBoard
-        items={groupItems}
-        numbered={selectedTab.date !== null}
-        targets={tabs.filter((tab) => tab.key !== selected)}
-        onSelect={(item) => setEditingId(item.id)}
-        onDragStart={() => setNotice(null)}
-        onReorder={(item, index) => dropItem(item, item.date, index)}
-        onMoveToGroup={(item, target) => dropItem(item, target.date)}
-      />
+      <>
+        <ScheduleBoard
+          items={groupItems}
+          numbered={selectedTab.date !== null}
+          targets={tabs.filter((tab) => tab.key !== selected)}
+          onSelect={(item) => setEditingId(item.id)}
+          onDragStart={() => setNotice(null)}
+          onReorder={(item, index) => dropItem(item, item.date, index)}
+          onMoveToGroup={(item, target) => dropItem(item, target.date)}
+        />
+        {groupItems.some((item) => item.place.placeId) && (
+          <GoogleMapsAttribution className="-mt-2 px-4 pb-4 text-right" />
+        )}
+      </>
     );
   }
 
@@ -160,13 +168,19 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       </BottomActionBar>
 
       {adding && (
-        <AddPlaceSheet tripId={trip.id} target={selectedTab} onClose={() => setAdding(false)} />
+        <AddPlaceSheet
+          tripId={trip.id}
+          target={selectedTab}
+          bias={bias}
+          onClose={() => setAdding(false)}
+        />
       )}
       {editing && (
         <EditItemSheet
           key={editing.id}
           item={editing}
           tabs={tabs}
+          bias={bias}
           onMove={(item, date) => moveItem(item, date)}
           onClose={() => setEditingId(null)}
         />

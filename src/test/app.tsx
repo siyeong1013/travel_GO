@@ -12,6 +12,7 @@ import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
+import { type FakePlace, fakePlacesApi, type FakePlacesOptions } from '@/test/places';
 
 /** Simulates a fresh page load: empty stores, data only in IndexedDB (and localStorage). */
 export function resetStores() {
@@ -39,6 +40,17 @@ export function stubRatesApi(respond: () => unknown | Promise<unknown>) {
   });
   vi.stubGlobal('fetch', fetch);
   return fetch;
+}
+
+/**
+ * Puts place search online for this test: an API key, and a fake Places API that knows `places`
+ * (`test/places.ts`). Returns its request log. Without it there is no key and no search.
+ */
+export function stubPlacesApi(places: FakePlace[], options?: FakePlacesOptions) {
+  const api = fakePlacesApi(places, options);
+  vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key');
+  vi.stubGlobal('google', { maps: { importLibrary: async () => api.library } });
+  return api;
 }
 
 export function renderApp(path = '/') {

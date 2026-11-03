@@ -1,10 +1,13 @@
-import type { Trip } from '@/data/models';
+import type { Trip, TripCity } from '@/data/models';
 import type { NewTrip, TripPatch } from '@/data/repositories';
 import { isLocalDate } from '@/lib/dates';
 
 export interface TripFormValues {
   title: string;
+  /** Text in the city field. */
   city: string;
+  /** City found by search (or saved with the trip); counts while `city` still reads its name. */
+  cityPlace: TripCity | null;
   startDate: string;
   endDate: string;
 }
@@ -14,7 +17,13 @@ export type TripFormErrors = Partial<Record<keyof TripFormValues, string>>;
 /** Field order, used to focus the first invalid field. */
 export const TRIP_FORM_FIELDS = ['title', 'city', 'startDate', 'endDate'] as const;
 
-export const emptyTripForm: TripFormValues = { title: '', city: '', startDate: '', endDate: '' };
+export const emptyTripForm: TripFormValues = {
+  title: '',
+  city: '',
+  cityPlace: null,
+  startDate: '',
+  endDate: '',
+};
 
 export const TITLE_MAX_LENGTH = 40;
 
@@ -37,24 +46,32 @@ export function withStartDate(values: TripFormValues, startDate: string): TripFo
   return { ...values, startDate, endDate };
 }
 
+/** The found city, while the field still reads its name (typing anything else lets go of it). */
+export function linkedCity(values: TripFormValues): TripCity | null {
+  const { cityPlace } = values;
+  return cityPlace && cityPlace.name === values.city.trim() ? cityPlace : null;
+}
+
 export function toFormValues(trip: Trip): TripFormValues {
+  const { city } = trip;
   return {
     title: trip.title,
-    city: trip.city.name,
+    city: city.name,
+    cityPlace: city.placeId !== null || city.location !== null ? city : null,
     startDate: trip.startDate,
     endDate: trip.endDate,
   };
 }
 
 /**
- * Only the fields that changed (empty when nothing did). Keeps the city's place data unless
- * its name changed. Call only with values that passed `validateTripForm`.
+ * Only the fields that changed (empty when nothing did). The city keeps its place data while
+ * the field reads its name. Call only with values that passed `validateTripForm`.
  */
 export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
   const next = toNewTrip(values);
   const patch: TripPatch = {};
   if (next.title !== trip.title) patch.title = next.title;
-  if (next.city.name !== trip.city.name) patch.city = next.city;
+  if (!sameCity(next.city, trip.city)) patch.city = next.city;
   if (next.startDate !== trip.startDate) patch.startDate = next.startDate;
   if (next.endDate !== trip.endDate) patch.endDate = next.endDate;
   return patch;
@@ -64,9 +81,18 @@ export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
 export function toNewTrip(values: TripFormValues): NewTrip {
   return {
     title: values.title.trim(),
-    // Typed by hand until place search fills in placeId/location.
-    city: { name: values.city.trim(), placeId: null, location: null },
+    // Typed by hand (no search, or nothing picked): no place to bias place search with.
+    city: linkedCity(values) ?? { name: values.city.trim(), placeId: null, location: null },
     startDate: values.startDate,
     endDate: values.endDate,
   };
+}
+
+function sameCity(a: TripCity, b: TripCity): boolean {
+  return (
+    a.name === b.name &&
+    a.placeId === b.placeId &&
+    a.location?.lat === b.location?.lat &&
+    a.location?.lng === b.location?.lng
+  );
 }

@@ -16,5 +16,7 @@ export default defineConfig({
   },
   test: {
     setupFiles: ['./src/test/setup.ts'],
+    // Never fetch external scripts (e.g. the Google Maps API) in component tests.
+    environmentOptions: { happyDOM: { settings: { disableJavaScriptFileLoading: true } } },
   },
 });

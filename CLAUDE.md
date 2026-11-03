@@ -155,10 +155,22 @@ src/
 
 ### Google Maps / Places
 - API 키는 `.env.local`의 `VITE_GOOGLE_MAPS_API_KEY`. 커밋 금지 (`.env.example`만 커밋).
+  - 키 하나로 지도와 장소 검색을 모두 쓴다. JS API가 Places 요청에도 스크립트를 로드한 키를 쓰기 때문이다. 그래서 그 키에 **Maps JavaScript API**와 **Places API (New)**가 둘 다 허용돼야 한다.
+  - 브라우저 번들에 그대로 실리는 키라서, 콘솔에서 HTTP 리퍼러 제한(`http://localhost:5173/*`, 확인용 `http://localhost:5174/*`, 배포 주소)과 API 제한(위 두 API)을 건다.
+  - Vite 개발 서버는 `.env.local`이 바뀌면 스스로 재시작해서 새 키를 읽는다.
 - Map ID가 필요한 기능(Advanced Marker)은 `VITE_GOOGLE_MAPS_MAP_ID`.
 - Places는 **Places API (New)** 사용 (`AutocompleteSuggestion`, `Place.fetchFields`). 레거시 Autocomplete 위젯 사용 금지.
-- 요청 필드는 필요한 것만 (`id, displayName, formattedAddress, location`) — 과금 최소화. 자동완성은 세션 토큰 사용.
+- 고른 장소의 상세는 **`formattedAddress, location`만** 요청한다(Place Details Essentials). 이름은 자동완성 제안의 `mainText`를 쓴다. `displayName`(Pro)을 요청하면 세션을 끝내는 호출이 가장 비싼 SKU(Enterprise + Atmosphere)로 청구된다.
+- 자동완성은 세션 토큰을 쓴다. 검색 한 번(첫 요청부터 고를 때까지)이 토큰 하나다. `placePrediction.toPlace().fetchFields()`가 같은 토큰으로 세션을 끝내고, 다음 검색은 새 토큰으로 한다. 고르지 않고 닫으면 요청마다 청구된다.
 - 키가 없거나 오프라인이면 지도/검색 영역에 안내 상태를 보여주고 앱은 정상 동작해야 한다.
+- 로더: `lib/googleMaps.ts`의 `importMapsLibrary(name)`. Google의 "dynamic library import" 방식이라 처음 쓸 때 스크립트를 한 번만 넣는다(`language=ko`). 로드에 실패하면(오프라인 등) 다음 호출에서 다시 시도한다. 페이지에 이미 `google.maps.importLibrary`가 있으면 그걸 쓴다. 지도(11단계)도 이 로더를 거쳐 API를 두 번 로드하지 않게 한다.
+- 장소 검색 (`features/places/`)
+  - `placeSearch.ts`: `createPlaceSearch()`/`placeSearch`(세션 단위 `suggest`·`pick`), `searchBias(trip, items)`. 편향은 여행 도시 위치, 없으면 위치가 있는 일정 중 마지막에 추가한 곳을 중심으로 반경 30km다(제한이 아니라 우선순위).
+  - `usePlaceSearch(text, { kind, bias })` 훅: 입력이 멈추고 300ms 뒤에 검색하고, 2글자 미만은 검색하지 않는다. 늦게 온 이전 응답은 버린다. 이어서 입력하는 동안은 이전 결과를 계속 보여준다(`refines`, 조합 중인 마지막 글자 허용). 실패하면 "다시 시도"를 띄운다.
+  - 화면: `PlaceSuggestionList`(결과·상태 안내·출처), `PlaceSearchSheet`(기존 일정에 장소 연결), `SearchUnavailableNote`(키 없음/오프라인 안내).
+  - 여행 도시는 `kind: 'region'`(`includedPrimaryTypes: ['(regions)']`: 도시·지방·국가)로 검색한다. 고른 도시는 `TripCity`의 `placeId`·`location`으로 저장한다. 폼은 입력칸 글자가 고른 이름과 같을 때만 연결을 유지하고(`linkedCity`), 저장된 도시는 입력칸에 타이핑하기 전까지 검색하지 않는다.
+- 출처 표기(정책): 구글 지도 위가 아닌 곳에 Places 데이터(제안, 이름·주소)를 보여주면 "Google Maps" 텍스트를 둔다(`GoogleMapsAttribution`: 번역 금지 `translate="no"`, 12px, #5E5E5E, 보통 굵기, 같은 영역 안). 제안 목록, Google 장소가 있는 날의 일정 목록 아래, 편집 시트의 장소 줄에 둔다.
+- 저장 약관(확인됨): place ID는 무기한 저장해도 된다. 위경도는 Places API 서비스 약관상 **최대 30일**만 캐시할 수 있다. 이름·주소는 저장을 허용하는 조항이 없다. 지금의 `PlaceSnapshot` 영구 저장과 어긋나므로, 대응 방식은 결정 로그의 할 일에서 정한다.
 - 경로선: MVP는 일정 순서대로 장소를 **직선(Polyline)** 으로 연결한다.
 - Directions/Routes API는 **사용하지 않는다** (별도 과금).
 - 실제 길찾기는 구간별 "구글맵에서 길찾기" 외부 링크(`https://www.google.com/maps/dir/?api=1&...`)로 제공한다.
@@ -179,6 +191,7 @@ src/
 - 삭제 등 파괴적 동작은 확인 단계 필요. 확인은 `ConfirmSheet`(하단 시트, 취소/실행 버튼을 엄지 영역에 나란히)로 한다.
 - 메뉴·확인 창은 `components/ui/BottomSheet`(네이티브 `<dialog>`: 포커스 가두기, Esc·배경 탭으로 닫기)를 쓴다. 열려 있을 때만 마운트한다.
 - 입력칸 글자 크기는 16px 이상 (iOS Safari가 포커스 시 확대하지 않도록). 공용 `TextField`를 쓴다.
+  - 입력칸 제목 줄의 작은 버튼(`action`: "시간 지우기", "이전 이름으로", "최신 환율 불러오기")은 `-my-3 -mr-2 h-11 px-2`로 줄 높이는 그대로 두고 누르는 영역만 44px로 만든다.
 - 폼 오류는 제출할 때 한꺼번에 보여주고, 첫 번째 오류 칸에 포커스를 옮긴다. 제출 버튼을 비활성화해서 막지 않는다.
 - 날짜 입력은 네이티브 `<input type="date">`를 쓴다 (모바일 기본 날짜 선택기). 시작일을 바꿨을 때 종료일이 비었거나 더 이르면 종료일도 같이 바꾼다.
 - UI 문구는 한국어. 데이터 레이어 에러는 `lib/errorMessage.ts`로 한국어 문구로 바꾼다.
@@ -189,6 +202,8 @@ src/
   - 날짜 일정에는 번호(1, 2, 3…)를 붙이고, 보관함 항목은 순서에 의미가 없으므로 번호 대신 점을 표시한다.
   - "다른 날짜로 이동"은 편집 시트의 날짜 선택으로도 할 수 있다. 옮긴 항목은 대상 그룹의 맨 끝에 들어간다. 키보드·스크린리더 사용자는 이 방법을 쓴다.
   - 편집 시트에서 삭제하면 확인 시트가 그 위에 겹쳐 뜬다. 취소하면 편집하던 내용이 그대로 남는다.
+  - 장소 추가 시트: 이름을 입력하면 검색 결과가 뜨고, 고르면 주소·위치와 함께 저장된다. 결과 아래 "'○○' 그대로 추가"는 이름만 저장한다. 검색이 되는 동안 Enter는 키보드만 닫는다(실수로 위치 없는 장소가 생기지 않게). 키가 없거나 오프라인이면 안내와 함께 예전처럼 이름 + "추가"로 동작한다.
+  - 편집 시트의 장소 줄: 주소(없으면 "주소와 위치가 없어요.")와 "장소 찾기 / 다시 찾기"가 있다. 검색 시트(`PlaceSearchSheet`)는 일정 이름으로 바로 검색한다. 고르면 이름도 그 장소 이름으로 바뀌고, 이름칸에 "이전 이름으로"가 생긴다(예: "호텔 체크인"이라는 이름에 호텔 위치만 붙이기). 저장해야 반영된다.
   - 여행 정보 수정은 ⋯ 메뉴 → `/trips/:id/edit` (만들기와 같은 `TripForm`). 저장하면 기록상 이전 화면(보던 `?day=` 포함)으로 돌아간다.
     - 바뀐 필드만 저장하고, 아무것도 안 바뀌었으면 저장하지 않는다 (`updatedAt`이 백업 병합을 좌우하므로).
     - 기간을 줄여 범위 밖 일정이 생기면 저장소가 `OutOfRangeItemsError(count, dates)`를 던진다. 화면은 "여행 기간 밖 일정 n개 · 빠지는 날짜" 시트에서 **보관함으로 옮기기(기본) / 일정 n개 삭제 / 취소**를 받아 다시 저장한다. 이 시트가 삭제의 확인 단계를 겸한다.
@@ -251,6 +266,10 @@ src/
 - 메모리 라우터에는 브라우저 기록(`history.state.idx`)이 없어서, 테스트에서 저장 후 "뒤로"는 항상 대체 경로(`backFallback`)로 간다.
 - 테스트는 네트워크에 나가지 않는다. `test/setup.ts`가 테스트마다 `fetch`를 실패하게 바꿔서 환율 API는 오프라인처럼 보인다. API 응답이 필요하면 `stubRatesApi(() => latestRatesBody('JPY', { KRW: 8.510259 }))`(`test/app.tsx`, `test/fixtures.ts`)를 쓴다. `resetApp()`은 localStorage(기기에 둔 환율)도 비운다.
 - 숨긴 radio 칩(`ChoiceGroup`)은 Playwright 같은 실제 브라우저 자동화에서 radio가 아니라 `label`을 눌러야 한다. 송금 체크박스는 체크하면 그 줄이 목록에서 빠지므로 `check()`가 아니라 `click()`을 쓴다 (`check()`는 같은 자리의 다음 줄을 다시 누른다).
+- 장소 검색: 테스트는 API 키가 없는 상태로 시작한다. Vitest가 `.env.local`도 읽으므로 `test/setup.ts`가 `VITE_GOOGLE_MAPS_API_KEY`를 매번 비운다. 검색이 필요하면 `stubPlacesApi([OSAKA_CASTLE, ...])`(`test/app.tsx`)를 쓴다. 테스트 키와 가짜 `google.maps.importLibrary`(`test/places.ts`의 `fakePlacesApi`: 이름에 입력이 들어간 장소를 제안, `failSearch`·`failPick` 옵션)를 넣고 요청 기록(`requests`, `fetched`)을 돌려준다.
+  - happy-dom은 외부 스크립트를 받지 않는다(`vite.config.ts`의 `disableJavaScriptFileLoading`). 로더 테스트는 `document.head.append`를 가로챈다.
+  - 검색은 입력이 멈추고 300ms 뒤에 하므로 `findBy*`로 기다린다. happy-dom에는 CSS가 없어 제안 버튼의 접근성 이름이 "오사카성일본 …"처럼 붙어서 나온다. 그래서 `/^오사카성/`처럼 앞부분으로 찾는다.
+  - 오프라인은 `vi.spyOn(navigator, 'onLine', 'get')` + `fireEvent(window, new Event('online'|'offline'))`.
 - 클립보드: `userEvent.setup()`이 `navigator.clipboard`를 메모리 스텁으로 바꾸므로 복사한 내용은 `navigator.clipboard.readText()`로 확인한다. 실패는 `vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(...)`. happy-dom에는 `navigator.share`가 없어서, 공유 테스트는 `Object.defineProperty`로 넣고 테스트 뒤에 지운다 (`app/settlementFlows.test.tsx`).
 - 드래그는 happy-dom에서 테스트할 수 없다 (요소 크기가 모두 0). 이동 규칙은 `data/rules`와 스토어 테스트로 검증하고, 드래그 자체는 실제 브라우저에서 확인한다.
 
@@ -268,7 +287,7 @@ src/
 | 7 | 동행자 + 지출 기록 화면: 일정/가계부 탭, 동행자 관리, 지출 폼(3가지 분담 방식, 검증), 날짜별 목록, 일정 연결, 환율 직접 입력, 정산 통화 설정 | 완료 |
 | 8 | 환율 자동 입력(오프라인 대체) + 예산·요약(카테고리/날짜/동행자별) | 완료 |
 | 9 | 정산: 잔액, 최소 송금안, 텍스트 복사·공유, 송금 완료 기록 | 완료 |
-| 10 | 장소 검색 (Places API) | 예정 |
+| 10 | 장소 검색 (Places API) | 완료 |
 | 11 | 지도 (번호 마커, 직선 경로, 구간별 길찾기 링크) | 예정 |
 | 12 | 설정 + 백업 내보내기/가져오기 화면 (가계부 포함) | 예정 |
 | 13 | PWA·오프라인·iOS 설치 안내 | 예정 |
@@ -297,3 +316,5 @@ src/
 - 2026-11-02: 7단계(동행자 + 지출 기록 화면) 완료. 일정/가계부 전환은 `?tab=expenses`, 지출 폼은 전체 화면 라우트. 정산 통화 설정을 7단계로 당김 (지출을 기록하면 잠기므로 지출 기록 전에 정할 수 있어야 함). 같은 통화의 마지막 환율 미리 채우기도 7단계에 넣음 (8단계는 API 환율과 여행 간 마지막 환율을 더함). 카테고리는 기본값 없이 필수 선택. 일정 쪽에서 지출을 보거나 추가하는 진입점은 아직 없음 (지출 폼의 "일정 연결"만).
 - 2026-11-03: 8단계(환율 자동 입력 + 예산·요약) 완료. 환율 API는 지출 통화를 기준으로 요청 (응답이 소수 6자리라 원화 정산에서 정밀). 응답은 기기에 두고 다음 갱신까지(최소 1시간) 다시 요청하지 않음 (약관). 우선순위는 API → 이 여행의 마지막 환율 → 다른 여행의 마지막 환율 → 직접 입력. 조회 중에 입력한 값은 덮어쓰지 않음. 저장된 지출을 수정할 때는 환율을 자동으로 바꾸지 않음. `fetchedAt` = API 발표 시각. 정산 통화를 바꾸면 예산을 지움 (저장소 규칙). 요약은 별도 화면(`/trips/:id/expenses/summary`). 잔액은 9단계에서 보여줌.
 - 2026-11-03: 9단계(정산) 완료. 정산은 별도 화면(`/trips/:id/expenses/settlement`), 요약 카드에 남은 송금 건수 줄. 송금안 체크 = 그 금액 그대로 송금 기록 (일부 송금 기록은 범위 밖). 체크·해제 모두 되돌리기 안내로 처리하고 확인 시트는 쓰지 않음. 공유 텍스트에 "각자 쓴 돈"을 넣음 (송금 금액의 근거). 복사 실패 시 직접 복사 시트, 공유 버튼은 Web Share가 있을 때만. 송금 기록 쓰기는 지출 스토어에서 바로 반영 (다른 기록에 영향 없음).
+- 2026-11-03: 10단계(장소 검색) 완료. Places API (New) 데이터 API(`AutocompleteSuggestion` + `fetchFields`)를 직접 쓰고 목록 UI는 앱에서 그린다. 상세 필드에서 `displayName`을 빼고 이름은 제안의 `mainText`를 쓴다(세션 청구가 Enterprise + Atmosphere → Essentials로 내려감). 여행 도시도 검색으로 고르고(`(regions)`), 장소 검색은 그 근처 30km를 우선한다. 직접 입력은 "그대로 추가"로 남긴다. 편집 시트에서 기존 일정에 장소를 연결할 수 있다(이름 유지 선택 가능). 출처는 "Google Maps" 텍스트. `@types/google.maps` 3.66.7(dev). `@vis.gl/react-google-maps`는 11단계에서 지도와 함께 넣는다. 실제 키로 확인했다. 검색 한 번은 자동완성 1회 + 상세 1회였고, 상세 요청도 `ko`와 같은 세션 토큰으로 갔다. 일본 주소는 한국어로 요청해도 "1-1 Ōsakajō, Chuo Ward, Osaka, 540-0002 일본"처럼 로마자가 섞여 온다(Google 데이터 그대로).
+- 할 일 (결정 필요): Google 약관상 위경도는 30일까지만 캐시할 수 있고, 이름·주소는 저장 허용 조항이 없다. 현재는 `PlaceSnapshot`을 영구 저장한다. 선택지는 (1) 개인용으로 그대로 둠, (2) `PlaceSnapshot`에 가져온 시각을 두고 30일이 지난 위치는 온라인일 때 다시 받기(11단계 지도에서. 스키마·백업 버전 올림)다.
