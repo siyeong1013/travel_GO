@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GripIcon } from '@/components/ui/icons';
 import type { ID, ScheduleItem } from '@/data/models';
+import { legsAbove, type RouteLeg } from '@/features/map/route';
 import type { DayTab, GroupKey } from '@/features/schedule/dayTabs';
 import { MoveDock } from '@/features/schedule/MoveDock';
 import { ScheduleItemCard } from '@/features/schedule/ScheduleItemCard';
@@ -173,6 +174,7 @@ export function ScheduleBoard({
 
   const activeIndex = active ? items.findIndex((item) => item.id === active.id) : -1;
   const activeItem = items[activeIndex];
+  const legs = numbered ? legsAbove(items) : null;
 
   return (
     <DndContext
@@ -185,12 +187,17 @@ export function ScheduleBoard({
       onDragCancel={finish}
     >
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-        <ol className="flex flex-col gap-2.5 px-4 py-4">
+        {/* No gaps: each item's part of the timeline line reaches the next one. */}
+        <ol className="flex flex-col px-4 pt-4 pb-1">
           {items.map((item, index) => (
             <SortableItem
               key={item.id}
               item={item}
               number={numbered ? index + 1 : null}
+              joinedAbove={numbered && index > 0}
+              joinedBelow={numbered && index < items.length - 1}
+              leg={legs?.get(item.id)}
+              legHidden={active !== null}
               onSelect={() => onSelect(item)}
             />
           ))}
@@ -221,10 +228,18 @@ export function ScheduleBoard({
 function SortableItem({
   item,
   number,
+  joinedAbove,
+  joinedBelow,
+  leg,
+  legHidden,
   onSelect,
 }: {
   item: ScheduleItem;
   number: number | null;
+  joinedAbove: boolean;
+  joinedBelow: boolean;
+  leg: RouteLeg | undefined;
+  legHidden: boolean;
   onSelect: () => void;
 }) {
   const {
@@ -246,6 +261,10 @@ function SortableItem({
       <ScheduleItemCard
         item={item}
         number={number}
+        joinedAbove={joinedAbove}
+        joinedBelow={joinedBelow}
+        leg={leg}
+        legHidden={legHidden}
         onClick={onSelect}
         handle={
           <button

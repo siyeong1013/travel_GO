@@ -8,7 +8,11 @@ const variantClass: Record<ButtonVariant, string> = {
 
 /** 44px round icon-only button (header actions). */
 export const iconButtonClass =
-  'flex size-11 shrink-0 items-center justify-center rounded-full text-gray-700 active:bg-gray-100';
+  'flex size-11 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors active:bg-gray-100';
+
+/** The same on a colored cover (a header that is still transparent). */
+export const iconButtonOnCoverClass =
+  'flex size-11 shrink-0 items-center justify-center rounded-full text-white transition-colors active:bg-white/20';
 
 /** Shared button styles, also used for `<Link>`s that look like buttons. */
 export const buttonClass = (variant: ButtonVariant = 'primary', block = false) =>

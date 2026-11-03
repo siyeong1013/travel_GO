@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
@@ -6,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { MapPinIcon, PlusIcon, SettingsIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { LocalDate, Trip } from '@/data/models';
-import { TripCard } from '@/features/trips/TripCard';
+import { TripCard, TripHeroCard } from '@/features/trips/TripCard';
 import { splitTrips } from '@/features/trips/tripDisplay';
 import { useTrips } from '@/features/trips/useTrips';
 import { toLocalDate } from '@/lib/dates';
@@ -38,10 +39,20 @@ export function TripListPage() {
         <ListSkeleton />
       );
   } else {
+    const [next, ...later] = current;
     content = (
-      <div className="flex flex-col gap-8 px-4 py-5">
-        <TripSection title="다가오는 여행" trips={current} today={today} />
-        <TripSection title="지난 여행" trips={past} today={today} />
+      <div className="flex flex-col gap-8 px-4 pt-5 pb-6">
+        {next && (
+          <TripSection title="다가오는 여행" count={current.length}>
+            <TripHeroCard trip={next} today={today} />
+            <TripRows trips={later} today={today} />
+          </TripSection>
+        )}
+        {past.length > 0 && (
+          <TripSection title="지난 여행" count={past.length}>
+            <TripRows trips={past} today={today} />
+          </TripSection>
+        )}
       </div>
     );
   }
@@ -66,30 +77,43 @@ export function TripListPage() {
   );
 }
 
-function TripSection({ title, trips, today }: { title: string; trips: Trip[]; today: LocalDate }) {
-  if (trips.length === 0) return null;
+function TripSection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: ReactNode;
+}) {
   return (
     <section>
-      <h2 className="mb-3 text-sm font-bold text-gray-500">
-        {title} <span className="font-semibold text-gray-400">{trips.length}</span>
+      <h2 className="mb-3 text-lg font-bold">
+        {title} <span className="font-semibold text-gray-400">{count}</span>
       </h2>
-      <ul className="flex flex-col gap-3">
-        {trips.map((trip) => (
-          <li key={trip.id}>
-            <TripCard trip={trip} today={today} />
-          </li>
-        ))}
-      </ul>
+      {children}
     </section>
+  );
+}
+
+function TripRows({ trips, today }: { trips: Trip[]; today: LocalDate }) {
+  if (trips.length === 0) return null;
+  return (
+    <ul className="mt-2 flex flex-col">
+      {trips.map((trip) => (
+        <li key={trip.id}>
+          <TripCard trip={trip} today={today} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function ListSkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-4 py-5" aria-hidden="true">
-      {[0, 1].map((i) => (
-        <div key={i} className="h-[94px] animate-pulse rounded-2xl bg-gray-100" />
-      ))}
+    <div className="flex flex-col gap-3 px-4 pt-14 pb-5" aria-hidden="true">
+      <div className="h-[184px] animate-pulse rounded-3xl bg-gray-100" />
+      <div className="h-[76px] animate-pulse rounded-2xl bg-gray-100" />
     </div>
   );
 }

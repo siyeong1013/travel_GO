@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CLOSE_ZOOM,
   directionsUrl,
+  distanceMeters,
+  legsAbove,
   routeFrame,
   routeLegs,
   routeStops,
@@ -41,6 +43,33 @@ describe('route stops', () => {
       [3, 4],
     ]);
     expect(routeLegs(stops.slice(0, 1))).toEqual([]);
+  });
+});
+
+describe('legs in the list', () => {
+  it('sit under the item right above each destination', () => {
+    const items = [
+      item('오사카성', CASTLE),
+      item('호텔 체크인', null),
+      item('도톤보리', DOTONBORI),
+      item('우메다', UMEDA),
+      item('공항 가기', null),
+    ];
+    const legs = legsAbove(items);
+    // 1 → 3 under the hotel (2), 3 → 4 under 3; nothing under 1 or the last two.
+    const placed = [...legs].map(([id, leg]) => {
+      const under = items.findIndex((i) => i.id === id) + 1;
+      return [under, leg.from.number, leg.to.number];
+    });
+    expect(placed).toEqual([
+      [2, 1, 3],
+      [3, 3, 4],
+    ]);
+  });
+
+  it('measure the straight-line distance', () => {
+    expect(distanceMeters(CASTLE, DOTONBORI)).toBeCloseTo(3_096, -1);
+    expect(distanceMeters(CASTLE, CASTLE)).toBe(0);
   });
 });
 

@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { GeoPoint, LocalDate, Trip } from '@/data/models';
@@ -39,7 +39,8 @@ async function addPlace(date: LocalDate | null, name: string, location: GeoPoint
   await repositories.schedule.create({ tripId: trip.id, date, place, memo: '' });
 }
 
-const directions = () => screen.queryByRole('navigation', { name: '구간별 길찾기' });
+/** Directions for each leg, in the list between the places. */
+const legLinks = () => screen.queryAllByRole('link', { name: /까지 길찾기$/ });
 
 function goOnline(online: boolean) {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
@@ -65,7 +66,10 @@ describe('day map', () => {
     expect(api.lines[0]!.path).toEqual([CASTLE, DOTONBORI, UMEDA]);
     expect(screen.getByText('2번은 위치가 없어서 지도에 없어요.')).toBeInTheDocument();
 
-    const legs = within(directions()!).getAllByRole('link');
+    // Under the card above each destination: past 2 (no location) it says where the leg starts.
+    expect(screen.getByText('1번에서 직선 3.1km')).toBeInTheDocument();
+    expect(screen.getByText('직선 4.2km')).toBeInTheDocument();
+    const legs = legLinks();
     expect(legs.map((link) => link.getAttribute('aria-label'))).toEqual([
       '1번 오사카성에서 3번 도톤보리까지 길찾기',
       '3번 도톤보리에서 4번 우메다까지 길찾기',
@@ -86,7 +90,7 @@ describe('day map', () => {
     const { user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
     await waitFor(() => expect(api.markers()).toEqual([['1', '1번 오사카성']]));
     // A single place has nowhere to go.
-    expect(directions()).not.toBeInTheDocument();
+    expect(legLinks()).toEqual([]);
 
     await user.click(screen.getByRole('tab', { name: /^Day 2/ }));
     await waitFor(() =>
@@ -96,7 +100,7 @@ describe('day map', () => {
       ]),
     );
     expect(api.maps).toHaveLength(1);
-    expect(directions()).toBeInTheDocument();
+    expect(legLinks()).toHaveLength(1);
 
     await user.click(screen.getByRole('tab', { name: /^Day 3/ }));
     await screen.findByRole('button', { name: /^공항 가기(?! 순서 바꾸기)/ });
@@ -116,7 +120,7 @@ describe('day map', () => {
     expect(await screen.findByRole('note')).toHaveTextContent(
       'Google Maps API 키가 없어서 지도를 볼 수 없어요.',
     );
-    expect(within(directions()!).getAllByRole('link')).toHaveLength(1);
+    expect(legLinks()).toHaveLength(1);
   });
 
   it('loads the map once back online, and keeps it when the connection drops', async () => {
@@ -163,6 +167,6 @@ describe('day map', () => {
     await user.click(screen.getByRole('button', { name: '삭제' }));
 
     await waitFor(() => expect(api.markers()).toEqual([['1', '1번 도톤보리']]));
-    expect(directions()).not.toBeInTheDocument();
+    expect(legLinks()).toEqual([]);
   });
 });

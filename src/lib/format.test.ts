@@ -3,6 +3,7 @@ import {
   formatDate,
   formatDateRange,
   formatDateTime,
+  formatDistance,
   formatMoney,
   formatTripLength,
   josa,
@@ -61,5 +62,14 @@ describe('format', () => {
   it('describes the trip length as nights and days', () => {
     expect(formatTripLength('2026-11-10', '2026-11-12')).toBe('2박 3일');
     expect(formatTripLength('2026-11-10', '2026-11-10')).toBe('당일치기');
+  });
+
+  it('rounds distances like a map: tens of meters, then tenths of a kilometer', () => {
+    expect(formatDistance(3)).toBe('10m');
+    expect(formatDistance(846)).toBe('850m');
+    expect(formatDistance(999)).toBe('1.0km');
+    expect(formatDistance(1_449)).toBe('1.4km');
+    expect(formatDistance(9_960)).toBe('10km');
+    expect(formatDistance(12_345)).toBe('12km');
   });
 });

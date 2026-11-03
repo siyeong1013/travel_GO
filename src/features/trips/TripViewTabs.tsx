@@ -15,22 +15,23 @@ export function TripViewTabs({ view }: { view: TripView }) {
   const [params] = useSearchParams();
 
   return (
-    <nav aria-label="여행 화면" className="px-4 pt-3 pb-1">
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1">
-        {VIEWS.map(({ key, label }) => (
-          <Link
-            key={key}
-            to={{ pathname, search: searchForView(params, key) }}
-            replace
-            aria-current={view === key ? 'page' : undefined}
-            className={`flex h-11 items-center justify-center rounded-lg text-[15px] font-semibold transition-colors ${
-              view === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 active:text-gray-700'
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
+    <nav aria-label="여행 화면" className="flex border-b border-gray-100 px-2">
+      {VIEWS.map(({ key, label }) => (
+        <Link
+          key={key}
+          to={{ pathname, search: searchForView(params, key) }}
+          replace
+          aria-current={view === key ? 'page' : undefined}
+          className={`relative flex h-12 flex-1 items-center justify-center text-base font-bold transition-colors ${
+            view === key ? 'text-gray-900' : 'text-gray-400 active:text-gray-600'
+          }`}
+        >
+          {label}
+          {view === key && (
+            <span aria-hidden="true" className="absolute inset-x-6 bottom-0 h-0.5 rounded-full bg-gray-900" />
+          )}
+        </Link>
+      ))}
     </nav>
   );
 }

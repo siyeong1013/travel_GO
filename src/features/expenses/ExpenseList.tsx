@@ -25,14 +25,14 @@ export function ExpenseList({ tripId, sections, currency, companions, scheduleIt
     <div className="flex flex-col pb-4">
       {sections.map((section) => (
         <section key={section.key} aria-label={section.title}>
-          <div className="flex items-baseline justify-between gap-3 px-4 pt-5 pb-1">
-            <h2 className="text-[15px] font-bold">
+          <div className="flex items-baseline justify-between gap-3 px-4 pt-6 pb-1.5">
+            <h2 className="text-base font-bold">
               {section.title}
               {section.subtitle && (
                 <span className="font-medium text-gray-500"> {section.subtitle}</span>
               )}
             </h2>
-            <p className="text-sm font-semibold text-gray-600 tabular-nums">
+            <p className="text-sm font-semibold text-gray-500 tabular-nums">
               <span className="sr-only">합계 </span>
               {formatMoney(section.total, currency)}
             </p>
@@ -104,7 +104,7 @@ function ExpenseRowLink({
         )}
       </span>
       <span className="shrink-0 text-right">
-        <span className="block font-semibold tabular-nums">
+        <span className="block font-bold tabular-nums">
           {formatMoney(expense.amount, expense.currency)}
         </span>
         {expense.currency !== currency &&

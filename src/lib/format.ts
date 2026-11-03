@@ -20,6 +20,15 @@ export function formatDate(date: LocalDate, withYear = false): string {
   return `${withYear ? `${year}.` : ''}${month}.${day} (${weekday(date)})`;
 }
 
+/** `850m`, `1.4km`, `12km`: rounded like a map would. */
+export function formatDistance(meters: number): string {
+  // Rounded first, so 999m is 1.0km rather than 1000m (and 9.96km 10km rather than 10.0km).
+  const tens = Math.max(10, Math.round(meters / 10) * 10);
+  if (tens < 1000) return `${tens}m`;
+  const km = meters / 1000;
+  return km < 9.95 ? `${km.toFixed(1)}km` : `${Math.round(km)}km`;
+}
+
 /** `11.3 09:02` in the device's time zone; `2025.11.3 09:02` in another year than `now`. */
 export function formatDateTime(at: ISODateTime, now: Date = new Date()): string {
   const date = new Date(at);

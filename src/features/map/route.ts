@@ -37,6 +37,29 @@ export function routeLegs(stops: RouteStop[]): RouteLeg[] {
   });
 }
 
+/**
+ * Each leg, keyed by the item listed right above its destination: the list shows it there,
+ * between the two places, or under the items without a location that it passes.
+ */
+export function legsAbove(items: ScheduleItem[]): Map<ID, RouteLeg> {
+  const legs = new Map<ID, RouteLeg>();
+  for (const leg of routeLegs(routeStops(items))) legs.set(items[leg.to.number - 2]!.id, leg);
+  return legs;
+}
+
+const EARTH_RADIUS_METERS = 6_371_000;
+
+/** Straight-line (great-circle) distance between two places, in meters. */
+export function distanceMeters(a: GeoPoint, b: GeoPoint): number {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = radians(b.lat - a.lat);
+  const dLng = radians(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(a.lat)) * Math.cos(radians(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(h));
+}
+
 const samePoint = (a: GeoPoint, b: GeoPoint) => a.lat === b.lat && a.lng === b.lng;
 const pointText = ({ lat, lng }: GeoPoint) => `${lat},${lng}`;
 

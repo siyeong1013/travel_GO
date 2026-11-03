@@ -15,10 +15,18 @@ interface TripActionsProps {
   expenseCount: number;
   /** Errors thrown here are shown in the confirmation sheet. */
   onDelete: () => Promise<void>;
+  /** The "⋯" button's look (white on the trip cover). */
+  buttonClassName?: string;
 }
 
 /** Header "⋯" button with the trip menu and the delete confirmation. */
-export function TripActions({ trip, itemCount, expenseCount, onDelete }: TripActionsProps) {
+export function TripActions({
+  trip,
+  itemCount,
+  expenseCount,
+  onDelete,
+  buttonClassName = iconButtonClass,
+}: TripActionsProps) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -42,7 +50,7 @@ export function TripActions({ trip, itemCount, expenseCount, onDelete }: TripAct
       <button
         type="button"
         aria-label="여행 메뉴"
-        className={iconButtonClass}
+        className={buttonClassName}
         onClick={() => setMenuOpen(true)}
       >
         <MoreIcon />
