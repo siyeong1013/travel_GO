@@ -1,6 +1,7 @@
 import type { CurrencyCode, ISODateTime } from '@/data/models';
 import { CURRENCY_CODES, isCurrency, isRate } from '@/data/rules/money';
 import { type Clock, isIsoDateTime, nowIso } from '@/lib/dates';
+import { deviceStorage } from '@/lib/deviceStorage';
 
 // open.er-api.com: free, no key, CORS enabled, updated once a day. Its terms allow caching, ask
 // for no more than hourly requests (429 for 20 minutes otherwise) and for this attribution link.
@@ -112,14 +113,6 @@ interface ExchangeRateApiOptions {
   storage?: () => Storage | undefined;
   now?: Clock;
   timeoutMs?: number;
-}
-
-function deviceStorage(): Storage | undefined {
-  try {
-    return globalThis.localStorage ?? undefined;
-  } catch {
-    return undefined; // reading it throws when site data is blocked
-  }
 }
 
 export function createExchangeRateApi({

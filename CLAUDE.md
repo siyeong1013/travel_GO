@@ -40,6 +40,7 @@ src/
     map/          # 지도, 마커, 경로선
     expenses/     # 가계부: 동행자, 지출 기록, 환율 입력, 예산·요약
     settlement/   # 정산: 잔액, 최소 송금안, 송금 완료 기록, 텍스트 복사
+    backup/       # 설정 화면의 백업 내보내기·가져오기
   data/
     models/       # 도메인 타입 (Trip, ScheduleItem, PlaceSnapshot, Companion, Expense, ExpenseShare, Settlement, BackupFile)
     repositories/ # 저장소 인터페이스, 입력 타입, 에러 클래스
@@ -153,6 +154,12 @@ src/
   - 삭제 기록(tombstone)이 없어서 병합은 합집합이다. 지운 여행이라도 파일에 있으면 다시 생긴다.
 - 가져온 파일은 반드시 `parseBackupFile()`로 검증한다. 모르는 필드는 버리고, 오류가 나면 첫 오류 위치(예: `$.trips[0].startDate`)를 알려준다.
 - 백업 포맷(`BackupFile`)을 바꾸면 `BACKUP_SCHEMA_VERSION`을 올리고, 이전 버전 파일을 변환하는 코드를 `parseBackupFile`에 추가한다. 예전 파일도 계속 가져올 수 있어야 한다.
+- 화면: 설정(`/settings`, 여행 목록의 톱니바퀴) → `features/backup/`. 스토어는 `backupStore`(저장소 호출, 마지막으로 내보낸 시각).
+  - 백업 내보내기: "파일로 저장"은 다운로드(`lib/download.ts`), 파일 이름은 `travel-go-backup-YYYY-MM-DD-HHmm.json`(기기 시간). 파일 공유를 받는 브라우저(Safari)에서는 "공유"도 보인다(`canShareFile`·`shareFile`, `lib/share.ts`). Chrome은 JSON 파일 공유를 받지 않아서 버튼이 없다.
+  - 저장하거나 공유하면 그 시각을 기기에 둔다(localStorage `travel-go:last-backup`). 설정 화면에 "마지막으로 내보낸 때"로 보여준다. 공유 창을 닫기만 했으면 남기지 않는다.
+  - 백업 가져오기: "백업 파일 고르기" → `readBackupFile`(JSON 읽기 + `parseBackupFile`). 읽지 못하면 `errorMessage` 문구와 "문제 위치: `$.trips[0].startDate`"(`invalidAt`)를 보여준다.
+  - 가져오기 시트(`ImportSheet`)가 확인 단계다. 파일 정보(내보낸 때, 종류별 개수), 방법(병합이 기본 / 덮어쓰기), 미리보기(`previewImport`)를 보여준다. 미리보기는 병합이면 "새로 추가 / 갱신 / 유지", 덮어쓰기면 "지워짐 / 가져옴"의 합계와 종류별 개수(`previewLines`)이고, 보관함으로 옮겨질 일정 수도 보여준다. 미리보기가 나오기 전에는 실행할 수 없다. 덮어쓰기 버튼은 빨간색이다.
+  - 가져온 뒤에는 `backupStore`가 여행·일정·가계부 스토어를 비운다. 그래서 다음에 여는 화면이 새 데이터를 읽는다.
 
 ### Google Maps / Places
 - API 키는 `.env.local`의 `VITE_GOOGLE_MAPS_API_KEY`. 커밋 금지 (`.env.example`만 커밋).
@@ -296,6 +303,7 @@ src/
   - 장소 픽스처: `makePlace()`(Google 장소, `fetchedAt: T0`), `namedPlace()`(직접 입력), `typedCity()`(직접 입력한 도시).
   - 화면 흐름 테스트에서 저장소는 테스트 시계(2026-01-01부터)를 쓰고, 여행 화면의 갱신 판단은 실제 시계를 쓴다. 그래서 갱신되면 안 되는 Google 데이터는 실제 현재 시각으로 찍는다(`placeFlows.test.tsx`의 `OSAKA_CITY`). 30일 지난 데이터는 저장소 테스트에서 `db`에 직접 넣어 확인한다(저장소로 쓰면 바로 지워짐).
 - 클립보드: `userEvent.setup()`이 `navigator.clipboard`를 메모리 스텁으로 바꾸므로 복사한 내용은 `navigator.clipboard.readText()`로 확인한다. 실패는 `vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(...)`. happy-dom에는 `navigator.share`가 없어서, 공유 테스트는 `Object.defineProperty`로 넣고 테스트 뒤에 지운다 (`app/settlementFlows.test.tsx`).
+- 백업 파일: 다운로드는 `URL.createObjectURL`(넘긴 파일)과 `HTMLAnchorElement.prototype.click`(`download` 이름)을 가로채서 확인한다. 파일 고르기는 `user.upload(screen.getByLabelText('백업 파일'), file)`. user-event가 `accept`에 맞지 않는 파일을 버리므로 잘못된 파일 테스트도 `.json` 파일로 한다. 파일 공유는 `navigator.share`와 `navigator.canShare`를 넣는다 (`app/backupFlows.test.tsx`).
 - 드래그는 happy-dom에서 테스트할 수 없다 (요소 크기가 모두 0). 이동 규칙은 `data/rules`와 스토어 테스트로 검증하고, 드래그 자체는 실제 브라우저에서 확인한다.
 
 ## 구현 단계
@@ -314,7 +322,7 @@ src/
 | 9 | 정산: 잔액, 최소 송금안, 텍스트 복사·공유, 송금 완료 기록 | 완료 |
 | 10 | 장소 검색 (Places API) | 완료 |
 | 11 | 지도 (번호 마커, 직선 경로, 구간별 길찾기 링크) | 완료 |
-| 12 | 설정 + 백업 내보내기/가져오기 화면 (가계부 포함) | 예정 |
+| 12 | 설정 + 백업 내보내기/가져오기 화면 (가계부 포함) | 완료 |
 | 13 | PWA·오프라인·iOS 설치 안내 | 예정 |
 | 14 | 다듬기 (번들 분할 등) | 예정 |
 
@@ -345,3 +353,4 @@ src/
 - 2026-11-03: Google 약관을 지키기로 함(사용자 결정). Google에서 받은 주소·좌표에 받은 시각을 두고, 7일이 지나면 온라인일 때 다시 받고, 30일이 지나면 지운다. 이름은 일정·여행 제목으로 보고 남긴다. Dexie v3, 백업 v3(이전 데이터의 받은 시각은 `createdAt`). 갱신·삭제는 `updatedAt`을 바꾸지 않는다. 실제 API로 확인함(8일 지난 장소를 열자 `GetPlace` 1회로 주소·좌표·받은 시각만 바뀜).
 - 2026-11-03: 카테고리 이모지를 모두 뺌(사용자 요청). 지출 폼의 카테고리 선택은 동그라미 체크(`ChoiceGroup`의 `appearance="checks"`, 카테고리에만 씀). 가계부 목록은 왼쪽 이모지 칸을 없애고, 메모가 제목인 지출은 아랫줄 맨 앞에 카테고리 이름을 둔다(메모가 없으면 제목이 곧 카테고리라 반복하지 않음). 지출 요약의 카테고리별 줄은 이름만.
 - 2026-11-03: 11단계(지도) 완료. 날짜 탭의 일정 목록 위에 지도 카드(번호 마커, 순서대로 직선, 구간별 "1 → 3 길찾기" 링크)를 둔다. 보관함에는 지도가 없다. 계획했던 `@vis.gl/react-google-maps`는 쓰지 않고 로더(`importMapsLibrary`)와 Maps JS API로 직접 그린다. 필요한 건 지도 하나와 마커·선뿐이고, @vis.gl의 로더는 실패한 로드를 다시 시도하지 않으며, 그 `<Map>`은 우리 로더가 먼저 넣은 `importLibrary`를 보면 로드가 끝난 것으로 본다. Map ID가 없으면 `DEMO_MAP_ID`. 길찾기 링크는 이름 + place ID로 만든다(좌표를 넣으면 Google 지도가 ID를 무시하고 근처 가게로 잡는 것을 실제로 확인함). 실제 키로 확인함(오류 없음, 검색 3번 = 자동완성 3 + 상세 3).
+- 2026-11-03: 12단계(설정 + 백업) 완료. 설정 화면에 백업 내보내기(파일로 저장, Safari에서는 공유도)와 가져오기를 둔다. 가져오기 시트가 확인 단계를 겸하고(병합 기본, 미리보기 후 실행), 덮어쓰기에 확인 창을 한 번 더 두지 않는다. 마지막으로 내보낸 시각을 기기에 두고 보여준다(백업을 잊지 않게). 가져온 뒤에는 데이터 스토어를 비워 화면이 다시 읽게 한다. 기기 저장소 접근은 `lib/deviceStorage.ts`로 모음. "설치 안내 다시 보기"는 13단계에서 설정 화면에 넣는다. 실제 브라우저로 확인함(내려받은 파일을 다시 가져오면 "유지"만 나옴, 다른 기기의 백업 병합, 잘못된 파일 안내).

@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { routes } from '@/app/router';
 import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
+import { backupStore } from '@/features/backup/backupStore';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
@@ -21,6 +22,7 @@ export function resetStores() {
   scheduleStore.setState(scheduleStore.getInitialState(), true);
   expenseStore.setState(expenseStore.getInitialState(), true);
   rateStore.setState(rateStore.getInitialState(), true);
+  backupStore.setState(backupStore.getInitialState(), true);
 }
 
 /** Empties the stores, the database and localStorage (exchange rates kept on the device). */

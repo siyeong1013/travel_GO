@@ -1,11 +1,12 @@
 import { PageHeader } from '@/components/ui/PageHeader';
+import { BackupSettings } from '@/features/backup/BackupSettings';
 
 export function SettingsPage() {
   return (
     <>
       <PageHeader title="설정" back />
-      <main className="flex-1 px-4 py-6 text-sm text-gray-500">
-        데이터 내보내기·가져오기, 설치 안내가 들어갈 자리입니다. (12~13단계)
+      <main className="flex-1">
+        <BackupSettings />
       </main>
     </>
   );
