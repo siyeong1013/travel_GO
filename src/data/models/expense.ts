@@ -30,6 +30,10 @@ export interface ExchangeRateSnapshot {
   /** The trip's settlement currency at the time. */
   quote: CurrencyCode;
   source: ExchangeRateSource;
+  /**
+   * When the API published the rate; kept when a later expense reuses it (`last`).
+   * Null for typed rates.
+   */
   fetchedAt: ISODateTime | null;
 }
 

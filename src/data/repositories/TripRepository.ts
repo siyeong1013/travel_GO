@@ -19,7 +19,8 @@ export interface TripRepository {
   create(input: NewTrip): Promise<Trip>;
   /**
    * Throws `OutOfRangeItemsError` (see options) and `CurrencyLockedError` when changing the
-   * settlement currency of a trip that has expenses or settlements.
+   * settlement currency of a trip that has expenses or settlements. A new settlement currency
+   * clears the budget (it was in the old currency's units) unless the patch sets one.
    */
   update(id: ID, patch: TripPatch, options?: TripUpdateOptions): Promise<Trip>;
   /** Also deletes everything that belongs to the trip. No-op if the trip does not exist. */

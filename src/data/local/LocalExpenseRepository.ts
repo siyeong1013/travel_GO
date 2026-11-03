@@ -1,7 +1,7 @@
 import type { TravelGoDB } from '@/data/local/db';
 import { sortShares, toShareRows } from '@/data/local/expenseRecords';
 import type { Expense, ExpenseShare, ExpenseWithShares, ID } from '@/data/models';
-import { EntityNotFoundError, type ExpenseRepository } from '@/data/repositories';
+import { EntityNotFoundError, type ExpenseRepository, type UsedRate } from '@/data/repositories';
 import { cleanExpense } from '@/data/rules/expense';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
@@ -46,6 +46,23 @@ export function createLocalExpenseRepository(db: TravelGoDB, now: Clock): Expens
           }),
         );
       });
+    },
+
+    async usedRates() {
+      // No index fits (currency and quote across trips); a personal ledger is small enough to scan.
+      const latest = new Map<string, Expense>();
+      await db.expenses.each((expense) => {
+        if (expense.currency === expense.exchangeRate.quote) return;
+        const key = `${expense.currency}/${expense.exchangeRate.quote}`;
+        const kept = latest.get(key);
+        const order = kept
+          ? expense.createdAt.localeCompare(kept.createdAt) || expense.id.localeCompare(kept.id)
+          : 1;
+        if (order > 0) latest.set(key, expense);
+      });
+      return [...latest.values()].map(
+        ({ currency, exchangeRate, createdAt }): UsedRate => ({ currency, exchangeRate, createdAt }),
+      );
     },
 
     create(input) {

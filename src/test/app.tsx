@@ -3,25 +3,42 @@
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { vi } from 'vitest';
 import { routes } from '@/app/router';
 import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { expenseStore } from '@/features/expenses/expenseStore';
+import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
 
-/** Simulates a fresh page load: empty stores, data only in IndexedDB. */
+/** Simulates a fresh page load: empty stores, data only in IndexedDB (and localStorage). */
 export function resetStores() {
   tripStore.setState(tripStore.getInitialState(), true);
   scheduleStore.setState(scheduleStore.getInitialState(), true);
   expenseStore.setState(expenseStore.getInitialState(), true);
+  rateStore.setState(rateStore.getInitialState(), true);
 }
 
-/** Empties the stores and the database. */
+/** Empties the stores, the database and localStorage (exchange rates kept on the device). */
 export async function resetApp() {
   resetStores();
+  localStorage.clear();
   await repositories.backup.importAll(createBackupFile(emptyData(), T0), 'overwrite');
+}
+
+/**
+ * Puts the exchange-rate API online for this test, answering `respond()` (e.g. a
+ * `latestRatesBody`). Returns the `fetch` mock. Without it the API looks offline.
+ */
+export function stubRatesApi(respond: () => unknown | Promise<unknown>) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+    const body = await respond();
+    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
 }
 
 export function renderApp(path = '/') {

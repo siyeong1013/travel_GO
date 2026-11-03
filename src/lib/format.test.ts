@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatDate,
   formatDateRange,
+  formatDateTime,
   formatMoney,
   formatTripLength,
   josa,
@@ -22,6 +23,12 @@ describe('format', () => {
     expect(formatDateRange('2027-01-03', '2027-01-05', TODAY)).toBe('2027.1.3 (일) – 1.5 (화)');
     expect(formatDateRange('2026-12-30', '2027-01-02', TODAY)).toBe('12.30 (수) – 2027.1.2 (토)');
     expect(formatDateRange('2026-11-10', '2026-11-10', TODAY)).toBe('11.10 (화)');
+  });
+
+  it('writes timestamps in local time, with the year only when it is not this one', () => {
+    const now = new Date(2026, 10, 3, 12, 0);
+    expect(formatDateTime(new Date(2026, 10, 3, 9, 2).toISOString(), now)).toBe('11.3 09:02');
+    expect(formatDateTime(new Date(2025, 0, 15, 18, 30).toISOString(), now)).toBe('2025.1.15 18:30');
   });
 
   it('picks the particle that fits the last sound', () => {

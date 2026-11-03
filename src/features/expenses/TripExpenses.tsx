@@ -7,20 +7,22 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PlusIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
+import { BudgetSheet } from '@/features/expenses/BudgetSheet';
 import { CompanionSheet } from '@/features/expenses/CompanionSheet';
-import { groupExpenses } from '@/features/expenses/expenseDisplay';
+import { groupExpenses, usesApiRates } from '@/features/expenses/expenseDisplay';
 import { ExpenseList } from '@/features/expenses/ExpenseList';
 import { ExpenseOverview } from '@/features/expenses/ExpenseOverview';
+import { RateAttribution } from '@/features/expenses/RateAttribution';
 import { SettlementCurrencySheet } from '@/features/expenses/SettlementCurrencySheet';
 import { useExpenses } from '@/features/expenses/useExpenses';
 import { useSchedule } from '@/features/schedule/useSchedule';
 
-/** The ledger half of the trip page: total, companions, expenses by day, "add expense". */
+/** The ledger half of the trip page: total and budget, companions, expenses by day, "add expense". */
 export function TripExpenses({ trip }: { trip: Trip }) {
   const navigate = useNavigate();
   const { companions, expenses, settlements, status, error, reload } = useExpenses(trip.id);
   const { items } = useSchedule(trip.id);
-  const [sheet, setSheet] = useState<'companions' | 'currency' | null>(null);
+  const [sheet, setSheet] = useState<'companions' | 'currency' | 'budget' | null>(null);
 
   const ledger = buildLedger(trip, companions, expenses, settlements);
 
@@ -48,13 +50,16 @@ export function TripExpenses({ trip }: { trip: Trip }) {
     );
   } else {
     content = (
-      <ExpenseList
-        tripId={trip.id}
-        sections={groupExpenses(trip, expenses)}
-        currency={trip.settlementCurrency}
-        companions={companions}
-        scheduleItems={items}
-      />
+      <>
+        <ExpenseList
+          tripId={trip.id}
+          sections={groupExpenses(trip, expenses)}
+          currency={trip.settlementCurrency}
+          companions={companions}
+          scheduleItems={items}
+        />
+        {usesApiRates(expenses) && <RateAttribution />}
+      </>
     );
   }
 
@@ -63,8 +68,10 @@ export function TripExpenses({ trip }: { trip: Trip }) {
       <ExpenseOverview
         ledger={ledger}
         companions={companions}
+        summaryHref={`/trips/${trip.id}/expenses/summary`}
         onManageCompanions={() => setSheet('companions')}
         onChangeCurrency={() => setSheet('currency')}
+        onEditBudget={() => setSheet('budget')}
       />
       <div className="flex flex-1 flex-col">{content}</div>
 
@@ -91,6 +98,7 @@ export function TripExpenses({ trip }: { trip: Trip }) {
           onClose={() => setSheet(null)}
         />
       )}
+      {sheet === 'budget' && <BudgetSheet trip={trip} onClose={() => setSheet(null)} />}
     </>
   );
 }

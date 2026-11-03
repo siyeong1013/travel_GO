@@ -1,6 +1,7 @@
 import type {
   Companion,
   CurrencyCode,
+  Expense,
   ExpenseCategory,
   ExpenseWithShares,
   ID,
@@ -12,7 +13,7 @@ import type {
 import { convertExpense } from '@/data/rules/ledger';
 import { currencyInfo } from '@/data/rules/money';
 import { participantsFromShares } from '@/data/rules/split';
-import { diffDays, isDateInRange } from '@/lib/dates';
+import { diffDays } from '@/lib/dates';
 import { formatDate } from '@/lib/format';
 
 export const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -55,19 +56,34 @@ export function splitSummary(expense: ExpenseWithShares, companions: Companion[]
   return `${participants.length}명 ${SPLIT_LABELS[expense.splitMethod]}`;
 }
 
-export interface ExpenseRow {
-  expense: ExpenseWithShares;
-  /** In the trip's settlement currency; null when the stored rate is for another currency. */
-  converted: number | null;
+/** Whether amounts are converted at rates from the exchange-rate API (whose terms ask for credit). */
+export function usesApiRates(expenses: Pick<Expense, 'exchangeRate'>[]): boolean {
+  return expenses.some((expense) => expense.exchangeRate.fetchedAt !== null);
 }
 
-export interface ExpenseSection {
+export interface DayHeading {
   /** `before`, a trip day (`YYYY-MM-DD`), or `after`. */
   key: string;
   /** `여행 전`, `Day 1`, `여행 후`. */
   title: string;
   /** `11.10 (화)` for trip days. */
   subtitle: string | null;
+}
+
+/** Where `date` falls: a trip day, or before/after the trip (prepaid flights, souvenirs). */
+export function dayHeading(trip: Pick<Trip, 'startDate' | 'endDate'>, date: LocalDate): DayHeading {
+  if (date < trip.startDate) return { key: 'before', title: '여행 전', subtitle: null };
+  if (date > trip.endDate) return { key: 'after', title: '여행 후', subtitle: null };
+  return { key: date, title: `Day ${diffDays(trip.startDate, date) + 1}`, subtitle: formatDate(date) };
+}
+
+export interface ExpenseRow {
+  expense: ExpenseWithShares;
+  /** In the trip's settlement currency; null when the stored rate is for another currency. */
+  converted: number | null;
+}
+
+export interface ExpenseSection extends DayHeading {
   /** Sum of the convertible rows, in the settlement currency. */
   total: number;
   rows: ExpenseRow[];
@@ -83,19 +99,11 @@ export function groupExpenses(
 ): ExpenseSection[] {
   const sections = new Map<string, ExpenseSection>();
   const sectionFor = (date: LocalDate): ExpenseSection => {
-    const key = date < trip.startDate ? 'before' : date > trip.endDate ? 'after' : date;
-    let section = sections.get(key);
+    const heading = dayHeading(trip, date);
+    let section = sections.get(heading.key);
     if (!section) {
-      section = isDateInRange(date, trip.startDate, trip.endDate)
-        ? {
-            key,
-            title: `Day ${diffDays(trip.startDate, date) + 1}`,
-            subtitle: formatDate(date),
-            total: 0,
-            rows: [],
-          }
-        : { key, title: key === 'before' ? '여행 전' : '여행 후', subtitle: null, total: 0, rows: [] };
-      sections.set(key, section);
+      section = { ...heading, total: 0, rows: [] };
+      sections.set(heading.key, section);
     }
     return section;
   };

@@ -123,6 +123,61 @@ describe('LocalExpenseRepository', () => {
     expect((await repos.expenses.listByTrip(trip.id)).map((e) => e.id)).toEqual([flight.id]);
   });
 
+  it('remembers the latest rate per currency and quote, across trips', async () => {
+    const other = await repos.trips.create({
+      title: '도쿄 여행',
+      city: { name: '도쿄', placeId: null, location: null },
+      startDate: '2026-12-01',
+      endDate: '2026-12-03',
+    });
+    const otherMe = (await repos.companions.listByTrip(other.id))[0]!;
+    const yen = (tripId: string, payerId: string, rate: string) =>
+      input({
+        tripId,
+        payerId,
+        participants: [{ companionId: payerId, value: null }],
+        currency: 'JPY',
+        exchangeRate: { rate, source: 'manual', fetchedAt: null },
+      });
+
+    await repos.expenses.create(yen(trip.id, me.id, '9.5'));
+    const latestYen = await repos.expenses.create(yen(other.id, otherMe.id, '9.1'));
+    await repos.expenses.create(input({ amount: 1_000 })); // in the settlement currency: no rate
+    const dollar = await repos.expenses.create(
+      input({
+        currency: 'USD',
+        exchangeRate: { rate: '1380.5', source: 'api', fetchedAt: '2026-11-02T00:00:00.000Z' },
+      }),
+    );
+    // A trip settled in yen quotes won in yen.
+    const yenTrip = await repos.trips.create({
+      title: '삿포로 여행',
+      city: { name: '삿포로', placeId: null, location: null },
+      startDate: '2027-02-01',
+      endDate: '2027-02-03',
+    });
+    await repos.trips.update(yenTrip.id, { settlementCurrency: 'JPY' });
+    const yenTripMe = (await repos.companions.listByTrip(yenTrip.id))[0]!;
+    const won = await repos.expenses.create(
+      input({
+        tripId: yenTrip.id,
+        payerId: yenTripMe.id,
+        participants: [{ companionId: yenTripMe.id, value: null }],
+        exchangeRate: { rate: '0.11', source: 'manual', fetchedAt: null },
+      }),
+    );
+
+    const used = await repos.expenses.usedRates();
+    const byPair = Object.fromEntries(
+      used.map((u) => [`${u.currency}/${u.exchangeRate.quote}`, [u.exchangeRate.rate, u.createdAt]]),
+    );
+    expect(byPair).toEqual({
+      'JPY/KRW': ['9.1', latestYen.createdAt],
+      'USD/KRW': ['1380.5', dollar.createdAt],
+      'KRW/JPY': ['0.11', won.createdAt],
+    });
+  });
+
   it('keeps the expense but drops the link when its schedule item is deleted', async () => {
     const item = await repos.schedule.create({ tripId: trip.id, date: null, place: makePlace('USJ') });
     const ticket = await repos.expenses.create(input({ scheduleItemId: item.id }));
@@ -150,6 +205,18 @@ describe('trip settings and cleanup', () => {
       repos.trips.update(trip.id, { settlementCurrency: 'KRW' }),
     ).rejects.toBeInstanceOf(CurrencyLockedError);
     expect((await repos.trips.update(trip.id, { budget: null })).settlementCurrency).toBe('JPY');
+  });
+
+  it('drops the budget with the settlement currency it was in, unless a new one is given', async () => {
+    await repos.trips.update(trip.id, { budget: 500_000 });
+    expect(await repos.trips.update(trip.id, { settlementCurrency: 'USD' })).toMatchObject({
+      settlementCurrency: 'USD',
+      budget: null,
+    });
+    expect(
+      await repos.trips.update(trip.id, { settlementCurrency: 'JPY', budget: 50_000 }),
+    ).toMatchObject({ settlementCurrency: 'JPY', budget: 50_000 });
+    expect((await repos.trips.update(trip.id, { title: '간사이 여행' })).budget).toBe(50_000);
   });
 
   it('records settlements in the settlement currency', async () => {

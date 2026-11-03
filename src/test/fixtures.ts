@@ -121,6 +121,28 @@ export function backupData(data: Partial<BackupData>): BackupData {
   };
 }
 
+/**
+ * An open.er-api.com response for `base` (published 2026-11-03 00:02:31 UTC, next update the
+ * day after), shaped like the real one: floats with up to 6 decimals.
+ */
+export function latestRatesBody(base: string, rates: Record<string, number>) {
+  return {
+    result: 'success',
+    provider: 'https://www.exchangerate-api.com',
+    documentation: 'https://www.exchangerate-api.com/docs/free',
+    terms_of_use: 'https://www.exchangerate-api.com/terms',
+    time_last_update_unix: 1793664151,
+    time_last_update_utc: 'Tue, 03 Nov 2026 00:02:31 +0000',
+    time_next_update_unix: 1793751021,
+    time_next_update_utc: 'Wed, 04 Nov 2026 00:10:21 +0000',
+    time_eol_unix: 0,
+    base_code: base,
+    rates: { [base]: 1, ...rates },
+  };
+}
+
+export const RATES_PUBLISHED_AT = '2026-11-03T00:02:31.000Z';
+
 /** Fresh, isolated database. Call `db.delete()` after the test. */
 export function createTestRepositories() {
   const db = createTravelGoDB(`test-${newId()}`);

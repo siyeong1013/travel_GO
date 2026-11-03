@@ -7,6 +7,7 @@ import type {
   NewCompanion,
   NewExpense,
   Repositories,
+  UsedRate,
 } from '@/data/repositories';
 import type { LoadStatus } from '@/features/trips/tripStore';
 import { errorMessage } from '@/lib/errorMessage';
@@ -32,6 +33,8 @@ export interface ExpenseState {
   addExpense: (input: NewExpense) => Promise<ExpenseWithShares>;
   updateExpense: (id: ID, input: ExpenseInput) => Promise<ExpenseWithShares>;
   removeExpense: (id: ID) => Promise<void>;
+  /** The latest rate used per currency in any trip; expense forms start from them. */
+  usedRates: () => Promise<UsedRate[]>;
 }
 
 type LedgerRepositories = Pick<Repositories, 'companions' | 'expenses' | 'settlements'>;
@@ -117,6 +120,10 @@ export function createExpenseStore(repos: LedgerRepositories) {
 
       removeExpense(id) {
         return writeThenRefresh(() => repos.expenses.delete(id));
+      },
+
+      usedRates() {
+        return repos.expenses.usedRates();
       },
     };
   });

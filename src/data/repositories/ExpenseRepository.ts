@@ -1,6 +1,7 @@
 import type {
   CurrencyCode,
   ExchangeRateSnapshot,
+  Expense,
   ExpenseCategory,
   ExpenseWithShares,
   ID,
@@ -34,9 +35,17 @@ export interface NewExpense extends ExpenseInput {
   tripId: ID;
 }
 
+/** The rate an expense was recorded with (`createdAt`: when it was recorded). */
+export type UsedRate = Pick<Expense, 'currency' | 'exchangeRate' | 'createdAt'>;
+
 export interface ExpenseRepository {
   /** Sorted by date, then `createdAt`; shares in companion order. */
   listByTrip(tripId: ID): Promise<ExpenseWithShares[]>;
+  /**
+   * For each currency and quote, the rate of the latest expense (by `createdAt`) in any trip.
+   * Expenses in their settlement currency are left out. Prefills new expenses.
+   */
+  usedRates(): Promise<UsedRate[]>;
   /** Throws `InvalidSplitError` when the split doesn't work out (e.g. amounts don't add up). */
   create(input: NewExpense): Promise<ExpenseWithShares>;
   /** Replaces every field and the shares. */

@@ -16,7 +16,7 @@ export function ExpenseEditPage() {
 
   return (
     <ExpensePageShell tripId={tripId} title="지출 수정">
-      {({ trip, companions, expenses, scheduleItems }) => {
+      {({ trip, companions, expenses, scheduleItems, usedRates }) => {
         const expense = expenses.find((e) => e.id === expenseId);
         if (!expense) {
           // Right after deleting, until the navigation lands.
@@ -26,13 +26,16 @@ export function ExpenseEditPage() {
         const settlement = trip.settlementCurrency;
         const needsRate =
           expense.currency !== settlement && expense.exchangeRate.quote !== settlement;
+        const rates = lastRates(expenses, settlement, usedRates);
         return (
           <ExpenseForm
             trip={trip}
             companions={companions}
             scheduleItems={scheduleItems}
-            rates={lastRates(expenses, settlement)}
-            initialValues={toFormValues(expense, settlement, scheduleItems)}
+            rates={rates}
+            initialValues={toFormValues(expense, settlement, scheduleItems, rates)}
+            // The stored rate stays unless it can't be used.
+            fetchRateOnOpen={needsRate}
             notice={
               needsRate
                 ? `이 지출의 환율은 ${expense.exchangeRate.quote} 기준이에요. 정산 통화인 ${settlement} 기준으로 다시 입력해 주세요.`

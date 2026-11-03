@@ -12,7 +12,7 @@ import type {
   SplitMethod,
   Trip,
 } from '@/data/models';
-import type { ExpenseInput } from '@/data/repositories';
+import type { ExpenseInput, UsedRate } from '@/data/repositories';
 import {
   convertAmount,
   currencyDigits,
@@ -78,14 +78,20 @@ const EMPTY_RATE: RateDraft = { rate: '', source: 'manual', fetchedAt: null };
 const NO_PARTICIPANTS = '함께 낼 사람을 한 명 이상 골라 주세요.';
 const RATIO_ERROR = `비율은 1에서 ${MAX_WEIGHT.toLocaleString('en-US')} 사이의 정수로 입력해 주세요.`;
 
-/** The rate of the latest expense in each currency, quoted in the settlement currency. */
+/**
+ * The rate to start from in each currency, quoted in the settlement currency: the latest one
+ * used in this trip (`expenses`), else the latest one used in any trip (`elsewhere`).
+ */
 export function lastRates(
-  expenses: ExpenseWithShares[],
+  expenses: UsedRate[],
   settlementCurrency: CurrencyCode,
+  elsewhere: UsedRate[] = [],
 ): Map<CurrencyCode, RateDraft> {
   const rates = new Map<CurrencyCode, RateDraft>();
-  const byCreation = [...expenses].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-  for (const { currency, exchangeRate } of byCreation) {
+  const byCreation = (list: UsedRate[]) =>
+    [...list].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  // Later entries win: this trip's after the others.
+  for (const { currency, exchangeRate } of [...byCreation(elsewhere), ...byCreation(expenses)]) {
     if (currency === settlementCurrency || exchangeRate.quote !== settlementCurrency) continue;
     rates.set(currency, { rate: exchangeRate.rate, source: 'last', fetchedAt: exchangeRate.fetchedAt });
   }
@@ -97,6 +103,8 @@ interface NewExpenseContext {
   companions: Companion[];
   expenses: ExpenseWithShares[];
   today: LocalDate;
+  /** Rates to start from (`lastRates`); this trip's own by default. */
+  rates?: Map<CurrencyCode, RateDraft>;
   /** Prefills the link and the day. */
   scheduleItem?: ScheduleItem | null;
 }
@@ -110,6 +118,7 @@ export function newExpenseValues({
   companions,
   expenses,
   today,
+  rates = lastRates(expenses, trip.settlementCurrency),
   scheduleItem,
 }: NewExpenseContext): ExpenseFormValues {
   const latest = expenses.reduce<ExpenseWithShares | null>(
@@ -121,7 +130,7 @@ export function newExpenseValues({
   return {
     amount: '',
     currency,
-    rate: lastRates(expenses, trip.settlementCurrency).get(currency) ?? EMPTY_RATE,
+    rate: rates.get(currency) ?? EMPTY_RATE,
     category: null,
     date:
       scheduleItem?.date ??
@@ -137,11 +146,15 @@ export function newExpenseValues({
   };
 }
 
-/** Values for editing `expense`. Drops a link to an item that no longer exists. */
+/**
+ * Values for editing `expense`. Drops a link to an item that no longer exists, and a rate quoted
+ * in another currency (taking the one from `rates` instead, if any).
+ */
 export function toFormValues(
   expense: ExpenseWithShares,
   settlementCurrency: CurrencyCode,
   scheduleItems: Pick<ScheduleItem, 'id'>[],
+  rates: Map<CurrencyCode, RateDraft> = new Map(),
 ): ExpenseFormValues {
   const participants = participantsFromShares(expense.splitMethod, expense.shares);
   const { rate, quote, source, fetchedAt } = expense.exchangeRate;
@@ -160,7 +173,7 @@ export function toFormValues(
     rate:
       source !== 'same' && quote === settlementCurrency
         ? { rate, source, fetchedAt }
-        : EMPTY_RATE,
+        : (rates.get(expense.currency) ?? EMPTY_RATE),
     category: expense.category,
     date: expense.date,
     paymentMethod: expense.paymentMethod,
@@ -212,7 +225,8 @@ export function cleanRateText(text: string): string | null {
   return isRate(cleaned) ? cleaned : null;
 }
 
-function amountError(text: string, currency: CurrencyCode): string | undefined {
+/** What is wrong with a typed amount of `currency`, if anything. */
+export function amountError(text: string, currency: CurrencyCode): string | undefined {
   if (!text.trim()) return '금액을 입력해 주세요.';
   if (parseAmount(text, currency) !== null) return undefined;
   if (parseMinorUnits(text, currency) === 0) return '0보다 큰 금액을 입력해 주세요.';

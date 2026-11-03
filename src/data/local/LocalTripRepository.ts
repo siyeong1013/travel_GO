@@ -50,6 +50,10 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
         if (!current) throw new EntityNotFoundError('trip', id);
 
         const timestamp = now();
+        const settlementCurrency = cleanSettlementCurrency(
+          patch.settlementCurrency ?? current.settlementCurrency,
+        );
+        const currencyChanged = settlementCurrency !== current.settlementCurrency;
         const next: Trip = {
           ...current,
           ...cleanTripFields({
@@ -58,14 +62,18 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
             startDate: patch.startDate ?? current.startDate,
             endDate: patch.endDate ?? current.endDate,
           }),
-          settlementCurrency: cleanSettlementCurrency(
-            patch.settlementCurrency ?? current.settlementCurrency,
-          ),
-          budget: patch.budget !== undefined ? cleanBudget(patch.budget) : current.budget,
+          settlementCurrency,
+          // The budget is in the settlement currency's units: a new currency drops it.
+          budget:
+            patch.budget !== undefined
+              ? cleanBudget(patch.budget)
+              : currencyChanged
+                ? null
+                : current.budget,
           updatedAt: timestamp,
         };
 
-        if (next.settlementCurrency !== current.settlementCurrency) {
+        if (currencyChanged) {
           const expenses = await db.expenses.where('tripId').equals(id).count();
           const settlements = await db.settlements.where('tripId').equals(id).count();
           if (expenses + settlements > 0) throw new CurrencyLockedError();

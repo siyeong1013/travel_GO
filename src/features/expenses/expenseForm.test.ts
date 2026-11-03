@@ -100,6 +100,23 @@ describe('rates', () => {
     });
   });
 
+  it("falls back to rates used on other trips, this trip's own first", () => {
+    const used = (currency: string, rate: string, quote: string, createdAt: string) => ({
+      currency,
+      exchangeRate: { rate, quote, source: 'manual' as const, fetchedAt: null },
+      createdAt,
+    });
+    const rates = lastRates([jpy('2026-11-10T01:00:00.000Z', '9')], 'KRW', [
+      used('JPY', '9.5', 'KRW', '2026-11-11T00:00:00.000Z'), // later, but on another trip
+      used('USD', '1380', 'KRW', '2026-03-01T00:00:00.000Z'),
+      used('EUR', '0.006', 'JPY', '2026-03-01T00:00:00.000Z'), // quoted in yen: no use here
+    ]);
+    expect(Object.fromEntries(rates)).toEqual({
+      JPY: { rate: '9', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' },
+      USD: { rate: '1380', source: 'last', fetchedAt: null },
+    });
+  });
+
   it('cleans typed rates', () => {
     expect(cleanRateText(' 1,380.50 ')).toBe('1380.50');
     expect(cleanRateText('09.04')).toBe('9.04');
@@ -291,5 +308,15 @@ describe('form ↔ input', () => {
     // The linked item is gone; the rate was quoted in another currency.
     const stale = toFormValues({ ...expense, exchangeRate: { ...expense.exchangeRate, quote: 'JPY' } }, 'KRW', []);
     expect(stale).toMatchObject({ scheduleItemId: null, rate: { rate: '', source: 'manual' } });
+    // ...unless a rate used before can stand in.
+    const last = { rate: '1344.5', source: 'last' as const, fetchedAt: null };
+    expect(
+      toFormValues(
+        { ...expense, exchangeRate: { ...expense.exchangeRate, quote: 'JPY' } },
+        'KRW',
+        [],
+        new Map([['USD', last]]),
+      ).rate,
+    ).toEqual(last);
   });
 });

@@ -1,4 +1,12 @@
-import { type FormEvent, useId, useState } from 'react';
+import {
+  type FormEvent,
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useState,
+} from 'react';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
@@ -39,17 +47,25 @@ import {
   withCurrency,
   withSplitMethod,
 } from '@/features/expenses/expenseForm';
+import { RateSourceLink } from '@/features/expenses/RateAttribution';
+import { useRateStore } from '@/features/expenses/rateStore';
 import { buildDayTabs, tabLabel } from '@/features/schedule/dayTabs';
 import { errorMessage } from '@/lib/errorMessage';
-import { formatMoney } from '@/lib/format';
+import type { LatestRates } from '@/lib/exchangeRateApi';
+import { formatDateTime, formatMoney } from '@/lib/format';
 
 interface ExpenseFormProps {
   trip: Trip;
   companions: Companion[];
   scheduleItems: ScheduleItem[];
-  /** Last rate used per currency, offered when switching currency. */
+  /** Last rate used per currency (`lastRates`), offered when switching currency. */
   rates: Map<CurrencyCode, RateDraft>;
   initialValues: ExpenseFormValues;
+  /**
+   * Looks up the latest API rate on open: for new expenses, or a rate that has to be entered
+   * again. Switching currency always does.
+   */
+  fetchRateOnOpen?: boolean;
   /** Shown above the form, e.g. why the rate has to be entered again. */
   notice?: string;
   /** Errors thrown here are shown above the submit button. */
@@ -73,6 +89,8 @@ const PAYMENT_OPTIONS = PAYMENT_METHODS.map((method) => ({
 }));
 const SPLIT_OPTIONS = SPLIT_METHODS.map((method) => ({ value: method, label: SPLIT_LABELS[method] }));
 
+type RateLookupStatus = 'loading' | 'failed';
+
 /** Full-screen form for one expense: amount, rate, category, payer and the split. */
 export function ExpenseForm({
   trip,
@@ -80,11 +98,20 @@ export function ExpenseForm({
   scheduleItems,
   rates,
   initialValues,
+  fetchRateOnOpen = false,
   notice,
   onSubmit,
   onDelete,
 }: ExpenseFormProps) {
+  const settlement = trip.settlementCurrency;
+  const fetchLatest = useRateStore((state) => state.fetchLatest);
   const [values, setValues] = useState(initialValues);
+  const [lookup, setLookup] = useState<{ currency: CurrencyCode; status: RateLookupStatus } | null>(
+    () =>
+      fetchRateOnOpen && initialValues.currency !== settlement
+        ? { currency: initialValues.currency, status: 'loading' }
+        : null,
+  );
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -92,7 +119,46 @@ export function ExpenseForm({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const splitErrorId = useId();
 
-  const settlement = trip.settlementCurrency;
+  /**
+   * Puts the latest API rate for `currency` into the form, unless the currency or the rate has
+   * changed since it was asked for (`from`: the rate then). Typing always wins.
+   */
+  function applyLatest(currency: CurrencyCode, from: RateDraft, latest: LatestRates | null) {
+    const rate = latest?.rates[settlement];
+    setLookup((current) =>
+      current?.currency !== currency ? current : rate ? null : { currency, status: 'failed' },
+    );
+    if (!latest || !rate) return;
+    setValues((current) =>
+      current.currency === currency && current.rate === from
+        ? { ...current, rate: { rate, source: 'api', fetchedAt: latest.updatedAt } }
+        : current,
+    );
+  }
+
+  function lookUpRate(currency: CurrencyCode, from: RateDraft) {
+    setLookup({ currency, status: 'loading' });
+    void fetchLatest(currency).then((latest) => applyLatest(currency, from, latest));
+  }
+
+  // `lookup` starts as loading when the form should look the rate up on open.
+  const lookUpOnOpen = useEffectEvent(() => {
+    if (lookup?.status !== 'loading') return;
+    const { currency, rate } = values;
+    void fetchLatest(currency).then((latest) => applyLatest(currency, rate, latest));
+  });
+  useEffect(() => {
+    lookUpOnOpen();
+  }, []);
+
+  function changeCurrency(currency: CurrencyCode) {
+    const next = withCurrency(values, currency, rates);
+    setValues(next);
+    if (currency === settlement) setLookup(null);
+    else lookUpRate(currency, next.rate);
+  }
+
+  const rateLookup = lookup?.currency === values.currency ? lookup.status : null;
   const digits = currencyDigits(values.currency);
   const errors = validateExpenseForm(values, companions, settlement);
   const visibleErrors = showErrors ? errors : {};
@@ -172,7 +238,7 @@ export function ExpenseForm({
               label="통화"
               name="currency"
               value={values.currency}
-              onChange={(e) => setValues((current) => withCurrency(current, e.target.value, rates))}
+              onChange={(e) => changeCurrency(e.target.value)}
             >
               {CURRENCY_CODES.map((code) => (
                 <option key={code} value={code}>
@@ -194,7 +260,17 @@ export function ExpenseForm({
                 set({ rate: { rate: e.target.value, source: 'manual', fetchedAt: null } })
               }
               error={visibleErrors.rate}
-              hint={rateHint(values.rate, converted, settlement)}
+              hint={rateHint(values.rate, converted, settlement, rateLookup)}
+              action={
+                <button
+                  type="button"
+                  disabled={rateLookup === 'loading'}
+                  onClick={() => lookUpRate(values.currency, values.rate)}
+                  className="-my-3 -mr-2 h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-brand-600 active:bg-brand-50 disabled:text-gray-400"
+                >
+                  최신 환율 불러오기
+                </button>
+              }
             />
           )}
         </div>
@@ -375,11 +451,42 @@ export function ExpenseForm({
   );
 }
 
-function rateHint(rate: RateDraft, converted: number | null, settlement: CurrencyCode) {
-  const parts = [];
+/** The converted amount, where the rate came from, and how the latest-rate lookup is going. */
+function rateHint(
+  rate: RateDraft,
+  converted: number | null,
+  settlement: CurrencyCode,
+  lookup: RateLookupStatus | null,
+): ReactNode {
+  const parts: string[] = [];
   if (converted !== null) parts.push(`≈ ${formatMoney(converted, settlement)}`);
   if (rate.source === 'last') parts.push('마지막으로 쓴 환율');
-  return parts.length > 0 ? parts.join(' · ') : undefined;
+  // From the API (now, or reused): when it was published, and the credit below.
+  if (rate.fetchedAt) parts.push(`${formatDateTime(rate.fetchedAt)} 기준`);
+  if (lookup === 'loading') parts.push('최신 환율 불러오는 중…');
+  if (lookup === 'failed') {
+    parts.push(
+      rate.rate.trim()
+        ? '최신 환율을 불러오지 못했어요'
+        : '최신 환율을 불러오지 못했어요. 직접 입력해 주세요.',
+    );
+  }
+  if (parts.length === 0) return undefined;
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={part}>
+          {i > 0 && ' · '}
+          <span>{part}</span>
+        </Fragment>
+      ))}
+      {rate.fetchedAt && (
+        <span className="block">
+          <RateSourceLink />
+        </span>
+      )}
+    </>
+  );
 }
 
 function QuickButton({ onClick, children }: { onClick: () => void; children: string }) {

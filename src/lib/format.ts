@@ -1,4 +1,4 @@
-import type { CurrencyCode, LocalDate } from '@/data/models';
+import type { CurrencyCode, ISODateTime, LocalDate } from '@/data/models';
 import { currencyInfo, toDecimalString } from '@/data/rules/money';
 import { diffDays } from '@/lib/dates';
 
@@ -18,6 +18,14 @@ export function weekday(date: LocalDate): string {
 export function formatDate(date: LocalDate, withYear = false): string {
   const { year, month, day } = parts(date);
   return `${withYear ? `${year}.` : ''}${month}.${day} (${weekday(date)})`;
+}
+
+/** `11.3 09:02` in the device's time zone; `2025.11.3 09:02` in another year than `now`. */
+export function formatDateTime(at: ISODateTime, now: Date = new Date()): string {
+  const date = new Date(at);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = date.getFullYear() === now.getFullYear() ? '' : `${date.getFullYear()}.`;
+  return `${year}${date.getMonth() + 1}.${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Shows a year only where it differs from the one before it (this year, then the start). */

@@ -13,19 +13,29 @@ export function ExpenseCreatePage() {
 
   return (
     <ExpensePageShell tripId={tripId} title="지출 추가">
-      {({ trip, companions, expenses, scheduleItems }) => (
-        <ExpenseForm
-          trip={trip}
-          companions={companions}
-          scheduleItems={scheduleItems}
-          rates={lastRates(expenses, trip.settlementCurrency)}
-          initialValues={newExpenseValues({ trip, companions, expenses, today: toLocalDate() })}
-          onSubmit={async (input) => {
-            await addExpense({ tripId: trip.id, ...input });
-            goBack();
-          }}
-        />
-      )}
+      {({ trip, companions, expenses, scheduleItems, usedRates }) => {
+        const rates = lastRates(expenses, trip.settlementCurrency, usedRates);
+        return (
+          <ExpenseForm
+            trip={trip}
+            companions={companions}
+            scheduleItems={scheduleItems}
+            rates={rates}
+            initialValues={newExpenseValues({
+              trip,
+              companions,
+              expenses,
+              today: toLocalDate(),
+              rates,
+            })}
+            fetchRateOnOpen
+            onSubmit={async (input) => {
+              await addExpense({ tripId: trip.id, ...input });
+              goBack();
+            }}
+          />
+        );
+      }}
     </ExpensePageShell>
   );
 }
