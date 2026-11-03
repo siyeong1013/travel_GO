@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalRepositories, createTravelGoDB, type TravelGoDB } from '@/data/local';
 import { meCompanionId } from '@/data/rules/companion';
 import { newId } from '@/lib/id';
-import { makeItem, makeTrip, testClock } from '@/test/fixtures';
+import { makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
 
 let db: TravelGoDB | undefined;
 
@@ -44,5 +44,49 @@ describe('schema migrations', () => {
       },
     ]);
     expect(await repos.schedule.listByTrip(v1Trip.id)).toEqual([item]);
+  });
+
+  it("v2 → v3: Google data counts as fetched when its record was created", async () => {
+    const name = `test-${newId()}`;
+    const withoutFetchedAt = <T extends { fetchedAt: unknown }>({ fetchedAt, ...rest }: T) => rest;
+    const trip = makeTrip({
+      city: { name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 }, fetchedAt: null },
+      createdAt: '2025-12-20T00:00:00.000Z',
+      updatedAt: '2025-12-21T00:00:00.000Z',
+    });
+    const google = makeItem({
+      tripId: trip.id,
+      place: makePlace('오사카성', { address: '주소' }),
+      createdAt: '2025-12-25T00:00:00.000Z',
+      updatedAt: '2025-12-26T00:00:00.000Z',
+    });
+    const typed = makeItem({ tripId: trip.id, order: 1, place: namedPlace('호텔 체크인') });
+
+    // A database as version 2 of the app left it.
+    const v2 = new Dexie(name);
+    v2.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v2.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    await v2.table('trips').add({ ...trip, city: withoutFetchedAt(trip.city) });
+    await v2.table('scheduleItems').bulkAdd(
+      [google, typed].map((item) => ({ ...item, place: withoutFetchedAt(item.place) })),
+    );
+    v2.close();
+
+    db = createTravelGoDB(name);
+    const repos = createLocalRepositories(db, testClock());
+
+    expect(await repos.trips.get(trip.id)).toEqual({
+      ...trip,
+      city: { ...trip.city, fetchedAt: trip.createdAt },
+    });
+    expect(await repos.schedule.listByTrip(trip.id)).toEqual([
+      { ...google, place: { ...google.place, fetchedAt: google.createdAt } },
+      typed,
+    ]);
   });
 });

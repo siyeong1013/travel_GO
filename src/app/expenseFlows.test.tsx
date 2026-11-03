@@ -20,7 +20,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null },
+    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -229,7 +229,7 @@ describe('expense flows', () => {
   it('falls back to the rate last used on another trip when offline', async () => {
     const other = await repositories.trips.create({
       title: '하와이 여행',
-      city: { name: '호놀룰루', placeId: null, location: null },
+      city: { name: '호놀룰루', placeId: null, location: null, fetchedAt: null },
       startDate: '2026-08-01',
       endDate: '2026-08-05',
     });
@@ -284,7 +284,7 @@ describe('expense flows', () => {
     const castle = await repositories.schedule.create({
       tripId: trip.id,
       date: '2026-11-10',
-      place: { placeId: null, name: '오사카성', address: null, location: null },
+      place: { placeId: null, name: '오사카성', address: null, location: null, fetchedAt: null },
     });
     await repositories.expenses.create(
       expense({

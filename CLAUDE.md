@@ -83,6 +83,7 @@ src/
 - 타임스탬프: `createdAt`, `updatedAt`는 ISO 8601 문자열.
 - 정렬: 같은 날짜(또는 보관함) 안에서 `order` 정수 (0부터). 순서 변경 시 해당 날짜 항목의 `order`를 재부여.
 - 장소 정보는 Places 응답을 **스냅샷으로 저장** (오프라인 조회 + API 비용 절감). `placeId`는 참조용.
+  - 단 Google 약관에 따라 Google에서 받은 **주소·좌표는 30일까지만** 둔다. `PlaceSnapshot.fetchedAt`·`TripCity.fetchedAt`에 받은 시각을 기록하고, 직접 입력했거나 데이터가 없으면 `null`이다. 자세한 규칙은 "Google Maps / Places"의 저장 약관 항목.
   - `PlaceSnapshot`의 `placeId`·`address`·`location`은 nullable이다. 직접 입력한 장소(예: "호텔 체크인")는 이 값들이 없고, `location`이 없으면 지도에 표시하지 않는다.
 - **보관함(날짜 미지정)**: `ScheduleItem.date`는 `string | null`. `null`이면 보관함 항목이다. 코드에서는 **`inbox`** 라고 부른다.
   - 보관함 항목은 날짜 항목과 별개의 `order`를 가진다.
@@ -130,7 +131,7 @@ src/
   - "나"의 id는 `meCompanionId(tripId)`(= `lib/id.ts`의 `derivedId`, UUID v8)로 여행 id에서 **결정적으로** 만든다. 새 여행·DB 마이그레이션·v1 백업 변환 어디서 만들어도 같은 id가 되어, 병합해도 "나"가 둘이 되지 않는다. 마이그레이션·변환으로 만든 "나"의 시각은 여행의 `createdAt`을 쓴다.
 - 저장소: `companions`(목록·추가·이름 변경·`usage`·삭제), `expenses`(입력은 분담 대상 `participants`, 분담액은 저장소가 `splitExpense`로 계산. `usedRates()`: 모든 여행에서 통화·정산 통화 쌍마다 가장 최근 지출의 환율), `settlements`. 일정 항목을 지우면(직접 또는 기간 축소 시 삭제) 연결된 지출의 `scheduleItemId`만 `null`로 바꾼다. 여행을 지우면 딸린 것을 모두 지운다.
 - 순수 규칙: `data/rules/money.ts`(통화 표·`parseAmount`·`convertAmount`), `split.ts`(`splitExpense`·`participantsFromShares`), `expense.ts`(입력 검증), `companion.ts`, `ledger.ts`(`buildLedger`: 합계·카테고리·날짜·동행자별 낸 돈/쓴 돈·잔액), `settlementPlan.ts`(`planTransfers`).
-- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다. v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
+- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
 - 동행자 삭제: "나"는 삭제 불가. 결제자이거나, 금액 지정 분담·송금 기록에 들어 있거나, 빼면 분담 대상이 아무도 안 남는 지출이 있으면 삭제를 막고(`CompanionInUseError`에 해당 지출·송금 목록) 화면이 그 목록을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다. 확인 화면에 쓸 영향 범위는 `companions.usage()`로 미리 조회한다.
 - 정산 통화: 지출이나 송금 기록이 하나라도 있으면 바꿀 수 없다 (`CurrencyLockedError`). 환율 스냅샷이 기존 정산 통화 기준이기 때문.
 - 예산: 여행 전체(동행자 모두의 지출 합계) 기준. 개인 예산은 범위 밖.
@@ -170,7 +171,14 @@ src/
   - 화면: `PlaceSuggestionList`(결과·상태 안내·출처), `PlaceSearchSheet`(기존 일정에 장소 연결), `SearchUnavailableNote`(키 없음/오프라인 안내).
   - 여행 도시는 `kind: 'region'`(`includedPrimaryTypes: ['(regions)']`: 도시·지방·국가)로 검색한다. 고른 도시는 `TripCity`의 `placeId`·`location`으로 저장한다. 폼은 입력칸 글자가 고른 이름과 같을 때만 연결을 유지하고(`linkedCity`), 저장된 도시는 입력칸에 타이핑하기 전까지 검색하지 않는다.
 - 출처 표기(정책): 구글 지도 위가 아닌 곳에 Places 데이터(제안, 이름·주소)를 보여주면 "Google Maps" 텍스트를 둔다(`GoogleMapsAttribution`: 번역 금지 `translate="no"`, 12px, #5E5E5E, 보통 굵기, 같은 영역 안). 제안 목록, Google 장소가 있는 날의 일정 목록 아래, 편집 시트의 장소 줄에 둔다.
-- 저장 약관(확인됨): place ID는 무기한 저장해도 된다. 위경도는 Places API 서비스 약관상 **최대 30일**만 캐시할 수 있다. 이름·주소는 저장을 허용하는 조항이 없다. 지금의 `PlaceSnapshot` 영구 저장과 어긋나므로, 대응 방식은 결정 로그의 할 일에서 정한다.
+- 저장 약관: place ID는 무기한 저장해도 된다. 위경도는 Places API 서비스 약관상 **최대 30일**만 캐시할 수 있다. 이름·주소는 저장을 허용하는 조항이 없다. 이렇게 지킨다(`data/rules/placeData.ts`).
+  - Google에서 받은 주소·좌표(장소)와 좌표(여행 도시)에는 받은 시각 `fetchedAt`을 둔다. 저장소 검증상 Google 데이터에는 `fetchedAt`이 꼭 있어야 하고, 직접 입력한 값에는 없다(`null`, 기한 없음).
+  - **30일**이 지나면 주소·좌표를 지운다(`placeId`와 이름은 남김). 이름은 일정·여행의 제목(사용자가 고칠 수 있는 값)으로 보고 그대로 둔다.
+    - 지우는 곳: 앱 시작(`schedule.expirePlaceData()`, `trips.expirePlaceData()`), 읽을 때(`schedule.listByTrip`, `trips.list`·`get`가 지우고 DB에도 반영), 쓸 때(만들기·수정), 백업 내보내기·가져오기(`expireBackupData`).
+  - **7일**이 지난 데이터(또는 지워진 Google 장소)는 여행 상세 화면을 열 때 온라인이고 키가 있으면 다시 받는다(`usePlaceDataRefresh` → `refreshTripPlaceData`). Place Details Essentials(`formattedAddress, location`, 한국어)를 세션 없이 장소마다 한 번씩(동시 4개) 요청하고, 실패한 장소는 건너뛴다. 오프라인에서 돌아와도 다시 시도한다. 여행 출발 전에 한 번 열면 3주 이상 오프라인으로 쓸 수 있다.
+  - 갱신과 삭제는 사용자 수정이 아니므로 `updatedAt`을 바꾸지 않는다(백업 병합에서 이기면 안 됨). 저장소 메서드 `schedule.refreshPlaces(tripId, PlaceData[])`, `trips.refreshCity(id, PlaceData)`는 같은 `placeId`인 것만 바꾼다.
+  - Dexie `version(3)`과 백업 v3에서 `fetchedAt`이 생겼다. 그 전 데이터는 받은 시각을 몰라서 레코드의 `createdAt`으로 채운다(실제보다 이를 수밖에 없으니 기한을 넘기지 않음).
+  - 편집 시트에서 데이터가 지워진 Google 장소는 "주소와 위치는 온라인일 때 다시 불러와요."로 보인다.
 - 경로선: MVP는 일정 순서대로 장소를 **직선(Polyline)** 으로 연결한다.
 - Directions/Routes API는 **사용하지 않는다** (별도 과금).
 - 실제 길찾기는 구간별 "구글맵에서 길찾기" 외부 링크(`https://www.google.com/maps/dir/?api=1&...`)로 제공한다.
@@ -270,6 +278,8 @@ src/
   - happy-dom은 외부 스크립트를 받지 않는다(`vite.config.ts`의 `disableJavaScriptFileLoading`). 로더 테스트는 `document.head.append`를 가로챈다.
   - 검색은 입력이 멈추고 300ms 뒤에 하므로 `findBy*`로 기다린다. happy-dom에는 CSS가 없어 제안 버튼의 접근성 이름이 "오사카성일본 …"처럼 붙어서 나온다. 그래서 `/^오사카성/`처럼 앞부분으로 찾는다.
   - 오프라인은 `vi.spyOn(navigator, 'onLine', 'get')` + `fireEvent(window, new Event('online'|'offline'))`.
+  - 장소 픽스처: `makePlace()`(Google 장소, `fetchedAt: T0`), `namedPlace()`(직접 입력), `typedCity()`(직접 입력한 도시).
+  - 화면 흐름 테스트에서 저장소는 테스트 시계(2026-01-01부터)를 쓰고, 여행 화면의 갱신 판단은 실제 시계를 쓴다. 그래서 갱신되면 안 되는 Google 데이터는 실제 현재 시각으로 찍는다(`placeFlows.test.tsx`의 `OSAKA_CITY`). 30일 지난 데이터는 저장소 테스트에서 `db`에 직접 넣어 확인한다(저장소로 쓰면 바로 지워짐).
 - 클립보드: `userEvent.setup()`이 `navigator.clipboard`를 메모리 스텁으로 바꾸므로 복사한 내용은 `navigator.clipboard.readText()`로 확인한다. 실패는 `vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(...)`. happy-dom에는 `navigator.share`가 없어서, 공유 테스트는 `Object.defineProperty`로 넣고 테스트 뒤에 지운다 (`app/settlementFlows.test.tsx`).
 - 드래그는 happy-dom에서 테스트할 수 없다 (요소 크기가 모두 0). 이동 규칙은 `data/rules`와 스토어 테스트로 검증하고, 드래그 자체는 실제 브라우저에서 확인한다.
 
@@ -317,4 +327,4 @@ src/
 - 2026-11-03: 8단계(환율 자동 입력 + 예산·요약) 완료. 환율 API는 지출 통화를 기준으로 요청 (응답이 소수 6자리라 원화 정산에서 정밀). 응답은 기기에 두고 다음 갱신까지(최소 1시간) 다시 요청하지 않음 (약관). 우선순위는 API → 이 여행의 마지막 환율 → 다른 여행의 마지막 환율 → 직접 입력. 조회 중에 입력한 값은 덮어쓰지 않음. 저장된 지출을 수정할 때는 환율을 자동으로 바꾸지 않음. `fetchedAt` = API 발표 시각. 정산 통화를 바꾸면 예산을 지움 (저장소 규칙). 요약은 별도 화면(`/trips/:id/expenses/summary`). 잔액은 9단계에서 보여줌.
 - 2026-11-03: 9단계(정산) 완료. 정산은 별도 화면(`/trips/:id/expenses/settlement`), 요약 카드에 남은 송금 건수 줄. 송금안 체크 = 그 금액 그대로 송금 기록 (일부 송금 기록은 범위 밖). 체크·해제 모두 되돌리기 안내로 처리하고 확인 시트는 쓰지 않음. 공유 텍스트에 "각자 쓴 돈"을 넣음 (송금 금액의 근거). 복사 실패 시 직접 복사 시트, 공유 버튼은 Web Share가 있을 때만. 송금 기록 쓰기는 지출 스토어에서 바로 반영 (다른 기록에 영향 없음).
 - 2026-11-03: 10단계(장소 검색) 완료. Places API (New) 데이터 API(`AutocompleteSuggestion` + `fetchFields`)를 직접 쓰고 목록 UI는 앱에서 그린다. 상세 필드에서 `displayName`을 빼고 이름은 제안의 `mainText`를 쓴다(세션 청구가 Enterprise + Atmosphere → Essentials로 내려감). 여행 도시도 검색으로 고르고(`(regions)`), 장소 검색은 그 근처 30km를 우선한다. 직접 입력은 "그대로 추가"로 남긴다. 편집 시트에서 기존 일정에 장소를 연결할 수 있다(이름 유지 선택 가능). 출처는 "Google Maps" 텍스트. `@types/google.maps` 3.66.7(dev). `@vis.gl/react-google-maps`는 11단계에서 지도와 함께 넣는다. 실제 키로 확인했다. 검색 한 번은 자동완성 1회 + 상세 1회였고, 상세 요청도 `ko`와 같은 세션 토큰으로 갔다. 일본 주소는 한국어로 요청해도 "1-1 Ōsakajō, Chuo Ward, Osaka, 540-0002 일본"처럼 로마자가 섞여 온다(Google 데이터 그대로).
-- 할 일 (결정 필요): Google 약관상 위경도는 30일까지만 캐시할 수 있고, 이름·주소는 저장 허용 조항이 없다. 현재는 `PlaceSnapshot`을 영구 저장한다. 선택지는 (1) 개인용으로 그대로 둠, (2) `PlaceSnapshot`에 가져온 시각을 두고 30일이 지난 위치는 온라인일 때 다시 받기(11단계 지도에서. 스키마·백업 버전 올림)다.
+- 2026-11-03: Google 약관을 지키기로 함(사용자 결정). Google에서 받은 주소·좌표에 받은 시각을 두고, 7일이 지나면 온라인일 때 다시 받고, 30일이 지나면 지운다. 이름은 일정·여행 제목으로 보고 남긴다. Dexie v3, 백업 v3(이전 데이터의 받은 시각은 `createdAt`). 갱신·삭제는 `updatedAt`을 바꾸지 않는다. 실제 API로 확인함(8일 지난 장소를 열자 `GetPlace` 1회로 주소·좌표·받은 시각만 바뀜).

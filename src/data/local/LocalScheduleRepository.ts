@@ -2,8 +2,9 @@ import type { TravelGoDB } from '@/data/local/db';
 import { unlinkExpenses } from '@/data/local/expenseRecords';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { EntityNotFoundError, type ScheduleRepository, ValidationError } from '@/data/repositories';
+import { expireItem, expirePlace, withPlaceData } from '@/data/rules/placeData';
 import { compareItems, planAppend, planMove, planRemove } from '@/data/rules/schedule';
-import { cleanPlace, cleanTime } from '@/data/rules/validation';
+import { cleanPlace, cleanPlaceData, cleanTime } from '@/data/rules/validation';
 import { type Clock, isDateInRange, isLocalDate } from '@/lib/dates';
 import { newId } from '@/lib/id';
 
@@ -16,6 +17,15 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
     return trip;
   }
 
+  /** Removes Google's data that has expired from these stored items; returns them as they are now. */
+  async function expireStored(items: ScheduleItem[]): Promise<ScheduleItem[]> {
+    const timestamp = now();
+    const current = items.map((item) => expireItem(item, timestamp));
+    const expired = current.filter((item, i) => item !== items[i]);
+    if (expired.length > 0) await db.scheduleItems.bulkPut(expired);
+    return current;
+  }
+
   function assertDateInTrip(trip: Trip, date: LocalDate | null) {
     if (date === null) return;
     if (!isLocalDate(date) || !isDateInRange(date, trip.startDate, trip.endDate)) {
@@ -26,9 +36,11 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
   }
 
   return {
-    async listByTrip(tripId) {
-      const items = await itemsOfTrip(tripId);
-      return items.sort(compareItems);
+    listByTrip(tripId) {
+      return db.transaction('rw', db.scheduleItems, async () => {
+        const items = await expireStored(await itemsOfTrip(tripId));
+        return items.sort(compareItems);
+      });
     },
 
     create(input) {
@@ -42,7 +54,7 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
           tripId: trip.id,
           date: input.date,
           order: 0,
-          place: cleanPlace(input.place),
+          place: expirePlace(cleanPlace(input.place), timestamp),
           time: cleanTime(input.time),
           memo: input.memo ?? '',
           createdAt: timestamp,
@@ -59,12 +71,13 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
         const current = await db.scheduleItems.get(id);
         if (!current) throw new EntityNotFoundError('scheduleItem', id);
 
+        const timestamp = now();
         const next: ScheduleItem = {
           ...current,
-          place: patch.place ? cleanPlace(patch.place) : current.place,
+          place: expirePlace(patch.place ? cleanPlace(patch.place) : current.place, timestamp),
           time: patch.time !== undefined ? cleanTime(patch.time) : current.time,
           memo: patch.memo ?? current.memo,
-          updatedAt: now(),
+          updatedAt: timestamp,
         };
         await db.scheduleItems.put(next);
         return next;
@@ -93,6 +106,24 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
         assertDateInTrip(await requireTrip(item.tripId), to.date);
 
         await db.scheduleItems.bulkPut(planMove(await itemsOfTrip(item.tripId), id, to, now()));
+      });
+    },
+
+    refreshPlaces(tripId, places) {
+      const byPlace = new Map(places.map((data) => [data.placeId, cleanPlaceData(data)]));
+      return db.transaction('rw', db.scheduleItems, async () => {
+        const changed: ScheduleItem[] = [];
+        for (const item of await itemsOfTrip(tripId)) {
+          const data = item.place.placeId === null ? undefined : byPlace.get(item.place.placeId);
+          if (data) changed.push({ ...item, place: withPlaceData(item.place, data) });
+        }
+        await db.scheduleItems.bulkPut(changed);
+      });
+    },
+
+    async expirePlaceData() {
+      await db.transaction('rw', db.scheduleItems, async () => {
+        await expireStored(await db.scheduleItems.toArray());
       });
     },
   };

@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   BIAS_RADIUS_METERS,
+  createPlaceDataFetcher,
   createPlaceSearch,
   searchBias,
   toSuggestion,
 } from '@/features/places/placeSearch';
-import { makeItem, makePlace, makeTrip } from '@/test/fixtures';
+import { makeItem, makePlace, makeTrip, T0 } from '@/test/fixtures';
 import { DOTONBORI, fakePlacesApi, OSAKA, OSAKA_CASTLE } from '@/test/places';
 
 function setup() {
   const api = fakePlacesApi([OSAKA_CASTLE, DOTONBORI, OSAKA]);
-  return { api, search: createPlaceSearch(async () => api.library) };
+  return { api, search: createPlaceSearch(async () => api.library, () => T0) };
 }
 
 describe('placeSearch', () => {
@@ -53,6 +54,7 @@ describe('placeSearch', () => {
       name: '오사카성',
       address: OSAKA_CASTLE.address,
       location: OSAKA_CASTLE.location,
+      fetchedAt: T0,
     });
     // No displayName: it would bill the whole session at the top Place Details SKU.
     expect(api.fetched).toEqual([
@@ -93,14 +95,46 @@ describe('placeSearch', () => {
   });
 });
 
+describe('createPlaceDataFetcher', () => {
+  it('refreshes a place outside any search session, in Korean, with Essentials fields', async () => {
+    const calls: { options: unknown; fields: string[] }[] = [];
+    class Place {
+      formattedAddress?: string;
+      location?: { lat: () => number; lng: () => number };
+      constructor(private options: unknown) {}
+      async fetchFields({ fields }: { fields: Iterable<string> }) {
+        calls.push({ options: this.options, fields: [...fields] });
+        this.formattedAddress = OSAKA_CASTLE.address;
+        this.location = { lat: () => 34.68, lng: () => 135.52 };
+        return { place: this };
+      }
+    }
+    const library = { Place } as unknown as google.maps.PlacesLibrary;
+
+    const fetchPlaceData = createPlaceDataFetcher(async () => library, () => T0);
+    expect(await fetchPlaceData(OSAKA_CASTLE.placeId)).toEqual({
+      placeId: OSAKA_CASTLE.placeId,
+      address: OSAKA_CASTLE.address,
+      location: { lat: 34.68, lng: 135.52 },
+      fetchedAt: T0,
+    });
+    expect(calls).toEqual([
+      {
+        options: { id: OSAKA_CASTLE.placeId, requestedLanguage: 'ko' },
+        fields: ['formattedAddress', 'location'],
+      },
+    ]);
+  });
+});
+
 describe('searchBias', () => {
   it("looks around the trip's city, else the place with a location added last", () => {
-    const city = { name: '오사카', placeId: OSAKA.placeId, location: OSAKA.location };
-    const typedCity = makeTrip({ city: { name: '오사카', placeId: null, location: null } });
+    const city = { name: '오사카', placeId: OSAKA.placeId, location: OSAKA.location, fetchedAt: T0 };
+    const typedCity = makeTrip({ city: { name: '오사카', placeId: null, location: null, fetchedAt: null } });
     const items = [
       makeItem({ tripId: typedCity.id, place: makePlace('a', { location: { lat: 1, lng: 1 } }), createdAt: '2026-01-02T00:00:00.000Z' }),
       makeItem({ tripId: typedCity.id, place: makePlace('b', { location: { lat: 2, lng: 2 } }), createdAt: '2026-01-03T00:00:00.000Z' }),
-      makeItem({ tripId: typedCity.id, place: makePlace('c', { placeId: null, location: null }), createdAt: '2026-01-04T00:00:00.000Z' }),
+      makeItem({ tripId: typedCity.id, place: makePlace('c', { placeId: null, location: null, fetchedAt: null }), createdAt: '2026-01-04T00:00:00.000Z' }),
     ];
 
     expect(searchBias(makeTrip({ city }), items)).toEqual(OSAKA.location);

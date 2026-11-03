@@ -201,7 +201,12 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
 /** The item's address (or that it has none), and a way to find its place when search works. */
 function PlaceRow({ place, onFind }: { place: PlaceSnapshot; onFind?: () => void }) {
   const description =
-    place.address ?? (place.location ? '위치만 저장돼 있어요.' : '주소와 위치가 없어요.');
+    place.address ??
+    (place.location
+      ? '위치만 저장돼 있어요.'
+      : place.placeId
+        ? '주소와 위치는 온라인일 때 다시 불러와요.'
+        : '주소와 위치가 없어요.');
   return (
     <div className="flex items-center gap-3 rounded-xl bg-gray-50 py-1.5 pr-1.5 pl-3">
       <MapPinIcon

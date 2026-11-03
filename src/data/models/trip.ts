@@ -4,7 +4,10 @@ export interface TripCity {
   name: string;
   /** Google Place ID of the city; used to bias place search. */
   placeId: string | null;
+  /** Google's coordinates of the city: kept for 30 days at most, like a place's (`PlaceSnapshot`). */
   location: GeoPoint | null;
+  /** When `location` was fetched from Google; null when there is none. */
+  fetchedAt: ISODateTime | null;
 }
 
 export interface Trip {

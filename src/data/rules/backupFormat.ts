@@ -26,8 +26,9 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * Bump when the shape of `BackupFile` changes, and teach `parseBackupFile` to convert
  * files of every older version (they must stay importable).
  * v2: settlement currency and budget on trips; companions, expenses, shares, settlements.
+ * v3: `fetchedAt` of Google's place data (places and trip cities), which expires after 30 days.
  */
-export const BACKUP_SCHEMA_VERSION = 2;
+export const BACKUP_SCHEMA_VERSION = 3;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -99,16 +100,41 @@ function oneOf<T extends string>(values: readonly T[]): Reader<T> {
   return (v, path) => (values.includes(v as T) ? (v as T) : invalid(path, values.join(' | ')));
 }
 
+/**
+ * When Google's data was fetched. Files before v3 don't say: the record's creation time stands
+ * in (the data can't be older than that, so it is never kept longer than allowed).
+ */
+function readFetchedAt(
+  holder: Json,
+  path: string,
+  version: number,
+  hasGoogleData: boolean,
+  createdAt: ISODateTime,
+): ISODateTime | null {
+  if (!hasGoogleData) return null;
+  return version >= 3 ? timestamp(holder.fetchedAt, `${path}.fetchedAt`) : createdAt;
+}
+
 function readTrip(value: unknown, path: string, version: number): Trip {
   const t = object(value, path);
   const city = object(t.city, `${path}.city`);
+  const createdAt = timestamp(t.createdAt, `${path}.createdAt`);
+  const placeId = nullable(string)(city.placeId, `${path}.city.placeId`);
+  const location = nullable(geoPoint)(city.location, `${path}.city.location`);
   const trip: Trip = {
     id: text(t.id, `${path}.id`),
     title: text(t.title, `${path}.title`),
     city: {
       name: text(city.name, `${path}.city.name`),
-      placeId: nullable(string)(city.placeId, `${path}.city.placeId`),
-      location: nullable(geoPoint)(city.location, `${path}.city.location`),
+      placeId,
+      location,
+      fetchedAt: readFetchedAt(
+        city,
+        `${path}.city`,
+        version,
+        placeId !== null && location !== null,
+        createdAt,
+      ),
     },
     startDate: localDate(t.startDate, `${path}.startDate`),
     endDate: localDate(t.endDate, `${path}.endDate`),
@@ -118,30 +144,41 @@ function readTrip(value: unknown, path: string, version: number): Trip {
         ? currency(t.settlementCurrency, `${path}.settlementCurrency`)
         : DEFAULT_SETTLEMENT_CURRENCY,
     budget: version >= 2 ? nullable(wholeNumber)(t.budget, `${path}.budget`) : null,
-    createdAt: timestamp(t.createdAt, `${path}.createdAt`),
+    createdAt,
     updatedAt: timestamp(t.updatedAt, `${path}.updatedAt`),
   };
   if (trip.endDate < trip.startDate) invalid(`${path}.endDate`, 'a date on or after startDate');
   return trip;
 }
 
-function readScheduleItem(value: unknown, path: string): ScheduleItem {
+function readScheduleItem(value: unknown, path: string, version: number): ScheduleItem {
   const s = object(value, path);
   const place = object(s.place, `${path}.place`);
+  const createdAt = timestamp(s.createdAt, `${path}.createdAt`);
+  const placeId = nullable(string)(place.placeId, `${path}.place.placeId`);
+  const address = nullable(string)(place.address, `${path}.place.address`);
+  const location = nullable(geoPoint)(place.location, `${path}.place.location`);
   return {
     id: text(s.id, `${path}.id`),
     tripId: text(s.tripId, `${path}.tripId`),
     date: nullable(localDate)(s.date, `${path}.date`),
     order: number(s.order, `${path}.order`),
     place: {
-      placeId: nullable(string)(place.placeId, `${path}.place.placeId`),
+      placeId,
       name: text(place.name, `${path}.place.name`),
-      address: nullable(string)(place.address, `${path}.place.address`),
-      location: nullable(geoPoint)(place.location, `${path}.place.location`),
+      address,
+      location,
+      fetchedAt: readFetchedAt(
+        place,
+        `${path}.place`,
+        version,
+        placeId !== null && (address !== null || location !== null),
+        createdAt,
+      ),
     },
     time: nullable(localTime)(s.time, `${path}.time`),
     memo: string(s.memo, `${path}.memo`),
-    createdAt: timestamp(s.createdAt, `${path}.createdAt`),
+    createdAt,
     updatedAt: timestamp(s.updatedAt, `${path}.updatedAt`),
   };
 }
@@ -310,7 +347,7 @@ export function parseBackupFile(raw: unknown): BackupFile {
     version === 1
       ? {
           trips,
-          scheduleItems: list('scheduleItems', readScheduleItem),
+          scheduleItems: list('scheduleItems', (v, path) => readScheduleItem(v, path, version)),
           // Same "나" id as the DB migration, so importing a v1 file twice can't duplicate it.
           companions: trips.map((trip) => makeMeCompanion(trip.id, trip.createdAt)),
           expenses: [],
@@ -319,7 +356,7 @@ export function parseBackupFile(raw: unknown): BackupFile {
         }
       : {
           trips,
-          scheduleItems: list('scheduleItems', readScheduleItem),
+          scheduleItems: list('scheduleItems', (v, path) => readScheduleItem(v, path, version)),
           companions: list('companions', readCompanion),
           expenses: list('expenses', readExpense),
           expenseShares: list('expenseShares', readShare),

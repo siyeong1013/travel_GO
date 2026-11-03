@@ -1,6 +1,6 @@
 import { createStore, useStore } from 'zustand';
 import { repositories } from '@/data';
-import type { ID, Trip } from '@/data/models';
+import type { ID, PlaceData, Trip } from '@/data/models';
 import type {
   NewTrip,
   Repositories,
@@ -24,6 +24,8 @@ export interface TripState {
   /** Throws `OutOfRangeItemsError` when the new dates would strand items; see `TripUpdateOptions`. */
   update: (id: ID, patch: TripPatch, options?: TripUpdateOptions) => Promise<Trip>;
   remove: (id: ID) => Promise<void>;
+  /** Saves freshly fetched coordinates of a trip's city (not an edit: `updatedAt` stays). */
+  refreshCity: (id: ID, city: PlaceData) => Promise<void>;
 }
 
 export function createTripStore(repos: Pick<Repositories, 'trips'>) {
@@ -66,6 +68,11 @@ export function createTripStore(repos: Pick<Repositories, 'trips'>) {
     async remove(id) {
       await repos.trips.delete(id);
       set((state) => ({ trips: state.trips.filter((trip) => trip.id !== id) }));
+    },
+
+    async refreshCity(id, city) {
+      const trip = await repos.trips.refreshCity(id, city);
+      if (trip) set((state) => ({ trips: state.trips.map((t) => (t.id === id ? trip : t)) }));
     },
   }));
 }

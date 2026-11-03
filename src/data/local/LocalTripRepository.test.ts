@@ -19,7 +19,7 @@ afterEach(() => db.delete());
 
 const osaka: NewTrip = {
   title: '  오사카 여행  ',
-  city: { name: '오사카', placeId: null, location: null },
+  city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
   startDate: '2026-11-10',
   endDate: '2026-11-12',
 };
@@ -123,5 +123,46 @@ describe('LocalTripRepository', () => {
     expect(await repos.trips.get(trip.id)).toBeUndefined();
     expect(await repos.schedule.listByTrip(trip.id)).toEqual([]);
     expect(await repos.schedule.listByTrip(other.id)).toHaveLength(1);
+  });
+});
+
+describe("LocalTripRepository: a city's Google coordinates are kept for 30 days", () => {
+  // The test clock starts at 2026-01-01T00:00:00Z.
+  const city = (fetchedAt: string) => ({
+    name: '오사카',
+    placeId: 'osaka',
+    location: { lat: 34.69, lng: 135.5 },
+    fetchedAt,
+  });
+
+  it('removes them once expired when getting or listing, keeping updatedAt', async () => {
+    const created = await repos.trips.create({ ...osaka, city: city('2025-12-30T00:00:00.000Z') });
+    const expired = { ...created, city: city('2025-12-01T00:00:00.000Z') };
+    await db.trips.put(expired);
+
+    const cleared = { ...expired, city: { ...expired.city, location: null, fetchedAt: null } };
+    expect(await repos.trips.get(created.id)).toEqual(cleared);
+    expect(await db.trips.get(created.id)).toEqual(cleared);
+
+    await db.trips.put(expired);
+    expect(await repos.trips.list()).toEqual([cleared]);
+    await db.trips.put(expired);
+    await repos.trips.expirePlaceData();
+    expect(await db.trips.get(created.id)).toEqual(cleared);
+  });
+
+  it('refreshes them for the same place only, keeping updatedAt', async () => {
+    const created = await repos.trips.create({ ...osaka, city: city('2025-12-30T00:00:00.000Z') });
+    const fresh = { placeId: 'osaka', address: null, location: { lat: 1, lng: 2 }, fetchedAt: '2026-01-01T12:00:00.000Z' };
+
+    const refreshed = await repos.trips.refreshCity(created.id, fresh);
+    expect(refreshed).toEqual({
+      ...created,
+      city: { ...created.city, location: { lat: 1, lng: 2 }, fetchedAt: fresh.fetchedAt },
+    });
+    expect(await repos.trips.get(created.id)).toEqual(refreshed);
+
+    expect(await repos.trips.refreshCity(created.id, { ...fresh, placeId: 'kyoto' })).toEqual(refreshed);
+    expect(await repos.trips.refreshCity('missing', fresh)).toBeUndefined();
   });
 });

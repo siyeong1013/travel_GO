@@ -3,6 +3,7 @@ import type { BackupData } from '@/data/models';
 import type { BackupRepository } from '@/data/repositories';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { planImport } from '@/data/rules/importPlan';
+import { expireBackupData } from '@/data/rules/placeData';
 import type { Clock } from '@/lib/dates';
 
 export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupRepository {
@@ -25,19 +26,26 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
   });
 
   return {
+    // Google's place data older than 30 days neither leaves the app nor comes into it.
     exportAll() {
-      return db.transaction('r', tables, async () => createBackupFile(await snapshot(), now()));
+      return db.transaction('r', tables, async () => {
+        const timestamp = now();
+        return createBackupFile(expireBackupData(await snapshot(), timestamp), timestamp);
+      });
     },
 
     previewImport(file, mode) {
       return db.transaction('r', tables, async () => {
-        return planImport(await snapshot(), file, mode, now()).summary;
+        const timestamp = now();
+        return planImport(await snapshot(), expireBackupData(file, timestamp), mode, timestamp)
+          .summary;
       });
     },
 
     importAll(file, mode) {
       return db.transaction('rw', tables, async () => {
-        const plan = planImport(await snapshot(), file, mode, now());
+        const timestamp = now();
+        const plan = planImport(await snapshot(), expireBackupData(file, timestamp), mode, timestamp);
         if (plan.clearAll) {
           for (const table of tables) await table.clear();
         }

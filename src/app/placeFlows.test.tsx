@@ -15,7 +15,15 @@ vi.mock('@/data', async () => {
 
 type User = ReturnType<typeof renderApp>['user'];
 
-const OSAKA_CITY = { name: '오사카', placeId: OSAKA.placeId, location: OSAKA.location };
+// Google data is stamped with the real time: the refresh on opening a trip compares with it.
+const OSAKA_CITY = {
+  name: '오사카',
+  placeId: OSAKA.placeId,
+  location: OSAKA.location,
+  fetchedAt: new Date().toISOString(),
+};
+/** OSAKA_CITY as found by search during the test (fetched then). */
+const FOUND_OSAKA = { ...OSAKA_CITY, fetchedAt: expect.any(String) };
 const AROUND_OSAKA = { center: OSAKA.location, radius: BIAS_RADIUS_METERS };
 
 let trip: Trip;
@@ -73,6 +81,7 @@ describe('place search', () => {
       name: '오사카성',
       address: OSAKA_CASTLE.address,
       location: OSAKA_CASTLE.location,
+      fetchedAt: expect.any(String),
     });
     expect(api.fetched).toEqual([
       { placeId: OSAKA_CASTLE.placeId, fields: ['formattedAddress', 'location'] },
@@ -94,7 +103,7 @@ describe('place search', () => {
     await user.click(within(sheet).getByRole('button', { name: /^'호텔 체크인' 그대로 추가/ }));
     await waitFor(() => expect(cards()).toEqual(['1호텔 체크인']));
     const [item] = await repositories.schedule.listByTrip(trip.id);
-    expect(item!.place).toEqual({ placeId: null, name: '호텔 체크인', address: null, location: null });
+    expect(item!.place).toEqual({ placeId: null, name: '호텔 체크인', address: null, location: null, fetchedAt: null });
     expect(api.fetched).toEqual([]);
     expect(within(screen.getByRole('tabpanel')).queryByText('Google Maps')).not.toBeInTheDocument();
   });
@@ -158,7 +167,7 @@ describe('place search', () => {
     await repositories.schedule.create({
       tripId: trip.id,
       date: '2026-11-10',
-      place: { placeId: null, name: '성 구경', address: null, location: null },
+      place: { placeId: null, name: '성 구경', address: null, location: null, fetchedAt: null },
       memo: '입장권',
     });
     const { user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
@@ -192,6 +201,7 @@ describe('place search', () => {
       name: '성 구경',
       address: OSAKA_CASTLE.address,
       location: OSAKA_CASTLE.location,
+      fetchedAt: expect.any(String),
     });
     expect(item!.memo).toBe('입장권');
     // The item had no location: search looked around the trip's city.
@@ -226,7 +236,7 @@ describe('trip city search', () => {
     await user.click(screen.getByRole('button', { name: '만들기' }));
     await waitFor(() => expect(router.state.location.pathname).not.toBe('/trips/new'));
     const created = (await repositories.trips.list()).find((t) => t.title === '간사이 여행')!;
-    expect(created.city).toEqual(OSAKA_CITY);
+    expect(created.city).toEqual(FOUND_OSAKA);
 
     await user.click(await screen.findByRole('button', { name: 'Day 1에 장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), '도톤보리');
@@ -238,7 +248,7 @@ describe('trip city search', () => {
     const api = stubPlacesApi([OSAKA]);
     const typed = await repositories.trips.create({
       title: '간사이 여행',
-      city: { name: '간사이', placeId: null, location: null },
+      city: { name: '간사이', placeId: null, location: null, fetchedAt: null },
       startDate: '2026-11-10',
       endDate: '2026-11-12',
     });
@@ -252,6 +262,57 @@ describe('trip city search', () => {
     await user.type(city, '오사카');
     await user.click(await screen.findByRole('button', { name: /^오사카/ }));
     await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(async () => expect((await repositories.trips.get(typed.id))!.city).toEqual(OSAKA_CITY));
+    await waitFor(async () =>
+      expect((await repositories.trips.get(typed.id))!.city).toEqual(FOUND_OSAKA),
+    );
+  });
+});
+
+describe("Google's place data over time", () => {
+  it('refreshes week-old place data when the trip opens online, keeping the item as it is', async () => {
+    const api = stubPlacesApi([OSAKA_CASTLE]);
+    const weekAgo = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const item = await repositories.schedule.create({
+      tripId: trip.id,
+      date: '2026-11-10',
+      place: {
+        placeId: OSAKA_CASTLE.placeId,
+        name: '성 구경',
+        address: '옛 주소',
+        location: { lat: 34, lng: 135 },
+        fetchedAt: weekAgo,
+      },
+      memo: '입장권',
+    });
+    renderApp(`/trips/${trip.id}?day=2026-11-10`);
+
+    await waitFor(() => expect(cards()).toEqual([`1성 구경${OSAKA_CASTLE.address}입장권`]));
+    expect(api.fetched).toEqual([
+      { placeId: OSAKA_CASTLE.placeId, fields: ['formattedAddress', 'location'] },
+    ]);
+    const [after] = await repositories.schedule.listByTrip(trip.id);
+    // Not an edit: the name, memo and updatedAt stay.
+    expect(after).toEqual({
+      ...item,
+      place: {
+        ...item.place,
+        address: OSAKA_CASTLE.address,
+        location: OSAKA_CASTLE.location,
+        fetchedAt: expect.any(String),
+      },
+    });
+    expect(Date.parse(after!.place.fetchedAt!)).toBeGreaterThan(Date.parse(weekAgo));
+  });
+
+  it('says a place whose data was removed gets it back online', async () => {
+    await repositories.schedule.create({
+      tripId: trip.id,
+      date: '2026-11-10',
+      place: { ...OSAKA_CASTLE, address: null, location: null, fetchedAt: null },
+    });
+    // No API key: nothing can refresh it.
+    const { user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
+    await user.click(await screen.findByRole('button', { name: /^오사카성(?! 순서 바꾸기)/ }));
+    expect(screen.getByText('주소와 위치는 온라인일 때 다시 불러와요.')).toBeInTheDocument();
   });
 });

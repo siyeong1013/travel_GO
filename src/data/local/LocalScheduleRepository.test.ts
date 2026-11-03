@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { TravelGoDB } from '@/data/local';
-import type { Trip } from '@/data/models';
+import type { ScheduleItem, Trip } from '@/data/models';
 import { EntityNotFoundError, type Repositories, ValidationError } from '@/data/repositories';
-import { createTestRepositories, makePlace } from '@/test/fixtures';
+import { newId } from '@/lib/id';
+import { createTestRepositories, makeItem, makePlace } from '@/test/fixtures';
 
 let db: TravelGoDB;
 let repos: Repositories;
@@ -15,7 +16,7 @@ beforeEach(async () => {
   ({ db, repos } = createTestRepositories());
   trip = await repos.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null },
+    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
     startDate: DAY1,
     endDate: '2026-11-12',
   });
@@ -105,5 +106,70 @@ describe('LocalScheduleRepository', () => {
     await repos.schedule.delete(a.id); // deleting twice is a no-op
 
     expect(await layout()).toEqual({ [DAY1]: ['b', 'c'] });
+  });
+});
+
+// The test clock starts at 2026-01-01T00:00:00Z.
+const EXPIRED = '2025-12-01T00:00:00.000Z';
+const RECENT = '2025-12-30T00:00:00.000Z';
+
+describe("LocalScheduleRepository: Google's place data is kept for 30 days", () => {
+  const stored = (name: string, fetchedAt: string, order = 0) =>
+    makeItem({ tripId: trip.id, order, place: makePlace(name, { address: '주소', fetchedAt }) });
+  const withoutData = (item: ScheduleItem): ScheduleItem => ({
+    ...item,
+    place: { ...item.place, address: null, location: null, fetchedAt: null },
+  });
+
+  it('removes expired data when listing, and from the database, keeping names and updatedAt', async () => {
+    const old = stored('오사카성', EXPIRED);
+    const recent = stored('도톤보리', RECENT, 1);
+    await db.scheduleItems.bulkPut([old, recent]);
+
+    expect(await repos.schedule.listByTrip(trip.id)).toEqual([withoutData(old), recent]);
+    expect(await db.scheduleItems.get(old.id)).toEqual(withoutData(old));
+  });
+
+  it('removes it from every trip on app start', async () => {
+    const other = await repos.trips.create({ ...trip, title: '교토 여행' });
+    const old = stored('오사카성', EXPIRED);
+    const elsewhere = { ...stored('교토역', EXPIRED), tripId: other.id };
+    await db.scheduleItems.bulkPut([old, elsewhere]);
+
+    await repos.schedule.expirePlaceData();
+    expect(await db.scheduleItems.get(old.id)).toEqual(withoutData(old));
+    expect(await db.scheduleItems.get(elsewhere.id)).toEqual(withoutData(elsewhere));
+  });
+
+  it('never stores expired data', async () => {
+    const created = await repos.schedule.create({
+      tripId: trip.id,
+      date: DAY1,
+      place: makePlace('오사카성', { fetchedAt: EXPIRED }),
+    });
+    expect(created.place).toMatchObject({ location: null, fetchedAt: null });
+    const updated = await repos.schedule.update(created.id, {
+      place: makePlace('오사카성', { fetchedAt: EXPIRED }),
+    });
+    expect(updated.place).toMatchObject({ location: null, fetchedAt: null });
+  });
+
+  it('writes refreshed data into the trip\'s items with that place, keeping names and updatedAt', async () => {
+    const castle = stored('성 구경', RECENT);
+    const sameAgain = { ...stored('천수각', RECENT, 1), place: { ...castle.place, name: '천수각' } };
+    const other = stored('다른 곳', RECENT, 2);
+    const otherTrip = await repos.trips.create({ ...trip, title: '교토 여행' });
+    const elsewhere = { ...castle, id: newId(), tripId: otherTrip.id };
+    await db.scheduleItems.bulkPut([castle, sameAgain, other, elsewhere]);
+
+    const fresh = { address: '새 주소', location: { lat: 1, lng: 2 }, fetchedAt: '2026-01-01T12:00:00.000Z' };
+    await repos.schedule.refreshPlaces(trip.id, [{ placeId: castle.place.placeId!, ...fresh }]);
+
+    expect(await repos.schedule.listByTrip(trip.id)).toEqual([
+      { ...castle, place: { ...castle.place, ...fresh } },
+      { ...sameAgain, place: { ...sameAgain.place, ...fresh } },
+      other,
+    ]);
+    expect(await db.scheduleItems.get(elsewhere.id)).toEqual(elsewhere);
   });
 });

@@ -70,7 +70,13 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
       setNameError('장소 이름을 입력해 주세요.');
       return;
     }
-    void save(BY_NAME, async () => ({ placeId: null, name: typed, address: null, location: null }));
+    void save(BY_NAME, async () => ({
+      placeId: null,
+      name: typed,
+      address: null,
+      location: null,
+      fetchedAt: null,
+    }));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

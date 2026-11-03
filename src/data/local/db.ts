@@ -57,5 +57,27 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
         .bulkPut(trips.map((trip) => makeMeCompanion(trip.id, trip.createdAt)));
     });
 
+  // v3: when Google's place data was fetched (it may be kept for 30 days, data/rules/placeData).
+  // Unknown for existing data: the record's creation time stands in (the data can't be older).
+  db.version(3)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<ScheduleItem, ID>('scheduleItems')
+        .toCollection()
+        .modify((item) => {
+          const { placeId, address, location } = item.place;
+          const fromGoogle = placeId !== null && (address !== null || location !== null);
+          item.place.fetchedAt = fromGoogle ? item.createdAt : null;
+        });
+      await tx
+        .table<Trip, ID>('trips')
+        .toCollection()
+        .modify((trip) => {
+          const { placeId, location } = trip.city;
+          trip.city.fetchedAt = placeId !== null && location !== null ? trip.createdAt : null;
+        });
+    });
+
   return db;
 }

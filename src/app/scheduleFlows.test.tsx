@@ -16,7 +16,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null },
+    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -93,7 +93,7 @@ describe('schedule flows', () => {
     await repositories.schedule.create({
       tripId: trip.id,
       date: '2026-11-11',
-      place: { placeId: null, name: '유니버설 스튜디오', address: null, location: null },
+      place: { placeId: null, name: '유니버설 스튜디오', address: null, location: null, fetchedAt: null },
     });
     const { user } = renderApp(`/trips/${trip.id}?day=2026-11-11`);
 
@@ -112,7 +112,7 @@ describe('schedule flows', () => {
       await repositories.schedule.create({
         tripId: trip.id,
         date: '2026-11-10',
-        place: { placeId: null, name, address: null, location: null },
+        place: { placeId: null, name, address: null, location: null, fetchedAt: null },
       });
     }
     const { user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);

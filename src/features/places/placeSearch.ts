@@ -1,5 +1,12 @@
-import type { GeoPoint, PlaceSnapshot, ScheduleItem, Trip } from '@/data/models';
-import { compareIsoDateTime } from '@/lib/dates';
+import type {
+  GeoPoint,
+  ISODateTime,
+  PlaceData,
+  PlaceSnapshot,
+  ScheduleItem,
+  Trip,
+} from '@/data/models';
+import { type Clock, compareIsoDateTime, nowIso } from '@/lib/dates';
 import { importMapsLibrary } from '@/lib/googleMaps';
 
 /** `place`: anything (schedule items). `region`: cities, provinces, countries (a trip's city). */
@@ -35,14 +42,18 @@ export interface PlaceSearch {
 export const BIAS_RADIUS_METERS = 30_000;
 
 /**
- * Place Details fields fetched for a pick. Essentials only: the name comes from the suggestion,
- * since `displayName` (Pro) would bill the session's closing call at the top Place Details SKU.
+ * Place Details fields fetched for a pick or a refresh. Essentials only: the name comes from the
+ * suggestion, since `displayName` (Pro) would bill a session's closing call at the top SKU.
  */
 export const PICK_FIELDS = ['formattedAddress', 'location'];
 
+type LoadPlaces = () => Promise<google.maps.PlacesLibrary>;
+const loadPlacesLibrary: LoadPlaces = () => importMapsLibrary('places');
+
 /** Places API (New): `AutocompleteSuggestion` for suggestions, `Place.fetchFields` for a pick. */
 export function createPlaceSearch(
-  loadPlaces: () => Promise<google.maps.PlacesLibrary> = () => importMapsLibrary('places'),
+  loadPlaces: LoadPlaces = loadPlacesLibrary,
+  now: Clock = nowIso,
 ): PlaceSearch {
   return {
     startSession() {
@@ -75,7 +86,7 @@ export function createPlaceSearch(
           if (!prediction) throw new Error(`not a suggestion of this session: ${suggestion.placeId}`);
           // A place from `toPlace()` carries the session token: this call ends the session.
           const { place } = await prediction.toPlace().fetchFields({ fields: PICK_FIELDS });
-          return toSnapshot(suggestion, place);
+          return { name: suggestion.name, ...toPlaceData(suggestion.placeId, place, now()) };
         },
       };
     },
@@ -92,15 +103,34 @@ export function toSuggestion(prediction: google.maps.places.PlacePrediction): Pl
   };
 }
 
-function toSnapshot(suggestion: PlaceSuggestion, place: google.maps.places.Place): PlaceSnapshot {
+function toPlaceData(
+  placeId: string,
+  place: google.maps.places.Place,
+  fetchedAt: ISODateTime,
+): PlaceData {
   const { formattedAddress, location } = place;
   return {
-    placeId: suggestion.placeId,
-    name: suggestion.name,
+    placeId,
     address: formattedAddress || null,
     location: location ? { lat: location.lat(), lng: location.lng() } : null,
+    fetchedAt,
   };
 }
+
+/**
+ * Fetches Google's current address and location of a place, outside any search session (a
+ * Place Details Essentials call), to refresh data that is getting old.
+ */
+export function createPlaceDataFetcher(loadPlaces: LoadPlaces = loadPlacesLibrary, now: Clock = nowIso) {
+  return async (placeId: string): Promise<PlaceData> => {
+    const places = await loadPlaces();
+    const place = new places.Place({ id: placeId, requestedLanguage: 'ko' });
+    await place.fetchFields({ fields: PICK_FIELDS });
+    return toPlaceData(placeId, place, now());
+  };
+}
+
+export const fetchPlaceData = createPlaceDataFetcher();
 
 /** Where search looks first: the trip's city, else the place with a location added last. */
 export function searchBias(trip: Trip, items: ScheduleItem[]): GeoPoint | null {

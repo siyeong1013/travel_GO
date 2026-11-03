@@ -20,7 +20,7 @@ import {
 
 function sampleFile(): BackupFile {
   const trip = makeTrip({
-    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 } },
+    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 }, fetchedAt: T0 },
     budget: 500_000,
   });
   const me = makeMeCompanion(trip.id, T0);
@@ -55,7 +55,7 @@ function sampleFile(): BackupFile {
       trips: [trip],
       scheduleItems: [
         item,
-        makeItem({ tripId: trip.id, date: null, place: makePlace('직접 입력', { placeId: null, location: null }) }),
+        makeItem({ tripId: trip.id, date: null, place: makePlace('직접 입력', { placeId: null, location: null, fetchedAt: null }) }),
       ],
       companions: [me, friend],
       expenses: [expense],
@@ -168,5 +168,36 @@ describe('backup file format', () => {
     expect(parsed.companions[0]!.id).toBe(meCompanionId(trip.id));
     expect(parsed.expenses).toEqual([]);
     expect(roundTrip(v1)).toEqual(parsed);
+  });
+
+  it("converts v2 files: Google data counts as fetched when its record was created", () => {
+    const file = sampleFile();
+    const [trip] = file.trips;
+    const [google, typed] = file.scheduleItems;
+    const withoutFetchedAt = <T extends { fetchedAt: unknown }>({ fetchedAt, ...rest }: T) => rest;
+    const v2 = {
+      ...file,
+      schemaVersion: 2,
+      trips: [{ ...trip, city: withoutFetchedAt(trip!.city) }],
+      scheduleItems: file.scheduleItems.map((item) => ({ ...item, place: withoutFetchedAt(item.place) })),
+    };
+
+    const parsed = roundTrip(v2);
+
+    expect(parsed.trips[0]!.city.fetchedAt).toBe(trip!.createdAt);
+    expect(parsed.scheduleItems.find((i) => i.id === google!.id)!.place.fetchedAt).toBe(
+      google!.createdAt,
+    );
+    expect(parsed.scheduleItems.find((i) => i.id === typed!.id)!.place.fetchedAt).toBeNull();
+  });
+
+  it('needs the fetch time of Google data in v3 files', () => {
+    const file = sampleFile();
+    const [google] = file.scheduleItems;
+    const missing = {
+      ...file,
+      scheduleItems: [{ ...google, place: { ...google!.place, fetchedAt: null } }],
+    };
+    expectInvalid(missing, 'backup_invalid', '$.scheduleItems[0].place.fetchedAt');
   });
 });

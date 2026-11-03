@@ -3,7 +3,7 @@ import type { TravelGoDB } from '@/data/local';
 import type { BackupFile } from '@/data/models';
 import type { NewTrip, Repositories } from '@/data/repositories';
 import { parseBackupFile } from '@/data/rules/backupFormat';
-import { createTestRepositories, makePlace } from '@/test/fixtures';
+import { createTestRepositories, makeItem, makePlace } from '@/test/fixtures';
 
 const dbs: TravelGoDB[] = [];
 
@@ -19,7 +19,7 @@ afterEach(async () => {
 
 const newTrip = (title: string): NewTrip => ({
   title,
-  city: { name: '오사카', placeId: null, location: null },
+  city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
   startDate: '2026-11-10',
   endDate: '2026-11-12',
 });
@@ -126,5 +126,29 @@ describe('LocalBackupRepository', () => {
 
     expect(summary.trips).toEqual({ added: 1, updated: 0, kept: 0, removed: 2 });
     expect((await repos.trips.list()).map((trip) => trip.title)).toEqual(['남길 여행']);
+  });
+
+  it("keeps Google's place data older than 30 days out of exports and imports", async () => {
+    // The test clock starts at 2026-01-01T00:00:00Z.
+    const source = createTestRepositories();
+    const target = createTestRepositories();
+    dbs.push(source.db, target.db);
+    const trip = await source.repos.trips.create(newTrip('오사카 여행'));
+    const expired = makeItem({
+      tripId: trip.id,
+      place: makePlace('오사카성', { address: '주소', fetchedAt: '2025-12-01T00:00:00.000Z' }),
+    });
+    await source.db.scheduleItems.put(expired);
+
+    const file = await source.repos.backup.exportAll();
+    expect(file.scheduleItems[0]!.place).toEqual({ ...expired.place, address: null, location: null, fetchedAt: null });
+
+    // A file exported long ago comes in without it.
+    await target.repos.backup.importAll(viaJson({ ...file, scheduleItems: [expired] }), 'merge');
+    expect((await target.db.scheduleItems.get(expired.id))!.place).toMatchObject({
+      name: '오사카성',
+      location: null,
+      fetchedAt: null,
+    });
   });
 });

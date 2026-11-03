@@ -7,6 +7,7 @@ import type {
   PlaceSnapshot,
   ScheduleItem,
   Trip,
+  TripCity,
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
 import type { ShareDraft } from '@/data/rules/split';
@@ -21,21 +22,33 @@ export function testClock(start = T0): Clock {
   return () => new Date((ms += 1000)).toISOString();
 }
 
+/** A place found by search (Google data fetched at T0), unless overridden. */
 export function makePlace(name: string, overrides: Partial<PlaceSnapshot> = {}): PlaceSnapshot {
   return {
     placeId: `place-${name}`,
     name,
     address: null,
     location: { lat: 34.6873, lng: 135.5262 },
+    fetchedAt: T0,
     ...overrides,
   };
+}
+
+/** A place entered by hand. */
+export function namedPlace(name: string): PlaceSnapshot {
+  return { placeId: null, name, address: null, location: null, fetchedAt: null };
+}
+
+/** A city typed by hand (no place). */
+export function typedCity(name: string): TripCity {
+  return { name, placeId: null, location: null, fetchedAt: null };
 }
 
 export function makeTrip(overrides: Partial<Trip> = {}): Trip {
   return {
     id: newId(),
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null },
+    city: typedCity('오사카'),
     startDate: '2026-11-10',
     endDate: '2026-11-12',
     settlementCurrency: 'KRW',

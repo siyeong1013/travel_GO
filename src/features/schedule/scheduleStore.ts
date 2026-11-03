@@ -1,6 +1,6 @@
 import { createStore, useStore } from 'zustand';
 import { repositories } from '@/data';
-import type { ID, ScheduleItem } from '@/data/models';
+import type { ID, PlaceData, ScheduleItem } from '@/data/models';
 import type {
   NewScheduleItem,
   Repositories,
@@ -26,6 +26,8 @@ export interface ScheduleState {
   remove: (id: ID) => Promise<void>;
   /** Shown immediately, then saved; the list is re-read afterwards (rolls back on failure). */
   move: (id: ID, to: ScheduleMoveTarget) => Promise<void>;
+  /** Saves freshly fetched Google data of the trip's places; re-reads if it is the held trip. */
+  refreshPlaces: (tripId: ID, places: PlaceData[]) => Promise<void>;
 }
 
 export function createScheduleStore(repos: Pick<Repositories, 'schedule'>) {
@@ -88,6 +90,11 @@ export function createScheduleStore(repos: Pick<Repositories, 'schedule'>) {
         } finally {
           await refresh(tripId);
         }
+      },
+
+      async refreshPlaces(tripId, places) {
+        await repos.schedule.refreshPlaces(tripId, places);
+        await refresh(tripId);
       },
     };
   });

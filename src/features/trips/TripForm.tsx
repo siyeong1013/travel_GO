@@ -47,8 +47,12 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
     setPickingCity(suggestion.placeId);
     setCityError(null);
     try {
-      const { name, placeId, location } = await citySearch.pick(suggestion);
-      setValues((current) => ({ ...current, city: name, cityPlace: { name, placeId, location } }));
+      const { name, placeId, location, fetchedAt } = await citySearch.pick(suggestion);
+      setValues((current) => ({
+        ...current,
+        city: name,
+        cityPlace: { name, placeId, location, fetchedAt },
+      }));
     } catch (error) {
       console.error(error);
       setCityError('도시 정보를 불러오지 못했어요. 다시 시도해 주세요.');

@@ -56,7 +56,8 @@ export interface FakePlacesApi {
 
 /**
  * Suggests the places whose name contains the input (only regions for a `(regions)` request), and
- * fills in the address and location on `fetchFields`.
+ * fills in the address and location on `fetchFields` (of a suggestion's place, or of `new Place`
+ * for a refresh; unknown ids fail like Google's NOT_FOUND).
  */
 export function fakePlacesApi(
   places: FakePlace[],
@@ -72,25 +73,29 @@ export function fakePlacesApi(
       mainText: { text: known.name },
       secondaryText: { text: known.detail },
       types: [],
-      toPlace() {
-        const place = {
-          id: known.placeId,
-          formattedAddress: undefined as string | undefined,
-          location: undefined as { lat: () => number; lng: () => number } | undefined,
-          async fetchFields({ fields }: google.maps.places.FetchFieldsRequest) {
-            fetched.push({ placeId: known.placeId, fields: [...fields] });
-            if (failPick) throw new Error('fake Place Details failure');
-            place.formattedAddress = known.address;
-            place.location = { lat: () => known.location.lat, lng: () => known.location.lng };
-            return { place };
-          },
-        };
-        return place;
-      },
+      toPlace: () => new Place({ id: known.placeId }),
     };
   }
 
+  class Place {
+    id: string;
+    formattedAddress?: string;
+    location?: { lat: () => number; lng: () => number };
+    constructor({ id }: { id: string }) {
+      this.id = id;
+    }
+    async fetchFields({ fields }: google.maps.places.FetchFieldsRequest) {
+      fetched.push({ placeId: this.id, fields: [...fields] });
+      const known = places.find((place) => place.placeId === this.id);
+      if (failPick || !known) throw new Error('fake Place Details failure');
+      this.formattedAddress = known.address;
+      this.location = { lat: () => known.location.lat, lng: () => known.location.lng };
+      return { place: this };
+    }
+  }
+
   const library = {
+    Place,
     AutocompleteSessionToken: class AutocompleteSessionToken {},
     AutocompleteSuggestion: {
       async fetchAutocompleteSuggestions(request: google.maps.places.AutocompleteRequest) {

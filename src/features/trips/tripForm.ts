@@ -82,7 +82,12 @@ export function toNewTrip(values: TripFormValues): NewTrip {
   return {
     title: values.title.trim(),
     // Typed by hand (no search, or nothing picked): no place to bias place search with.
-    city: linkedCity(values) ?? { name: values.city.trim(), placeId: null, location: null },
+    city: linkedCity(values) ?? {
+      name: values.city.trim(),
+      placeId: null,
+      location: null,
+      fetchedAt: null,
+    },
     startDate: values.startDate,
     endDate: values.endDate,
   };
@@ -93,6 +98,7 @@ function sameCity(a: TripCity, b: TripCity): boolean {
     a.name === b.name &&
     a.placeId === b.placeId &&
     a.location?.lat === b.location?.lat &&
-    a.location?.lng === b.location?.lng
+    a.location?.lng === b.location?.lng &&
+    a.fetchedAt === b.fetchedAt
   );
 }

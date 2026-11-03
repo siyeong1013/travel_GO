@@ -27,7 +27,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null },
+    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });

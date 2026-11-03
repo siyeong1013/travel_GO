@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import type { ID } from '@/data/models';
 import { TripExpenses } from '@/features/expenses/TripExpenses';
 import { useExpenses } from '@/features/expenses/useExpenses';
+import { usePlaceDataRefresh } from '@/features/places/placeRefresh';
 import { TripSchedule } from '@/features/schedule/TripSchedule';
 import { useSchedule } from '@/features/schedule/useSchedule';
 import { TripActions } from '@/features/trips/TripActions';
@@ -21,11 +22,13 @@ export function TripDetailPage() {
   const [params] = useSearchParams();
   const { trips, status } = useTrips();
   // Both halves load up front: the delete confirmation counts items and expenses.
-  const { items } = useSchedule(tripId);
+  const { items, status: itemsStatus } = useSchedule(tripId);
   const { expenses } = useExpenses(tripId);
   const removeTrip = useTripStore((state) => state.remove);
   const [deleting, setDeleting] = useState(false);
   const trip = trips.find((t) => t.id === tripId);
+  // Google's place data is kept for 30 days at most: fetch it again while online.
+  usePlaceDataRefresh(trip, items, itemsStatus === 'ready');
 
   if (!trip) {
     // Right after deleting, until the navigation below lands.

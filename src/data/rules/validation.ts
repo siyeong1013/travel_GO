@@ -1,7 +1,14 @@
-import type { CurrencyCode, GeoPoint, LocalTime, PlaceSnapshot } from '@/data/models';
+import type {
+  CurrencyCode,
+  GeoPoint,
+  ISODateTime,
+  LocalTime,
+  PlaceData,
+  PlaceSnapshot,
+} from '@/data/models';
 import { type NewTrip, ValidationError } from '@/data/repositories';
 import { isCurrency, MAX_AMOUNT } from '@/data/rules/money';
-import { isLocalDate, isLocalTime } from '@/lib/dates';
+import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
 
 export function cleanSettlementCurrency(code: CurrencyCode): CurrencyCode {
   if (!isCurrency(code)) throw new ValidationError(`unsupported currency: ${code}`);
@@ -31,6 +38,21 @@ function cleanLocation(location: GeoPoint | null, field: string): GeoPoint | nul
   return { lat: location.lat, lng: location.lng };
 }
 
+/**
+ * Google's data must say when it was fetched (it expires, `data/rules/placeData`). Data entered
+ * by hand, or a Google place without data, has no fetch time.
+ */
+function cleanFetchedAt(
+  placeId: string | null,
+  hasData: boolean,
+  fetchedAt: ISODateTime | null,
+  field: string,
+): ISODateTime | null {
+  if (placeId === null || !hasData) return null;
+  if (!isIsoDateTime(fetchedAt)) throw new ValidationError(`${field} is required with Google's data`);
+  return fetchedAt;
+}
+
 /** Trims and validates trip fields. Throws `ValidationError`. */
 export function cleanTripFields(input: NewTrip): NewTrip {
   const title = input.title.trim();
@@ -42,12 +64,19 @@ export function cleanTripFields(input: NewTrip): NewTrip {
   }
   if (input.endDate < input.startDate) throw new ValidationError('endDate is before startDate');
 
+  const location = cleanLocation(input.city.location, 'city.location');
   return {
     title,
     city: {
       name: cityName,
       placeId: input.city.placeId,
-      location: cleanLocation(input.city.location, 'city.location'),
+      location,
+      fetchedAt: cleanFetchedAt(
+        input.city.placeId,
+        location !== null,
+        input.city.fetchedAt,
+        'city.fetchedAt',
+      ),
     },
     startDate: input.startDate,
     endDate: input.endDate,
@@ -57,11 +86,31 @@ export function cleanTripFields(input: NewTrip): NewTrip {
 export function cleanPlace(place: PlaceSnapshot): PlaceSnapshot {
   const name = place.name.trim();
   if (!name) throw new ValidationError('place name is required');
+  const address = place.address?.trim() || null;
+  const location = cleanLocation(place.location, 'place.location');
   return {
     placeId: place.placeId,
     name,
-    address: place.address?.trim() || null,
-    location: cleanLocation(place.location, 'place.location'),
+    address,
+    location,
+    fetchedAt: cleanFetchedAt(
+      place.placeId,
+      address !== null || location !== null,
+      place.fetchedAt,
+      'place.fetchedAt',
+    ),
+  };
+}
+
+/** Freshly fetched Google data (a refresh). */
+export function cleanPlaceData(data: PlaceData): PlaceData {
+  if (!data.placeId) throw new ValidationError('placeId is required');
+  if (!isIsoDateTime(data.fetchedAt)) throw new ValidationError('fetchedAt must be ISO 8601');
+  return {
+    placeId: data.placeId,
+    address: data.address?.trim() || null,
+    location: cleanLocation(data.location, 'location'),
+    fetchedAt: data.fetchedAt,
   };
 }
 
