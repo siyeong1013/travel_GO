@@ -15,6 +15,17 @@ export function BottomSheet({ open, ...props }: BottomSheetProps) {
   return open ? <SheetDialog {...props} /> : null;
 }
 
+/** Open sheets. The page scrolls again when the last one closes, whatever the order. */
+let openSheets = 0;
+
+/** Stops the page behind the sheets from scrolling. Returns the release. */
+function lockPageScroll() {
+  if (openSheets++ === 0) document.documentElement.style.overflow = 'hidden';
+  return () => {
+    if (--openSheets === 0) document.documentElement.style.overflow = '';
+  };
+}
+
 function SheetDialog({ onClose, title, children }: Omit<BottomSheetProps, 'open'>) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -25,11 +36,11 @@ function SheetDialog({ onClose, title, children }: Omit<BottomSheetProps, 'open'
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
     }
-    const root = document.documentElement;
-    const overflow = root.style.overflow;
-    root.style.overflow = 'hidden';
+    // A count, not "restore what was there": a sheet on a sheet (delete confirmation over the
+    // editor) can unmount together with it, parent first, which restored the lock for good.
+    const release = lockPageScroll();
     return () => {
-      root.style.overflow = overflow;
+      release();
       if (dialog.open) dialog.close?.();
     };
   }, []);

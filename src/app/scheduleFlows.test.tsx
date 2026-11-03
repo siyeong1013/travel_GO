@@ -81,6 +81,8 @@ describe('schedule flows', () => {
     expect(screen.getByText("'도톤보리' 일정을 삭제할까요?")).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '삭제' }));
     expect(await screen.findByText('보관함이 비어 있어요')).toBeInTheDocument();
+    // The editor and its confirmation closed together: the page scrolls again.
+    expect(document.documentElement.style.overflow).toBe('');
 
     // Reload: Day 1 kept its edits
     cleanup();
