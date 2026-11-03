@@ -25,15 +25,6 @@ export const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   other: '기타',
 };
 
-export const CATEGORY_ICONS: Record<ExpenseCategory, string> = {
-  food: '🍜',
-  transport: '🚃',
-  lodging: '🏨',
-  shopping: '🛍️',
-  sightseeing: '🎡',
-  other: '🧾',
-};
-
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: '현금', card: '카드' };
 
 export const SPLIT_LABELS: Record<SplitMethod, string> = {

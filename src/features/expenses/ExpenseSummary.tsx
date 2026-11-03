@@ -8,7 +8,6 @@ import { buildLedger } from '@/data/rules/ledger';
 import { BudgetBar } from '@/features/expenses/BudgetBar';
 import { BudgetSheet } from '@/features/expenses/BudgetSheet';
 import {
-  CATEGORY_ICONS,
   CATEGORY_LABELS,
   expenseTitle,
   usesApiRates,
@@ -71,12 +70,7 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
               {categoryRows(ledger).map((row) => (
                 <li key={row.category}>
                   <BarRow
-                    label={
-                      <>
-                        <span aria-hidden="true">{CATEGORY_ICONS[row.category]} </span>
-                        {CATEGORY_LABELS[row.category]}
-                      </>
-                    }
+                    label={CATEGORY_LABELS[row.category]}
                     amount={formatMoney(row.total, currency)}
                     fill={row.share}
                     note={formatShare(row.share)}

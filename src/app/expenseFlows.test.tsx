@@ -95,8 +95,9 @@ describe('expense flows', () => {
     await user.click(screen.getByRole('button', { name: '저장' }));
 
     // Back on the ledger, under its day
+    // The memo is the title, so the category leads the line under it.
     expect(await screen.findByRole('link', { name: /타코야키/ })).toHaveTextContent(
-      '타코야키나 결제 · 3명 균등 · 카드10,000원',
+      /^타코야키식비 · 나 결제 · 3명 균등 · 카드10,000원$/,
     );
     // (The memory router has no browser history, so "back" takes the fallback here.)
     expect(router.state.location.search).toContain('tab=expenses');
@@ -299,7 +300,8 @@ describe('expense flows', () => {
     const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
 
     const row = await screen.findByRole('link', { name: /관광/ });
-    expect(row).toHaveTextContent('관광11.1 (일) · 나 결제 · 개인 지출 · 카드오사카성¥600≈ 5,400원');
+    // No memo: the category is the title, and is not repeated under it.
+    expect(row).toHaveTextContent(/^관광11\.1 \(일\) · 나 결제 · 개인 지출 · 카드오사카성¥600≈ 5,400원$/);
     expect(section('여행 전')).toContainElement(row);
 
     await user.click(row);

@@ -29,7 +29,6 @@ import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules
 import { CURRENCY_CODES, currencyDigits, currencyInfo, parseAmount } from '@/data/rules/money';
 import { itemsOn } from '@/data/rules/schedule';
 import {
-  CATEGORY_ICONS,
   CATEGORY_LABELS,
   currencyOptionLabel,
   PAYMENT_LABELS,
@@ -76,12 +75,7 @@ interface ExpenseFormProps {
 
 const CATEGORY_OPTIONS = EXPENSE_CATEGORIES.map((category) => ({
   value: category,
-  label: (
-    <>
-      <span aria-hidden="true">{CATEGORY_ICONS[category]}</span>
-      {CATEGORY_LABELS[category]}
-    </>
-  ),
+  label: CATEGORY_LABELS[category],
 }));
 const PAYMENT_OPTIONS = PAYMENT_METHODS.map((method) => ({
   value: method,
@@ -279,6 +273,7 @@ export function ExpenseForm({
           legend="카테고리"
           name="category"
           columns={3}
+          appearance="checks"
           options={CATEGORY_OPTIONS}
           value={values.category}
           onChange={(category) => set({ category })}

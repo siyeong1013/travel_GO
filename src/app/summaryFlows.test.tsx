@@ -140,9 +140,9 @@ describe('budget and summary', () => {
     expect(section('예산')).toHaveTextContent('총 지출239,000원');
     expect(section('예산')).toHaveTextContent('61,000원 남음');
     expect(rows('카테고리별')).toEqual([
-      '🏨 숙소200,000원84%',
-      '🍜 식비30,000원13%',
-      '🚃 교통9,000원4%',
+      '숙소200,000원84%',
+      '식비30,000원13%',
+      '교통9,000원4%',
     ]);
     expect(rows('날짜별')).toEqual([
       '여행 전200,000원',

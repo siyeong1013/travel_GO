@@ -1,4 +1,5 @@
 import { type ReactNode, useId } from 'react';
+import { CheckIcon } from '@/components/ui/icons';
 
 interface ChoiceGroupProps<T extends string> {
   legend: string;
@@ -11,11 +12,19 @@ interface ChoiceGroupProps<T extends string> {
   error?: string;
   /** Equal-width columns; without it the chips wrap at their own width. */
   columns?: number;
+  /** `checks`: a round check before each label instead of a chip around it. */
+  appearance?: 'chips' | 'checks';
   /** Small control at the end of the legend row. */
   action?: ReactNode;
 }
 
-/** Native radios drawn as chips: arrow keys move the choice, and the group is a fieldset. */
+const OPTION_CLASS = {
+  chips:
+    'justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 font-medium text-gray-700 transition-colors active:bg-gray-50 has-checked:border-brand-500 has-checked:bg-brand-50 has-checked:font-semibold has-checked:text-brand-700 has-focus-visible:ring-2 has-focus-visible:ring-brand-100',
+  checks: 'gap-2.5 text-gray-700 has-checked:font-semibold has-checked:text-gray-900',
+};
+
+/** Native radios drawn as chips or round checks: arrow keys move the choice, and the group is a fieldset. */
 export function ChoiceGroup<T extends string>({
   legend,
   name,
@@ -24,6 +33,7 @@ export function ChoiceGroup<T extends string>({
   onChange,
   error,
   columns,
+  appearance = 'chips',
   action,
 }: ChoiceGroupProps<T>) {
   const errorId = useId();
@@ -39,7 +49,7 @@ export function ChoiceGroup<T extends string>({
         {options.map((option) => (
           <label
             key={option.value}
-            className="flex h-11 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 text-[15px] font-medium whitespace-nowrap text-gray-700 transition-colors select-none active:bg-gray-50 has-checked:border-brand-500 has-checked:bg-brand-50 has-checked:font-semibold has-checked:text-brand-700 has-focus-visible:ring-2 has-focus-visible:ring-brand-100"
+            className={`flex h-11 min-w-0 cursor-pointer items-center text-[15px] whitespace-nowrap select-none ${OPTION_CLASS[appearance]}`}
           >
             <input
               type="radio"
@@ -48,8 +58,13 @@ export function ChoiceGroup<T extends string>({
               checked={value === option.value}
               onChange={() => onChange(option.value)}
               aria-invalid={error ? true : undefined}
-              className="sr-only"
+              className="peer sr-only"
             />
+            {appearance === 'checks' && (
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-white text-transparent transition-colors peer-checked:border-brand-500 peer-checked:bg-brand-500 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-100">
+                <CheckIcon width={14} height={14} strokeWidth={3.5} />
+              </span>
+            )}
             {option.label}
           </label>
         ))}

@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { MapPinIcon } from '@/components/ui/icons';
 import type { Companion, CurrencyCode, ID, ScheduleItem } from '@/data/models';
 import {
-  CATEGORY_ICONS,
+  CATEGORY_LABELS,
   type ExpenseRow,
   type ExpenseSection,
   expenseTitle,
@@ -78,6 +78,8 @@ function ExpenseRowLink({
   const payer = companions.find((c) => c.id === expense.payerId)?.name ?? '?';
   const place = scheduleItems.find((item) => item.id === expense.scheduleItemId)?.place.name;
   const meta = [
+    // The title is the memo, or the category when there is none.
+    expense.memo.trim() && CATEGORY_LABELS[expense.category],
     showDate && formatDate(expense.date),
     `${payer} 결제`,
     splitSummary(expense, companions),
@@ -91,12 +93,6 @@ function ExpenseRowLink({
       to={`/trips/${tripId}/expenses/${expense.id}`}
       className="flex items-center gap-3 rounded-2xl px-3 py-2.5 active:bg-gray-50"
     >
-      <span
-        aria-hidden="true"
-        className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-xl"
-      >
-        {CATEGORY_ICONS[expense.category]}
-      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-semibold">{expenseTitle(expense)}</span>
         <span className="block truncate text-sm text-gray-500">{meta}</span>
