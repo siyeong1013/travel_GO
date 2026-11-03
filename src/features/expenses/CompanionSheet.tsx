@@ -255,7 +255,7 @@ function DeleteSheet({ companion, usage, expenses, onOpenExpense, onClose }: Del
           <p className="text-sm leading-relaxed text-gray-600">
             {blocking.length > 0
               ? `${josa(companion.name, '이/가')} 결제했거나 꼭 들어가야 하는 지출이 있어요. 결제자나 나눌 사람을 바꾼 뒤 다시 시도해 주세요.`
-              : `${companion.name} 님의 송금 완료 기록이 있어요.`}
+              : `${companion.name} 님의 송금 완료 기록이 있어요. 정산 화면에서 송금 완료 표시를 취소한 뒤 다시 시도해 주세요.`}
           </p>
           {blocking.length > 0 && (
             <ul className="mt-3 flex flex-col gap-1">
@@ -282,7 +282,7 @@ function DeleteSheet({ companion, usage, expenses, onOpenExpense, onClose }: Del
           )}
           {blocking.length > 0 && usage.settlementIds.length > 0 && (
             <p className="mt-3 text-sm text-gray-600">
-              송금 완료 기록도 {usage.settlementIds.length}건 있어요.
+              송금 완료 기록도 {usage.settlementIds.length}건 있어요. 정산 화면에서 취소할 수 있어요.
             </p>
           )}
           <Button variant="secondary" block className="mt-5" onClick={onClose}>

@@ -44,6 +44,9 @@ describe('format', () => {
     expect(josa('일정 3개', '과/와')).toBe('일정 3개와');
     expect(josa('철수', '과/와')).toBe('철수와');
     expect(josa('영민', '과/와')).toBe('영민과');
+    expect(josa('나', '이/가')).toBe('내가');
+    expect(josa('나', '을/를')).toBe('나를');
+    expect(josa('나나', '이/가')).toBe('나나가');
   });
 
   it('writes won after the number and other currencies as a symbol before it', () => {

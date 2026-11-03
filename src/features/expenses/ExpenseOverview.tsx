@@ -11,6 +11,9 @@ interface ExpenseOverviewProps {
   companions: Companion[];
   /** The summary page (by category, day and person). */
   summaryHref: string;
+  /** The settlement page, and how many transfers it still lists. */
+  settlementHref: string;
+  pendingTransfers: number;
   onManageCompanions: () => void;
   onChangeCurrency: () => void;
   onEditBudget: () => void;
@@ -19,11 +22,13 @@ interface ExpenseOverviewProps {
 const actionClass =
   'flex h-11 shrink-0 items-center rounded-full px-3 text-sm font-semibold text-brand-700 active:bg-brand-100';
 
-/** Total in the settlement currency against the budget, and who is on the trip. */
+/** Total in the settlement currency against the budget, who is on the trip, what is left to settle. */
 export function ExpenseOverview({
   ledger,
   companions,
   summaryHref,
+  settlementHref,
+  pendingTransfers,
   onManageCompanions,
   onChangeCurrency,
   onEditBudget,
@@ -64,6 +69,19 @@ export function ExpenseOverview({
           동행자 관리
         </button>
       </div>
+      {/* Nothing to settle alone. */}
+      {companions.length > 1 && (
+        <Link
+          to={settlementHref}
+          className="-mx-4 flex min-h-12 items-center gap-2 border-t border-brand-100 px-4 text-sm active:bg-brand-100"
+        >
+          <span className="font-semibold">정산</span>{' '}
+          <span className="min-w-0 flex-1 truncate text-gray-700">
+            {pendingTransfers > 0 ? `송금 ${pendingTransfers}건 남았어요` : '주고받을 돈이 없어요'}
+          </span>
+          <ChevronRightIcon width={16} height={16} className="shrink-0 text-brand-700" />
+        </Link>
+      )}
       <div className="flex items-center justify-between gap-2 border-t border-brand-100 py-1">
         <button type="button" onClick={onEditBudget} className={`-ml-3 ${actionClass}`}>
           {ledger.budget === null ? '예산 정하기' : '예산 수정'}

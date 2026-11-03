@@ -5,6 +5,7 @@ import { ExpenseEditPage } from '@/pages/ExpenseEditPage';
 import { ExpenseSummaryPage } from '@/pages/ExpenseSummaryPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { SettlementPage } from '@/pages/SettlementPage';
 import { TripCreatePage } from '@/pages/TripCreatePage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
 import { TripEditPage } from '@/pages/TripEditPage';
@@ -20,6 +21,7 @@ export const routes: RouteObject[] = [
       { path: 'trips/:tripId/edit', element: <TripEditPage /> },
       { path: 'trips/:tripId/expenses/new', element: <ExpenseCreatePage /> },
       { path: 'trips/:tripId/expenses/summary', element: <ExpenseSummaryPage /> },
+      { path: 'trips/:tripId/expenses/settlement', element: <SettlementPage /> },
       { path: 'trips/:tripId/expenses/:expenseId', element: <ExpenseEditPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },

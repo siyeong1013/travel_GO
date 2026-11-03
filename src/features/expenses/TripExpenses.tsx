@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PlusIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
+import { planTransfers } from '@/data/rules/settlementPlan';
 import { BudgetSheet } from '@/features/expenses/BudgetSheet';
 import { CompanionSheet } from '@/features/expenses/CompanionSheet';
 import { groupExpenses, usesApiRates } from '@/features/expenses/expenseDisplay';
@@ -69,6 +70,8 @@ export function TripExpenses({ trip }: { trip: Trip }) {
         ledger={ledger}
         companions={companions}
         summaryHref={`/trips/${trip.id}/expenses/summary`}
+        settlementHref={`/trips/${trip.id}/expenses/settlement`}
+        pendingTransfers={planTransfers(ledger.balances).length}
         onManageCompanions={() => setSheet('companions')}
         onChangeCurrency={() => setSheet('currency')}
         onEditBudget={() => setSheet('budget')}

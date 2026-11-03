@@ -37,6 +37,9 @@ export function formatDateRange(start: LocalDate, end: LocalDate, today: LocalDa
 
 type Josa = '을/를' | '이/가' | '은/는' | '과/와' | '으로/로';
 
+// Pronouns whose subject form changes ("나" is everyone's own companion name).
+const SUBJECT_PRONOUNS: Record<string, string> = { 나: '내가', 저: '제가', 너: '네가' };
+
 // Korean readings of a final digit: 영 일 이 삼 사 오 육 칠 팔 구 (10, 100… end in 십/백 too).
 const DIGIT_HAS_FINAL = [true, true, false, true, false, false, true, true, true, false];
 const DIGIT_FINAL_IS_RIEUL = [false, true, false, false, false, false, false, true, true, false];
@@ -46,6 +49,7 @@ const DIGIT_FINAL_IS_RIEUL = [false, true, false, false, false, false, false, tr
  * Falls back to both forms (`USJ을(를)`) when the last character is not Hangul or a digit.
  */
 export function josa(word: string, particle: Josa): string {
+  if (particle === '이/가' && Object.hasOwn(SUBJECT_PRONOUNS, word)) return SUBJECT_PRONOUNS[word]!;
   const [withFinal, withoutFinal] = particle.split('/') as [string, string];
   const last = word.trim().at(-1) ?? '';
   const code = last.charCodeAt(0) - 0xac00;

@@ -6,6 +6,7 @@ import type {
   ExpenseInput,
   NewCompanion,
   NewExpense,
+  NewSettlement,
   Repositories,
   UsedRate,
 } from '@/data/repositories';
@@ -35,6 +36,10 @@ export interface ExpenseState {
   removeExpense: (id: ID) => Promise<void>;
   /** The latest rate used per currency in any trip; expense forms start from them. */
   usedRates: () => Promise<UsedRate[]>;
+  /** Records a transfer as done ("송금 완료"): balances count it. */
+  addSettlement: (input: NewSettlement) => Promise<Settlement>;
+  /** Unchecks a done transfer: deletes its record. */
+  removeSettlement: (id: ID) => Promise<void>;
 }
 
 type LedgerRepositories = Pick<Repositories, 'companions' | 'expenses' | 'settlements'>;
@@ -124,6 +129,20 @@ export function createExpenseStore(repos: LedgerRepositories) {
 
       usedRates() {
         return repos.expenses.usedRates();
+      },
+
+      // Settlements touch no other record: applied in place (newest last, like `listByTrip`).
+      async addSettlement(input) {
+        const settlement = await repos.settlements.create(input);
+        if (get().tripId === input.tripId) {
+          set((state) => ({ settlements: [...state.settlements, settlement] }));
+        }
+        return settlement;
+      },
+
+      async removeSettlement(id) {
+        await repos.settlements.delete(id);
+        set((state) => ({ settlements: state.settlements.filter((s) => s.id !== id) }));
       },
     };
   });

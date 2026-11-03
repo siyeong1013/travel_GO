@@ -1,6 +1,8 @@
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ChevronRightIcon } from '@/components/ui/icons';
+import { PageSection, sectionActionClass } from '@/components/ui/PageSection';
 import type { Companion, ExpenseWithShares, Settlement, Trip } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
 import { BudgetBar } from '@/features/expenses/BudgetBar';
@@ -39,14 +41,10 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
 
   return (
     <main className="flex flex-1 flex-col">
-      <Section
+      <PageSection
         title="예산"
         action={
-          <button
-            type="button"
-            onClick={() => setEditingBudget(true)}
-            className="-my-3 -mr-2 h-11 rounded-full px-3 text-sm font-semibold text-brand-600 active:bg-brand-50"
-          >
+          <button type="button" onClick={() => setEditingBudget(true)} className={sectionActionClass}>
             {budget ? '예산 수정' : '예산 정하기'}
           </button>
         }
@@ -62,13 +60,13 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
             여행 예산을 정하면 얼마나 남았는지 알려 드려요.
           </p>
         )}
-      </Section>
+      </PageSection>
 
       {expenses.length === 0 ? (
         <EmptyState title="아직 지출이 없어요" description="지출을 기록하면 여기에 정리돼요." />
       ) : (
         <>
-          <Section title="카테고리별">
+          <PageSection title="카테고리별">
             <ul className="flex flex-col gap-3.5">
               {categoryRows(ledger).map((row) => (
                 <li key={row.category}>
@@ -86,9 +84,9 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
                 </li>
               ))}
             </ul>
-          </Section>
+          </PageSection>
 
-          <Section title="날짜별">
+          <PageSection title="날짜별">
             <ul className="flex flex-col gap-3.5">
               {days.map((day) => (
                 <li key={day.key}>
@@ -106,12 +104,21 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
                 </li>
               ))}
             </ul>
-          </Section>
+          </PageSection>
 
           {companions.length > 1 && (
-            <Section
+            <PageSection
               title="동행자별"
               description="낸 돈은 결제한 금액, 쓴 돈은 함께 나눈 몫과 개인 지출을 더한 금액이에요."
+              action={
+                <Link
+                  to={`/trips/${trip.id}/expenses/settlement`}
+                  className={`gap-0.5 ${sectionActionClass}`}
+                >
+                  정산
+                  <ChevronRightIcon width={16} height={16} />
+                </Link>
+              }
             >
               {/* Amounts never wrap; the name column takes what is left and truncates. */}
               <table className="w-full text-[15px] whitespace-nowrap tabular-nums">
@@ -143,13 +150,13 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
                   ))}
                 </tbody>
               </table>
-            </Section>
+            </PageSection>
           )}
         </>
       )}
 
       {unconvertible.length > 0 && (
-        <Section
+        <PageSection
           title="환율을 다시 입력해야 하는 지출"
           description={`정산 통화(${currency})가 아닌 통화 기준 환율이라 합계에서 빠졌어요. 눌러서 환율을 고쳐 주세요.`}
         >
@@ -171,37 +178,13 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
               </li>
             ))}
           </ul>
-        </Section>
+        </PageSection>
       )}
 
       {usesApiRates(expenses) && <RateAttribution />}
 
       {editingBudget && <BudgetSheet trip={trip} onClose={() => setEditingBudget(false)} />}
     </main>
-  );
-}
-
-interface SectionProps {
-  title: string;
-  description?: string;
-  /** Small control at the end of the title row. */
-  action?: ReactNode;
-  children: ReactNode;
-}
-
-function Section({ title, description, action, children }: SectionProps) {
-  const titleId = useId();
-  return (
-    <section aria-labelledby={titleId} className="border-b border-gray-100 px-4 py-5">
-      <div className="flex min-h-5 items-center justify-between gap-3">
-        <h2 id={titleId} className="text-[15px] font-bold">
-          {title}
-        </h2>
-        {action}
-      </div>
-      {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
-      <div className="mt-3">{children}</div>
-    </section>
   );
 }
 

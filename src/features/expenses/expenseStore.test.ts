@@ -101,6 +101,30 @@ describe('expenseStore', () => {
     expect(store.getState().companions).toHaveLength(2);
   });
 
+  it('records transfers as done and unchecks them, in place', async () => {
+    await store.getState().load(trip.id);
+    const chulsoo = await store.getState().addCompanion({ tripId: trip.id, name: '철수' });
+
+    const first = await store.getState().addSettlement({
+      tripId: trip.id,
+      fromId: chulsoo.id,
+      toId: me.id,
+      amount: 4_500,
+    });
+    const second = await store.getState().addSettlement({
+      tripId: trip.id,
+      fromId: me.id,
+      toId: chulsoo.id,
+      amount: 1_000,
+    });
+    expect(store.getState().settlements.map((s) => s.id)).toEqual([first.id, second.id]);
+    expect(first).toMatchObject({ amount: 4_500, currency: 'KRW' });
+
+    await store.getState().removeSettlement(first.id);
+    expect(store.getState().settlements.map((s) => s.id)).toEqual([second.id]);
+    expect(await repos.settlements.listByTrip(trip.id)).toEqual([second]);
+  });
+
   it('drops a late response for a trip it has moved away from', async () => {
     const other = await newTrip('도쿄 여행');
     const first = store.getState().load(trip.id);
