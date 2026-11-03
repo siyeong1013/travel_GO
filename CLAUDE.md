@@ -86,6 +86,10 @@ src/
 - 장소 정보는 Places 응답을 **스냅샷으로 저장** (오프라인 조회 + API 비용 절감). `placeId`는 참조용.
   - 단 Google 약관에 따라 Google에서 받은 **주소·좌표는 30일까지만** 둔다. `PlaceSnapshot.fetchedAt`·`TripCity.fetchedAt`에 받은 시각을 기록하고, 직접 입력했거나 데이터가 없으면 `null`이다. 자세한 규칙은 "Google Maps / Places"의 저장 약관 항목.
   - `PlaceSnapshot`의 `placeId`·`address`·`location`은 nullable이다. 직접 입력한 장소(예: "호텔 체크인")는 이 값들이 없고, `location`이 없으면 지도에 표시하지 않는다.
+- 여행 표지 사진(`Trip.cover: CoverPhoto | null`)은 사용자가 고른 사진을 기기에서 줄여서 여행 기록 안에 JPEG `data:` URL로 둔다. 큰 표지용 `image`(긴 변 1600px)와 목록용 `thumbnail`(가운데 정사각형 192px) 두 장이다.
+  - 그래서 사진이 여행과 함께 저장·병합(`updatedAt`)·백업되고, 화면은 `<img src>`로 바로 쓴다. 사진을 바꾸거나 빼는 것은 여행 수정이다(`trips.update(id, { cover })`, `null`이면 뺌).
+  - 저장소는 이미지 `data:` URL만 받는다(`isImageDataUrl`: jpeg/png/webp, 크기 상한). 다른 주소를 받으면 남이 만든 백업 파일이 앱을 열 때마다 외부로 요청을 보내게 할 수 있어서다.
+  - Dexie `version(4)`에서 생겼다(기존 여행은 `null`, `updatedAt`은 그대로).
 - **보관함(날짜 미지정)**: `ScheduleItem.date`는 `string | null`. `null`이면 보관함 항목이다. 코드에서는 **`inbox`** 라고 부른다.
   - 보관함 항목은 날짜 항목과 별개의 `order`를 가진다.
   - 보관함 ↔ 날짜(또는 날짜 ↔ 날짜)로 옮기면 출발지·도착지 양쪽의 `order`를 재부여한다.
@@ -132,7 +136,7 @@ src/
   - "나"의 id는 `meCompanionId(tripId)`(= `lib/id.ts`의 `derivedId`, UUID v8)로 여행 id에서 **결정적으로** 만든다. 새 여행·DB 마이그레이션·v1 백업 변환 어디서 만들어도 같은 id가 되어, 병합해도 "나"가 둘이 되지 않는다. 마이그레이션·변환으로 만든 "나"의 시각은 여행의 `createdAt`을 쓴다.
 - 저장소: `companions`(목록·추가·이름 변경·`usage`·삭제), `expenses`(입력은 분담 대상 `participants`, 분담액은 저장소가 `splitExpense`로 계산. `usedRates()`: 모든 여행에서 통화·정산 통화 쌍마다 가장 최근 지출의 환율), `settlements`. 일정 항목을 지우면(직접 또는 기간 축소 시 삭제) 연결된 지출의 `scheduleItemId`만 `null`로 바꾼다. 여행을 지우면 딸린 것을 모두 지운다.
 - 순수 규칙: `data/rules/money.ts`(통화 표·`parseAmount`·`convertAmount`), `split.ts`(`splitExpense`·`participantsFromShares`), `expense.ts`(입력 검증), `companion.ts`, `ledger.ts`(`buildLedger`: 합계·카테고리·날짜·동행자별 낸 돈/쓴 돈·잔액), `settlementPlan.ts`(`planTransfers`).
-- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
+- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한, 표지 사진 이후 4: 그 전 파일의 여행은 사진 없음). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
 - 동행자 삭제: "나"는 삭제 불가. 결제자이거나, 금액 지정 분담·송금 기록에 들어 있거나, 빼면 분담 대상이 아무도 안 남는 지출이 있으면 삭제를 막고(`CompanionInUseError`에 해당 지출·송금 목록) 화면이 그 목록을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다. 확인 화면에 쓸 영향 범위는 `companions.usage()`로 미리 조회한다.
 - 정산 통화: 지출이나 송금 기록이 하나라도 있으면 바꿀 수 없다 (`CurrencyLockedError`). 환율 스냅샷이 기존 정산 통화 기준이기 때문.
 - 예산: 여행 전체(동행자 모두의 지출 합계) 기준. 개인 예산은 범위 밖.
@@ -262,11 +266,18 @@ src/
   - 지출 요약 화면 `/trips/:id/expenses/summary`: 예산, 카테고리별(지출 있는 것만, 큰 순서, 비율), 날짜별(여행 날짜 전부 + 지출이 있을 때만 여행 전/후, 막대는 가장 큰 날 기준), 동행자별 낸 돈/쓴 돈 표(2명 이상일 때, "정산 ›" 링크), 환율을 다시 입력해야 하는 지출 목록(누르면 수정 화면).
   - 정산 화면 `/trips/:id/expenses/settlement` (`features/settlement/`): 주고받을 돈(사람별 잔액), 송금할 돈(체크 = 송금 완료), 송금 완료(체크 해제 = 기록 삭제), 하단 "공유"·"정산 결과 복사". 동행자가 1명이거나 지출·송금 기록이 없으면 안내만 보여준다. 요약 카드에는 동행자가 2명 이상일 때 "정산 · 송금 n건 남았어요 ›" 줄이 있다.
   - 전체 화면 페이지의 제목 있는 구역은 `components/ui/PageSection`(제목 줄 버튼은 `sectionActionClass`)을 쓴다.
-- 여행 표지(사진 대신): 도시 이름으로 고른 그라데이션(`features/trips/tripCover.ts`의 `coverStyle`, 8가지). 같은 도시는 같은 색이고, 양 끝 색 모두 흰 글씨가 4.5:1 이상이다. 작은 표지에는 도시 첫 글자(`coverInitial`)를 쓴다. 장소·도시 사진은 쓰지 않는다(사용자 결정: 요금, 오프라인, 약관).
-  - 여행 목록: 가장 가까운(진행 중 포함) 여행은 큰 표지 카드(`TripHeroCard`), 나머지는 작은 표지가 붙은 줄(`TripCard`). 지난 여행의 작은 표지는 흐리게.
-  - 여행 상세: 위쪽이 표지(`TripCover`: 단계·도시, 제목 = 페이지의 h1, 기간)이고 헤더(`TripPageHeader`)가 그 위에 겹친다. 헤더는 맨 위에서만 투명(흰 아이콘)이고, 조금이라도 스크롤하면 흰 바가 되며, 표지가 다 지나가면 제목이 나온다(`lib/useScrolledPast.ts`, IntersectionObserver. 없으면 계속 투명). 헤더의 제목은 표지 h1과 겹치므로 `aria-hidden`.
+- 여행 표지: 사용자가 고른 사진(`Trip.cover`)이 있으면 사진, 없으면 도시 이름으로 고른 그라데이션(`features/trips/tripCover.ts`의 `coverStyle`, 8가지). 같은 도시는 같은 색이고, 양 끝 색 모두 흰 글씨가 4.5:1 이상이다. 작은 표지에는 사진의 썸네일, 없으면 도시 첫 글자(`coverInitial`)를 쓴다. Google 장소 사진이나 스톡 사진은 쓰지 않는다(사용자 결정: 요금, 오프라인, 약관).
+  - 사진 위의 흰 글씨는 글씨 묶음에 붙인 그늘(`photoTextShade`)로 읽히게 한다. 묶음의 `pt-16`에서 흐려지다가 글씨가 시작되는 곳부터 검정 55% 이상이라, 흰 사진에서도 4.5:1 이상이다(실제 브라우저에서 잼: 5.1:1 이상). 사진 위치 비율로 깐 그늘은 밝은 사진에서 글씨 뒤가 비어서 쓰지 않는다.
+  - 단계 배지는 사진 위에서 흰 바탕 + 진한 글씨(`coverBadgeClass`)다. 여행 화면은 헤더 아이콘 아래에 위쪽 그늘을 둔다(흰 사진에서 3.3:1 이상). 흰 사진 썸네일이 배경에 묻히지 않게 `ring-1 ring-black/5`.
+  - 여행 목록: 가장 가까운(진행 중 포함) 여행은 큰 표지 카드(`TripHeroCard`), 나머지는 작은 표지가 붙은 줄(`TripCard`). 지난 여행의 작은 표지는 흐리게. 큰 카드는 사진이 있으면 조금 더 높다.
+  - 여행 상세: 위쪽이 표지(`TripCover`: 단계·도시, 제목 = 페이지의 h1, 기간)이고 헤더(`TripPageHeader`)가 그 위에 겹친다. 사진이 있으면 표지가 더 높고(헤더 + 17rem) 글씨가 아래에 붙는다. 헤더는 맨 위에서만 투명(흰 아이콘)이고, 조금이라도 스크롤하면 흰 바가 되며, 표지가 다 지나가면 제목이 나온다(`lib/useScrolledPast.ts`, IntersectionObserver. 없으면 계속 투명). 헤더의 제목은 표지 h1과 겹치므로 `aria-hidden`.
   - 일정/가계부 전환은 밑줄 탭(`TripViewTabs`, 링크 + `aria-current`)이다.
   - 가계부 요약 카드는 연한 회색(`bg-gray-50`) 카드에 큰 총액이다.
+  - 표지 사진 고르기: 여행 만들기·수정 폼의 "표지 사진" 칸(`CoverPhotoField`)이다.
+    - 사진이 없으면 그 여행의 그라데이션 칸이 곧 "사진 고르기" 버튼이다(아래 "고르지 않으면 이 색으로 꾸며요."). 사진이 있으면 미리보기와 "다른 사진 고르기 / 사진 빼기"가 나온다.
+    - 고르면 바로 줄인다(`features/trips/coverPhoto.ts`의 `prepareCoverPhoto`, `lib/image.ts`). 화면에 보이는 방향(카메라 회전 정보)대로 그리고, 투명한 곳은 흰색으로 채운다. 줄이는 동안은 저장 버튼을 막는다(사진이 빠진 채 저장되지 않게).
+    - 브라우저가 읽지 못하는 파일(예: Safari 밖의 HEIC)이면 "이 사진은 열 수 없어요. 다른 사진을 골라 주세요."를 보여준다.
+    - 저장해야 반영되고, 같은 사진이면 바뀐 것으로 치지 않는다(`toTripPatch`).
   - 한글 설명 문단은 `break-keep`(word-break: keep-all)으로 띄어쓰기에서만 줄을 바꾼다. 기본값은 음절마다 줄이 바뀌어 "두세 / 요."처럼 된다.
   - 하나만 고르는 선택은 `components/ui/ChoiceGroup`(네이티브 radio + fieldset)을 쓴다. 기본은 칩 모양이고, 지출 카테고리는 `appearance="checks"`(이모지 없이 동그라미 체크 + 이름)다.
 - 금액 표시는 `lib/format.ts`의 `formatMoney(amount, currency)`를 쓴다: 원화는 `12,000원`, 다른 통화는 기호를 앞에 (`¥1,200`, `$12.34`). 기호는 `data/rules/money.ts`의 통화 표에 있다.
@@ -312,6 +323,9 @@ src/
 - 클립보드: `userEvent.setup()`이 `navigator.clipboard`를 메모리 스텁으로 바꾸므로 복사한 내용은 `navigator.clipboard.readText()`로 확인한다. 실패는 `vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(...)`. happy-dom에는 `navigator.share`가 없어서, 공유 테스트는 `Object.defineProperty`로 넣고 테스트 뒤에 지운다 (`app/settlementFlows.test.tsx`).
 - 백업 파일: 다운로드는 `URL.createObjectURL`(넘긴 파일)과 `HTMLAnchorElement.prototype.click`(`download` 이름)을 가로채서 확인한다. 파일 고르기는 `user.upload(screen.getByLabelText('백업 파일'), file)`. user-event가 `accept`에 맞지 않는 파일을 버리므로 잘못된 파일 테스트도 `.json` 파일로 한다. 파일 공유는 `navigator.share`와 `navigator.canShare`를 넣는다 (`app/backupFlows.test.tsx`).
 - 드래그는 happy-dom에서 테스트할 수 없다 (요소 크기가 모두 0). 이동 규칙은 `data/rules`와 스토어 테스트로 검증하고, 드래그 자체는 실제 브라우저에서 확인한다.
+- 표지 사진: happy-dom은 이미지를 디코드하거나 캔버스에 그리지 못한다. 그래서 화면 흐름 테스트는 `vi.mock('@/features/trips/coverPhoto', ...)`으로 `prepareCoverPhoto`를 바꾸고, `user.upload(screen.getByLabelText('표지 사진 파일'), file)`로 고른다(`app/coverFlows.test.tsx`). 저장된 사진은 픽스처 `makeCover(name)`로 만든다.
+  - 줄이기 자체(크기, 회전 정보, 투명, 읽지 못하는 파일)는 실제 브라우저에서 확인한다.
+  - 표지 사진은 장식(`alt=""`)이라 역할로 찾을 수 없어서 `img[src="…"]`로 찾는다. 폼의 미리보기만 이름("고른 표지 사진")이 있다.
 
 ## 구현 단계
 
@@ -362,3 +376,7 @@ src/
 - 2026-11-03: 11단계(지도) 완료. 날짜 탭의 일정 목록 위에 지도 카드(번호 마커, 순서대로 직선, 구간별 "1 → 3 길찾기" 링크)를 둔다. 보관함에는 지도가 없다. 계획했던 `@vis.gl/react-google-maps`는 쓰지 않고 로더(`importMapsLibrary`)와 Maps JS API로 직접 그린다. 필요한 건 지도 하나와 마커·선뿐이고, @vis.gl의 로더는 실패한 로드를 다시 시도하지 않으며, 그 `<Map>`은 우리 로더가 먼저 넣은 `importLibrary`를 보면 로드가 끝난 것으로 본다. Map ID가 없으면 `DEMO_MAP_ID`. 길찾기 링크는 이름 + place ID로 만든다(좌표를 넣으면 Google 지도가 ID를 무시하고 근처 가게로 잡는 것을 실제로 확인함). 실제 키로 확인함(오류 없음, 검색 3번 = 자동완성 3 + 상세 3).
 - 2026-11-03: 12단계(설정 + 백업) 완료. 설정 화면에 백업 내보내기(파일로 저장, Safari에서는 공유도)와 가져오기를 둔다. 가져오기 시트가 확인 단계를 겸하고(병합 기본, 미리보기 후 실행), 덮어쓰기에 확인 창을 한 번 더 두지 않는다. 마지막으로 내보낸 시각을 기기에 두고 보여준다(백업을 잊지 않게). 가져온 뒤에는 데이터 스토어를 비워 화면이 다시 읽게 한다. 기기 저장소 접근은 `lib/deviceStorage.ts`로 모음. "설치 안내 다시 보기"는 13단계에서 설정 화면에 넣는다. 실제 브라우저로 확인함(내려받은 파일을 다시 가져오면 "유지"만 나옴, 다른 기기의 백업 병합, 잘못된 파일 안내).
 - 2026-11-03: 트리플 같은 여행 앱 느낌으로 화면을 바꿈(사용자 요청: 여행 목록, 여행 상세 위쪽, 일정, 가계부 모두, 사진 없이). 트리플의 로고·아이콘·사진·고유 색은 쓰지 않고 배치와 느낌만 참고했다. 도시별 그라데이션 표지, 큰 다음 여행 카드, 투명 → 흰 헤더, 밑줄 탭, 번호를 잇는 일정 타임라인, 장소 사이 직선 거리·길찾기(지도 아래 길찾기 칩은 없앰), 회색 가계부 요약 카드. 실제 브라우저에서 드래그 정렬이 그대로 되는 것을 확인함.
+- 2026-11-03: 표지 사진을 넣음(사용자 결정: 폰 사진첩에서 직접 고른 사진. Google 장소 사진은 띄울 때마다 요금이 들고, 약관상 저장할 수 없어 오프라인에서 안 보여서 뺐다).
+  - 사진은 기기에서 JPEG로 줄여(긴 변 1600px + 192px 썸네일) 여행 기록 안에 `data:` URL로 둔다. 별도 테이블보다 단순하고, 여행과 함께 병합·백업된다.
+  - Dexie v4, 백업 v4. 사진이 없으면 지금처럼 도시 그라데이션이다.
+  - 실제 브라우저(Chromium)로 확인함: 4032×3024 사진이 1600×1200으로 0.1초 안에 줄어듦, 회전 정보가 있는 사진이 똑바로 섬, 투명 PNG는 흰 바탕, 백업 파일에 사진이 들어감, 흰 사진 위 글씨 대비 5.1:1 이상.

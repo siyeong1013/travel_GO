@@ -85,7 +85,7 @@ export function BackupSettings() {
     <>
       <PageSection
         title="백업 내보내기"
-        description="여행, 일정, 가계부는 이 브라우저에만 저장돼요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 파일로 내보내 두세요."
+        description="여행, 일정, 가계부, 표지 사진은 이 브라우저에만 저장돼요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 파일로 내보내 두세요."
       >
         <div className={shareable ? 'grid grid-cols-2 gap-2' : undefined}>
           <Button block disabled={exporting} onClick={() => void exportBackup('download')}>

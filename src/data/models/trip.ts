@@ -10,6 +10,14 @@ export interface TripCity {
   fetchedAt: ISODateTime | null;
 }
 
+/** A photo the user picked for a trip's cover, made smaller on the device. */
+export interface CoverPhoto {
+  /** JPEG `data:` URL, at most 1600px on the long side: the large covers. */
+  image: string;
+  /** Square JPEG `data:` URL of the middle of the photo: the small covers in lists. */
+  thumbnail: string;
+}
+
 export interface Trip {
   id: ID;
   title: string;
@@ -21,6 +29,8 @@ export interface Trip {
   settlementCurrency: CurrencyCode;
   /** Whole-trip budget, in the settlement currency's minor unit. */
   budget: number | null;
+  /** Null: the cover is the city's gradient. */
+  cover: CoverPhoto | null;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

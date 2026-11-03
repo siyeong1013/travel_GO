@@ -1,7 +1,12 @@
 import type { ID, PlaceData, Trip } from '@/data/models';
 
-/** New trips start with settlement currency KRW, no budget, and a "나" companion. */
-export type NewTrip = Pick<Trip, 'title' | 'city' | 'startDate' | 'endDate'>;
+/**
+ * New trips start with settlement currency KRW, no budget, and a "나" companion; and without a
+ * cover photo unless one is given.
+ */
+export type NewTrip = Pick<Trip, 'title' | 'city' | 'startDate' | 'endDate'> &
+  Partial<Pick<Trip, 'cover'>>;
+/** `cover: null` removes the photo. */
 export type TripPatch = Partial<NewTrip & Pick<Trip, 'settlementCurrency' | 'budget'>>;
 
 export interface TripUpdateOptions {

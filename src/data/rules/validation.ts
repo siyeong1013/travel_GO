@@ -1,4 +1,5 @@
 import type {
+  CoverPhoto,
   CurrencyCode,
   GeoPoint,
   ISODateTime,
@@ -112,6 +113,31 @@ export function cleanPlaceData(data: PlaceData): PlaceData {
     location: cleanLocation(data.location, 'location'),
     fetchedAt: data.fetchedAt,
   };
+}
+
+/** Far above what the app makes (about 0.5MB and 30KB), to keep out what isn't a cover photo. */
+export const COVER_IMAGE_MAX_LENGTH = 3_000_000;
+export const COVER_THUMBNAIL_MAX_LENGTH = 300_000;
+
+const IMAGE_DATA_URL = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * A picture held in the data itself: an image `data:` URL, never a link to elsewhere (showing
+ * one from an imported file would tell that site when the app is opened).
+ */
+export function isImageDataUrl(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length <= maxLength && IMAGE_DATA_URL.test(value);
+}
+
+export function cleanCover(cover: CoverPhoto | null): CoverPhoto | null {
+  if (cover === null) return null;
+  if (!isImageDataUrl(cover.image, COVER_IMAGE_MAX_LENGTH)) {
+    throw new ValidationError('cover.image must be an image data: URL');
+  }
+  if (!isImageDataUrl(cover.thumbnail, COVER_THUMBNAIL_MAX_LENGTH)) {
+    throw new ValidationError('cover.thumbnail must be an image data: URL');
+  }
+  return { image: cover.image, thumbnail: cover.thumbnail };
 }
 
 /** `''` (a cleared time input) becomes null. */

@@ -9,7 +9,7 @@ import {
   validateTripForm,
   withStartDate,
 } from '@/features/trips/tripForm';
-import { makeTrip, T0, typedCity } from '@/test/fixtures';
+import { makeCover, makeTrip, T0, typedCity } from '@/test/fixtures';
 
 const valid: TripFormValues = {
   title: '오사카 여행',
@@ -17,6 +17,7 @@ const valid: TripFormValues = {
   cityPlace: null,
   startDate: '2026-11-10',
   endDate: '2026-11-12',
+  cover: null,
 };
 
 describe('validateTripForm', () => {
@@ -65,7 +66,9 @@ describe('toNewTrip', () => {
       city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
       startDate: '2026-11-10',
       endDate: '2026-11-12',
+      cover: null,
     });
+    expect(toNewTrip({ ...valid, cover: makeCover() }).cover).toEqual(makeCover());
   });
 
   it('keeps the found city while the field reads its name', () => {
@@ -113,5 +116,20 @@ describe('toTripPatch', () => {
     const typed = makeTrip({ city: { name: '오사카', placeId: null, location: null, fetchedAt: null } });
     expect(toFormValues(typed).cityPlace).toBeNull();
     expect(toTripPatch({ ...toFormValues(typed), cityPlace: OSAKA }, typed)).toEqual({ city: OSAKA });
+  });
+
+  it('saves a new cover photo, or its removal', () => {
+    const withCover = makeTrip({ cover: makeCover('castle') });
+    const values = toFormValues(withCover);
+    expect(values.cover).toEqual(makeCover('castle'));
+    // The same photo picked again is no change.
+    expect(toTripPatch({ ...values, cover: makeCover('castle') }, withCover)).toEqual({});
+    expect(toTripPatch({ ...values, cover: makeCover('tower') }, withCover)).toEqual({
+      cover: makeCover('tower'),
+    });
+    expect(toTripPatch({ ...values, cover: null }, withCover)).toEqual({ cover: null });
+    expect(toTripPatch({ ...toFormValues(trip), cover: makeCover() }, trip)).toEqual({
+      cover: makeCover(),
+    });
   });
 });

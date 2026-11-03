@@ -14,6 +14,7 @@ import { findOutOfRange, normalizeSchedule } from '@/data/rules/schedule';
 import { compareTrips } from '@/data/rules/trip';
 import {
   cleanBudget,
+  cleanCover,
   cleanPlaceData,
   cleanSettlementCurrency,
   cleanTripFields,
@@ -54,6 +55,7 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
           ...cleanTripFields(input),
           settlementCurrency: DEFAULT_SETTLEMENT_CURRENCY,
           budget: null,
+          cover: cleanCover(input.cover ?? null),
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -91,6 +93,7 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
                 : currencyChanged
                   ? null
                   : current.budget,
+            cover: patch.cover !== undefined ? cleanCover(patch.cover) : current.cover,
             updatedAt: timestamp,
           },
           timestamp,

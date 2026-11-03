@@ -2,6 +2,7 @@ import type {
   BackupData,
   BackupFile,
   Companion,
+  CoverPhoto,
   Expense,
   ExpenseShare,
   GeoPoint,
@@ -19,7 +20,12 @@ import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules
 import { DEFAULT_SETTLEMENT_CURRENCY, isAmount, isCurrency, isRate, MAX_AMOUNT } from '@/data/rules/money';
 import { compareItems } from '@/data/rules/schedule';
 import { compareTrips } from '@/data/rules/trip';
-import { isGeoPoint } from '@/data/rules/validation';
+import {
+  COVER_IMAGE_MAX_LENGTH,
+  COVER_THUMBNAIL_MAX_LENGTH,
+  isGeoPoint,
+  isImageDataUrl,
+} from '@/data/rules/validation';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
 
 /**
@@ -27,8 +33,9 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * files of every older version (they must stay importable).
  * v2: settlement currency and budget on trips; companions, expenses, shares, settlements.
  * v3: `fetchedAt` of Google's place data (places and trip cities), which expires after 30 days.
+ * v4: trips' cover photo (`cover`).
  */
-export const BACKUP_SCHEMA_VERSION = 3;
+export const BACKUP_SCHEMA_VERSION = 4;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -91,6 +98,17 @@ const timestamp: Reader<ISODateTime> = (v, path) =>
   isIsoDateTime(v) ? v : invalid(path, 'ISO 8601 date-time');
 const geoPoint: Reader<GeoPoint> = (v, path) =>
   isGeoPoint(v) ? { lat: v.lat, lng: v.lng } : invalid(path, '{ lat, lng }');
+const imageDataUrl =
+  (maxLength: number): Reader<string> =>
+  (v, path) =>
+    isImageDataUrl(v, maxLength) ? v : invalid(path, `image data: URL of at most ${maxLength} characters`);
+const coverPhoto: Reader<CoverPhoto> = (v, path) => {
+  const c = object(v, path);
+  return {
+    image: imageDataUrl(COVER_IMAGE_MAX_LENGTH)(c.image, `${path}.image`),
+    thumbnail: imageDataUrl(COVER_THUMBNAIL_MAX_LENGTH)(c.thumbnail, `${path}.thumbnail`),
+  };
+};
 
 function nullable<T>(read: Reader<T>): Reader<T | null> {
   return (v, path) => (v === null ? null : read(v, path));
@@ -144,6 +162,8 @@ function readTrip(value: unknown, path: string, version: number): Trip {
         ? currency(t.settlementCurrency, `${path}.settlementCurrency`)
         : DEFAULT_SETTLEMENT_CURRENCY,
     budget: version >= 2 ? nullable(wholeNumber)(t.budget, `${path}.budget`) : null,
+    // Covers came with v4: older trips have the city's gradient.
+    cover: version >= 4 ? nullable(coverPhoto)(t.cover, `${path}.cover`) : null,
     createdAt,
     updatedAt: timestamp(t.updatedAt, `${path}.updatedAt`),
   };

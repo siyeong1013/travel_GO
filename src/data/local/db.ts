@@ -79,5 +79,17 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
         });
     });
 
+  // v4: a cover photo the user picks for the trip. Existing trips have none (the city's gradient).
+  db.version(4)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<Trip, ID>('trips')
+        .toCollection()
+        .modify((trip) => {
+          trip.cover = null;
+        });
+    });
+
   return db;
 }

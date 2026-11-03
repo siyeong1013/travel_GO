@@ -11,6 +11,7 @@ import { newId } from '@/lib/id';
 import {
   backupData,
   makeCompanion,
+  makeCover,
   makeExpense,
   makeItem,
   makePlace,
@@ -22,6 +23,7 @@ function sampleFile(): BackupFile {
   const trip = makeTrip({
     city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 }, fetchedAt: T0 },
     budget: 500_000,
+    cover: makeCover('osaka'),
   });
   const me = makeMeCompanion(trip.id, T0);
   const friend = makeCompanion({ tripId: trip.id, name: '철수' });
@@ -189,6 +191,29 @@ describe('backup file format', () => {
       google!.createdAt,
     );
     expect(parsed.scheduleItems.find((i) => i.id === typed!.id)!.place.fetchedAt).toBeNull();
+  });
+
+  it('converts v3 files: trips have no cover photo', () => {
+    const file = sampleFile();
+    const { cover, ...v3Trip } = file.trips[0]!;
+    const parsed = roundTrip({ ...file, schemaVersion: 3, trips: [v3Trip] });
+    expect(parsed.trips[0]).toEqual({ ...v3Trip, cover: null });
+  });
+
+  it('takes a cover photo only as an image held in the file', () => {
+    const file = sampleFile();
+    const withCover = (cover: unknown) => ({ ...file, trips: [{ ...file.trips[0], cover }] });
+    expect(roundTrip(withCover(null)).trips[0]!.cover).toBeNull();
+    expectInvalid(
+      withCover({ ...makeCover(), image: 'https://example.com/tracker.jpg' }),
+      'backup_invalid',
+      '$.trips[0].cover.image',
+    );
+    expectInvalid(
+      withCover({ image: makeCover().image }),
+      'backup_invalid',
+      '$.trips[0].cover.thumbnail',
+    );
   });
 
   it('needs the fetch time of Google data in v3 files', () => {

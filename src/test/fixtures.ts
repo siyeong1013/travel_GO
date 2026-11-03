@@ -2,6 +2,7 @@ import { createLocalRepositories, createTravelGoDB } from '@/data/local';
 import type {
   BackupData,
   Companion,
+  CoverPhoto,
   Expense,
   ExpenseWithShares,
   PlaceSnapshot,
@@ -53,9 +54,18 @@ export function makeTrip(overrides: Partial<Trip> = {}): Trip {
     endDate: '2026-11-12',
     settlementCurrency: 'KRW',
     budget: null,
+    cover: null,
     createdAt: T0,
     updatedAt: T0,
     ...overrides,
+  };
+}
+
+/** A cover photo as the app stores it (tiny stand-in JPEGs; `name` tells covers apart). */
+export function makeCover(name = 'cover'): CoverPhoto {
+  return {
+    image: `data:image/jpeg;base64,${btoa(name)}`,
+    thumbnail: `data:image/jpeg;base64,${btoa(`${name}-thumbnail`)}`,
   };
 }
 

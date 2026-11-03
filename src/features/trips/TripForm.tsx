@@ -5,6 +5,8 @@ import { TextField } from '@/components/ui/Field';
 import type { PlaceSuggestion } from '@/features/places/placeSearch';
 import { PlaceSuggestionList } from '@/features/places/PlaceSuggestionList';
 import { usePlaceSearch } from '@/features/places/usePlaceSearch';
+import { prepareCoverPhoto } from '@/features/trips/coverPhoto';
+import { CoverPhotoField } from '@/features/trips/CoverPhotoField';
 import {
   linkedCity,
   TITLE_MAX_LENGTH,
@@ -32,6 +34,8 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
   const [cityTyped, setCityTyped] = useState(false);
   const [pickingCity, setPickingCity] = useState<string | null>(null);
   const [cityError, setCityError] = useState<string | null>(null);
+  const [preparingCover, setPreparingCover] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
 
   const errors = validateTripForm(values);
   const visibleErrors = showErrors ? errors : {};
@@ -58,6 +62,20 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
       setCityError('도시 정보를 불러오지 못했어요. 다시 시도해 주세요.');
     } finally {
       setPickingCity(null);
+    }
+  }
+
+  async function pickCover(file: File) {
+    setPreparingCover(true);
+    setCoverError(null);
+    try {
+      const cover = await prepareCoverPhoto(file);
+      setValues((current) => ({ ...current, cover }));
+    } catch (error) {
+      console.error(error);
+      setCoverError('이 사진은 열 수 없어요. 다른 사진을 골라 주세요.');
+    } finally {
+      setPreparingCover(false);
     }
   }
 
@@ -156,6 +174,14 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
             {formatTripLength(values.startDate, values.endDate)}
           </p>
         )}
+        <CoverPhotoField
+          cover={values.cover}
+          trip={{ title: values.title, city: { name: values.city } }}
+          preparing={preparingCover}
+          error={coverError}
+          onPick={(file) => void pickCover(file)}
+          onRemove={() => setValues((current) => ({ ...current, cover: null }))}
+        />
       </div>
 
       <BottomActionBar>
@@ -164,7 +190,8 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
             {submitError}
           </p>
         )}
-        <Button type="submit" block disabled={submitting}>
+        {/* A photo still being made smaller would be left out. */}
+        <Button type="submit" block disabled={submitting || preparingCover}>
           {submitLabel}
         </Button>
       </BottomActionBar>

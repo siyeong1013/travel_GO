@@ -1,4 +1,4 @@
-import type { Trip, TripCity } from '@/data/models';
+import type { CoverPhoto, Trip, TripCity } from '@/data/models';
 import type { NewTrip, TripPatch } from '@/data/repositories';
 import { isLocalDate } from '@/lib/dates';
 
@@ -10,6 +10,8 @@ export interface TripFormValues {
   cityPlace: TripCity | null;
   startDate: string;
   endDate: string;
+  /** The saved photo, a newly picked one, or none. */
+  cover: CoverPhoto | null;
 }
 
 export type TripFormErrors = Partial<Record<keyof TripFormValues, string>>;
@@ -23,6 +25,7 @@ export const emptyTripForm: TripFormValues = {
   cityPlace: null,
   startDate: '',
   endDate: '',
+  cover: null,
 };
 
 export const TITLE_MAX_LENGTH = 40;
@@ -60,6 +63,7 @@ export function toFormValues(trip: Trip): TripFormValues {
     cityPlace: city.placeId !== null || city.location !== null ? city : null,
     startDate: trip.startDate,
     endDate: trip.endDate,
+    cover: trip.cover,
   };
 }
 
@@ -74,6 +78,7 @@ export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
   if (!sameCity(next.city, trip.city)) patch.city = next.city;
   if (next.startDate !== trip.startDate) patch.startDate = next.startDate;
   if (next.endDate !== trip.endDate) patch.endDate = next.endDate;
+  if (!sameCover(values.cover, trip.cover)) patch.cover = values.cover;
   return patch;
 }
 
@@ -90,6 +95,7 @@ export function toNewTrip(values: TripFormValues): NewTrip {
     },
     startDate: values.startDate,
     endDate: values.endDate,
+    cover: values.cover,
   };
 }
 
@@ -102,3 +108,6 @@ function sameCity(a: TripCity, b: TripCity): boolean {
     a.fetchedAt === b.fetchedAt
   );
 }
+
+const sameCover = (a: CoverPhoto | null, b: CoverPhoto | null) =>
+  a?.image === b?.image && a?.thumbnail === b?.thumbnail;

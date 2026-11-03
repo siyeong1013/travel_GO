@@ -89,4 +89,27 @@ describe('schema migrations', () => {
       typed,
     ]);
   });
+
+  it('v3 → v4: existing trips have no cover photo, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const { cover, ...v3Trip } = makeTrip({ updatedAt: '2025-12-21T00:00:00.000Z' });
+
+    // A database as version 3 of the app left it.
+    const v3 = new Dexie(name);
+    v3.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v3.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v3.version(3).stores({});
+    await v3.table('trips').add(v3Trip);
+    v3.close();
+
+    db = createTravelGoDB(name);
+    const repos = createLocalRepositories(db, testClock());
+
+    expect(await repos.trips.get(v3Trip.id)).toEqual({ ...v3Trip, cover: null });
+  });
 });

@@ -6,7 +6,8 @@ import {
   type Repositories,
   ValidationError,
 } from '@/data/repositories';
-import { createTestRepositories, makePlace } from '@/test/fixtures';
+import { COVER_IMAGE_MAX_LENGTH } from '@/data/rules/validation';
+import { createTestRepositories, makeCover, makePlace } from '@/test/fixtures';
 
 let db: TravelGoDB;
 let repos: Repositories;
@@ -52,6 +53,43 @@ describe('LocalTripRepository', () => {
     expect(updated).toMatchObject({ title: '간사이 여행', startDate: trip.startDate });
     expect(updated.updatedAt > trip.updatedAt).toBe(true);
     expect(await repos.trips.get(trip.id)).toEqual(updated);
+  });
+
+  it('keeps a cover photo, changed or removed like any other field', async () => {
+    const plain = await repos.trips.create(osaka);
+    expect(plain.cover).toBeNull();
+
+    const trip = await repos.trips.create({ ...osaka, cover: makeCover('castle') });
+    expect(await repos.trips.get(trip.id)).toMatchObject({ cover: makeCover('castle') });
+
+    // Other edits leave it alone.
+    expect((await repos.trips.update(trip.id, { budget: 100_000 })).cover).toEqual(makeCover('castle'));
+
+    const changed = await repos.trips.update(trip.id, { cover: makeCover('tower') });
+    expect(changed.cover).toEqual(makeCover('tower'));
+    const removed = await repos.trips.update(trip.id, { cover: null });
+    expect(removed.cover).toBeNull();
+    expect(removed.updatedAt > changed.updatedAt).toBe(true);
+    expect(await repos.trips.get(trip.id)).toEqual(removed);
+  });
+
+  it('takes only images held in the data as covers', async () => {
+    const cover = makeCover();
+    for (const bad of [
+      { ...cover, image: 'https://example.com/tracker.jpg' },
+      { ...cover, image: 'data:image/svg+xml;base64,PHN2Zz4=' },
+      { ...cover, image: 'data:image/jpeg;base64,not base64!' },
+      { ...cover, thumbnail: 'javascript:alert(1)' },
+      { ...cover, image: `data:image/jpeg;base64,${'A'.repeat(COVER_IMAGE_MAX_LENGTH)}` },
+    ]) {
+      await expect(repos.trips.create({ ...osaka, cover: bad })).rejects.toBeInstanceOf(
+        ValidationError,
+      );
+    }
+    const trip = await repos.trips.create(osaka);
+    await expect(
+      repos.trips.update(trip.id, { cover: { ...cover, thumbnail: '' } }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   describe('shrinking the dates', () => {
