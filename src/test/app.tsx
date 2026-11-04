@@ -2,7 +2,7 @@
 // (vi.mock is hoisted per file, so it cannot live here).
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, type RouteObject, RouterProvider } from 'react-router';
 import { vi } from 'vitest';
 import { routes } from '@/app/router';
 import { repositories } from '@/data';
@@ -15,6 +15,18 @@ import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
 import { fakeMapsApi } from '@/test/maps';
 import { type FakePlace, fakePlacesApi, type FakePlacesOptions } from '@/test/places';
+
+/** The loaders of every screen whose code comes in when it's first opened (`app/router.tsx`). */
+function screenLoaders(list: RouteObject[]): (() => Promise<unknown>)[] {
+  return list.flatMap((route) => [
+    ...(typeof route.lazy === 'function' ? [route.lazy] : []),
+    ...screenLoaders(route.children ?? []),
+  ]);
+}
+
+// Load every screen's code with the test file, so a test doesn't wait on it while finding its
+// first screen (under load that can outlast `findBy*`). A test may make one fail to load.
+await Promise.allSettled(screenLoaders(routes).map((load) => load()));
 
 /** Simulates a fresh page load: empty stores, data only in IndexedDB (and localStorage). */
 export function resetStores() {

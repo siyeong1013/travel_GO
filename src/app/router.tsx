@@ -1,30 +1,72 @@
+import type { ComponentType } from 'react';
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from '@/app/AppLayout';
-import { ExpenseCreatePage } from '@/pages/ExpenseCreatePage';
-import { ExpenseEditPage } from '@/pages/ExpenseEditPage';
-import { ExpenseSummaryPage } from '@/pages/ExpenseSummaryPage';
+import { RouteError } from '@/app/RouteError';
+import { reloadingForChunk } from '@/lib/chunkErrors';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { SettlementPage } from '@/pages/SettlementPage';
-import { TripCreatePage } from '@/pages/TripCreatePage';
-import { TripDetailPage } from '@/pages/TripDetailPage';
-import { TripEditPage } from '@/pages/TripEditPage';
 import { TripListPage } from '@/pages/TripListPage';
 
+/**
+ * A screen whose code loads when it's first opened. (`lazy` as a function: React Router marks the
+ * object form's loaded parts on the object itself, which these routes share with every router
+ * made from them, as the tests make one each.)
+ */
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return async () => {
+    try {
+      return { Component: (await load())[name] };
+    } catch (error) {
+      // Its chunk is gone and the page is reloading into it: stay on this screen till then.
+      if (reloadingForChunk()) return new Promise<never>(() => {});
+      throw error;
+    }
+  };
+}
+
+// Screens other than the trip list load their code when first opened, so the app starts with
+// less of it (the service worker still keeps all of it for offline use).
 export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
+    // While the first screen's code loads: the empty column.
+    hydrateFallbackElement: <AppLayout />,
     children: [
-      { index: true, element: <TripListPage /> },
-      { path: 'trips/new', element: <TripCreatePage /> },
-      { path: 'trips/:tripId', element: <TripDetailPage /> },
-      { path: 'trips/:tripId/edit', element: <TripEditPage /> },
-      { path: 'trips/:tripId/expenses/new', element: <ExpenseCreatePage /> },
-      { path: 'trips/:tripId/expenses/summary', element: <ExpenseSummaryPage /> },
-      { path: 'trips/:tripId/expenses/settlement', element: <SettlementPage /> },
-      { path: 'trips/:tripId/expenses/:expenseId', element: <ExpenseEditPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: '*', element: <NotFoundPage /> },
+      {
+        errorElement: <RouteError />,
+        children: [
+          { index: true, element: <TripListPage /> },
+          {
+            path: 'trips/new',
+            lazy: lazyPage(() => import('@/pages/TripCreatePage'), 'TripCreatePage'),
+          },
+          {
+            path: 'trips/:tripId',
+            lazy: lazyPage(() => import('@/pages/TripDetailPage'), 'TripDetailPage'),
+          },
+          {
+            path: 'trips/:tripId/edit',
+            lazy: lazyPage(() => import('@/pages/TripEditPage'), 'TripEditPage'),
+          },
+          {
+            path: 'trips/:tripId/expenses/new',
+            lazy: lazyPage(() => import('@/pages/ExpenseCreatePage'), 'ExpenseCreatePage'),
+          },
+          {
+            path: 'trips/:tripId/expenses/summary',
+            lazy: lazyPage(() => import('@/pages/ExpenseSummaryPage'), 'ExpenseSummaryPage'),
+          },
+          {
+            path: 'trips/:tripId/expenses/settlement',
+            lazy: lazyPage(() => import('@/pages/SettlementPage'), 'SettlementPage'),
+          },
+          {
+            path: 'trips/:tripId/expenses/:expenseId',
+            lazy: lazyPage(() => import('@/pages/ExpenseEditPage'), 'ExpenseEditPage'),
+          },
+          { path: 'settings', lazy: lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage') },
+          { path: '*', element: <NotFoundPage /> },
+        ],
+      },
     ],
   },
 ];

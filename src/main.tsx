@@ -3,8 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { router } from '@/app/router';
 import { repositories } from '@/data';
+import { reloadOnChunkError } from '@/lib/chunkErrors';
 import { requestPersistentStorage } from '@/lib/storage';
 import './index.css';
+
+// Into the screen being opened: its code is what failed to load, not the one shown.
+reloadOnChunkError(() => {
+  const { location } = router.state.navigation;
+  return location && router.createHref(location);
+});
 
 void requestPersistentStorage().then((status) => {
   console.info(`[travel GO] persistent storage: ${status}`);

@@ -69,6 +69,8 @@ describe('settlement', () => {
 
     await user.click(await screen.findByRole('link', { name: '정산 송금 2건 남았어요' }));
     expect(await screen.findByRole('heading', { name: '정산' })).toBeInTheDocument();
+    // The header comes first; the page once the ledger and the rates used before are read.
+    await screen.findByRole('region', { name: '주고받을 돈' });
     expect(items('주고받을 돈')).toEqual([
       '나받을 돈 50,000원',
       '철수보낼 돈 10,000원',

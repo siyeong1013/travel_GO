@@ -137,7 +137,8 @@ describe('budget and summary', () => {
     await user.click(await screen.findByRole('link', { name: '지출 요약' }));
     expect(await screen.findByRole('heading', { name: '지출 요약' })).toBeInTheDocument();
 
-    expect(section('예산')).toHaveTextContent('총 지출239,000원');
+    // The header comes first; the page once the ledger and the rates used before are read.
+    expect(await screen.findByRole('region', { name: '예산' })).toHaveTextContent('총 지출239,000원');
     expect(section('예산')).toHaveTextContent('61,000원 남음');
     expect(rows('카테고리별')).toEqual([
       '숙소200,000원84%',

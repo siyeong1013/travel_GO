@@ -79,7 +79,8 @@ describe('expense flows', () => {
     // Errors show on submit, focusing the first one.
     await user.click(screen.getByRole('link', { name: '지출 추가' }));
     expect(await screen.findByRole('heading', { name: '지출 추가' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '저장' }));
+    // The header comes first; the form once the ledger and the rates used before are read.
+    await user.click(await screen.findByRole('button', { name: '저장' }));
     expect(screen.getByText('금액을 입력해 주세요.')).toBeInTheDocument();
     expect(screen.getByText('카테고리를 골라 주세요.')).toBeInTheDocument();
     expect(screen.getByLabelText('금액')).toHaveFocus();
@@ -120,7 +121,7 @@ describe('expense flows', () => {
 
     await user.click(await screen.findByRole('link', { name: /오코노미야키/ }));
     expect(await screen.findByRole('heading', { name: '지출 수정' })).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: '금액 지정' }));
+    await user.click(await screen.findByRole('radio', { name: '금액 지정' }));
     // Starts from the equal split, so it already adds up.
     expect(screen.getByLabelText('나 금액')).toHaveValue('5000');
     expect(screen.getByText('총액과 같아요')).toBeInTheDocument();
