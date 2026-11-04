@@ -173,8 +173,12 @@ src/
 - API 키는 `.env.local`의 `VITE_GOOGLE_MAPS_API_KEY`. 커밋 금지 (`.env.example`만 커밋).
   - 키 하나로 지도와 장소 검색을 모두 쓴다. JS API가 Places 요청에도 스크립트를 로드한 키를 쓰기 때문이다. 그래서 그 키에 **Maps JavaScript API**와 **Places API (New)**가 둘 다 허용돼야 한다.
   - 브라우저 번들에 그대로 실리는 키라서, 콘솔에서 HTTP 리퍼러 제한(`http://localhost:5173/*`, 확인용 `http://localhost:5174/*`, 배포 주소)과 API 제한(위 두 API)을 건다.
+  - 키는 Google Cloud 프로젝트 "My First Project"(번호 `705597297951`)에 있다. 콘솔 목록의 "Maps Platform Demo Project"(다른 키), "My Maps Project"(키 없음)가 아니다. `https://console.cloud.google.com/apis/credentials?project=705597297951`로 바로 연다. 키의 프로젝트를 모를 때는 그 키로 다른 API(예: 번역)를 불러 보면 거절 메시지에 프로젝트 번호가 나온다.
+  - 결제 계정은 Google Cloud 무료 체험판이다(2026-11-04). 체험은 크레딧을 다 쓰거나 기간이 끝나면 끝나고, 그 뒤로는 유료 계정으로 바꾸기 전까지 지도·검색이 멈춘다(앱의 나머지는 그대로). 유료로 바꾸면 하루 할당량 상한을 건다(아래 "로그인·친구 초대 계획"의 비용 항목).
+  - 2026-11-04 확인: 웹사이트 제한이 `https://travel-go-lemon.vercel.app/*`, `http://localhost:5173/*`, `http://localhost:5174/*`이다. 다른 주소(비슷한 `*.vercel.app` 포함)는 `API_KEY_HTTP_REFERRER_BLOCKED`.
   - Vite 개발 서버는 `.env.local`이 바뀌면 스스로 재시작해서 새 키를 읽는다.
 - Map ID가 필요한 기능(Advanced Marker)은 `VITE_GOOGLE_MAPS_MAP_ID`(`googleMapsMapId()`). 비어 있으면 Google이 시험용으로 주는 `DEMO_MAP_ID`를 쓴다. 개발에는 충분하지만, 출시 전에는 콘솔에서 Map ID를 만들어 넣는다.
+  - 2026-11-04에 키와 같은 프로젝트(My First Project)에 JavaScript Map ID를 만들었다. `.env.local`과 Vercel 환경 변수에 같은 값을 둔다. 배포용 빌드로 확인함: 실제 지도·마커가 뜨고 콘솔 오류가 없다.
 - Places는 **Places API (New)** 사용 (`AutocompleteSuggestion`, `Place.fetchFields`). 레거시 Autocomplete 위젯 사용 금지.
 - 고른 장소의 상세는 **`formattedAddress, location`만** 요청한다(Place Details Essentials). 이름은 자동완성 제안의 `mainText`를 쓴다. `displayName`(Pro)을 요청하면 세션을 끝내는 호출이 가장 비싼 SKU(Enterprise + Atmosphere)로 청구된다.
 - 자동완성은 세션 토큰을 쓴다. 검색 한 번(첫 요청부터 고를 때까지)이 토큰 하나다. `placePrediction.toPlace().fetchFields()`가 같은 토큰으로 세션을 끝내고, 다음 검색은 새 토큰으로 한다. 고르지 않고 닫으면 요청마다 청구된다.
@@ -214,7 +218,7 @@ src/
 - 앱 셸은 서비스워커로 프리캐시. 여행/일정 조회는 IndexedDB 기반이라 오프라인 동작.
 - 지도 타일·장소 검색은 오프라인 미지원 (안내 표시). 구글 지도 리소스를 SW로 캐시하지 않는다 (약관).
 - 환율 API 응답도 SW로 캐시하지 않는다. 앱이 localStorage에 직접 두고 유효 기간을 판단한다.
-- 서비스워커와 `storage.persist()`는 보안 컨텍스트에서만 동작한다. 폰에서 `http://<LAN IP>`로 접속하면 PWA를 확인할 수 없으므로 localhost나 https 터널을 쓴다.
+- 서비스워커와 `storage.persist()`는 보안 컨텍스트에서만 동작한다. 폰에서 `http://<LAN IP>`로 접속하면 PWA를 확인할 수 없으므로, 폰에서는 배포 주소(https)로 확인한다.
 - iOS Safari에서 설치되지 않은 상태면 "공유 → 홈 화면에 추가" 안내를 **1회** 보여준다.
   - 닫으면 다시 띄우지 않고, 설정 화면에서 다시 볼 수 있다.
   - 저장소 보존을 위해 설치를 권장하는 문구를 포함한다.
@@ -243,7 +247,11 @@ src/
   - Android·데스크톱 Chrome은 브라우저가 설치를 제안하므로 따로 안내하지 않는다.
 
 ### 배포 (Vercel)
-- 15단계에서 시작했다. GitHub `main`에 올리면 Vercel이 `npm run build`로 빌드해서 바로 배포한다(무료 Hobby 플랜).
+- 15단계에서 시작했다. GitHub `main`에 올리면 Vercel이 `npm run build`로 빌드해서 바로 배포한다(무료 Hobby 플랜). 빌드가 실패하면 이전 버전이 그대로 남는다.
+- 주소: https://travel-go-lemon.vercel.app (Vercel 프로젝트 `travel-go`). `main`에 올리는 것이 곧 배포다.
+- 확인함(2026-11-04)
+  - HTTP: 화면 주소는 `index.html`, 없는 `/assets/` 조각은 404, 서비스워커가 받는 앱 파일 37개가 모두 있다. 빌드에 든 지도 키가 `.env.local`의 키와 같다.
+  - 실제 브라우저(Chromium, 폰 크기): 설치 가능 오류가 없다. 도시·장소 검색(구글)으로 여행과 일정을 만들면 지도에 번호 마커 2개, 직선, 길찾기가 뜬다. 오프라인으로 다시 열어도 목록·여행이 열리고, 새 창에서 `/settings`를 바로 열 수 있다. 콘솔 오류는 없다.
 - `vercel.json`
   - 화면 주소(`/trips/…`, `/settings` 등)는 `index.html`로 연다. Vercel은 파일이 있는 경로(`/`, `sw.js`, 아이콘 등)를 먼저 내주고, 나머지만 이 규칙(`rewrites`)으로 보낸다.
   - `/assets/`는 이 규칙에서 뺀다. 그래서 없는 조각은 404다. `index.html`을 내주면 업데이트 뒤의 옛 조각 요청이 HTML을 받고, 서비스워커 설치도 200이라서 그 HTML을 조각으로 저장해 버린다.
@@ -403,6 +411,8 @@ src/
   - 구글·카카오 로그인, 카카오톡 공유, GitHub는 무료다.
   - Google Maps는 2025년 3월부터 SKU마다 월 무료량이 있다(Essentials 1만, Pro 5천, Enterprise 1천). 우리가 쓰는 Dynamic Maps·Place Details Essentials는 1만이다.
   - 배포하면 지도 키가 공개 사이트에 실리고, 리퍼러 제한은 브라우저 밖에서 꾸밀 수 있다. 그래서 15단계에서 Cloud 콘솔의 API별 하루 할당량을 무료량 안으로 건다. 예산 알림은 알리기만 하고 막지 않는다.
+    - 단, 결제 계정이 무료 체험판인 동안에는 할당량을 바꿀 수 없다. 2026-11-04에 확인했다: 수정 메뉴가 꺼져 있고 "무료 체험판에서는 할당량 상향이 허용되지 않습니다"가 뜬다.
+    - 체험판은 크레딧만 쓰고 자동으로 청구하지 않는다. 그래서 체험이 끝나 유료 계정으로 바꿀 때 상한을 건다: Maps JavaScript API의 `Map loads per day`, Places API (New)의 `AutocompletePlaces…`·`GetPlace…` per day를 각각 300.
   - 앱스토어를 쓰지 않으므로(PWA) Apple 개발자 등록비(연 99달러)가 없다.
 - 사용자가 준비할 것(단계마다 화면별로 안내한다): Supabase 프로젝트, Google Cloud OAuth 클라이언트(동의 화면), 카카오 디벨로퍼스 앱(카카오 로그인 켜기, Redirect URI, 사이트 도메인, JavaScript 키), Vercel(GitHub 저장소 연결), 구글 지도 API 키 리퍼러에 배포 주소 추가와 하루 할당량 상한.
 
@@ -495,3 +505,7 @@ src/
 - 2026-11-04: 15단계(배포) 시작.
   - GitHub에 처음 올렸다(공개 저장소). 올리기 전에 기록 전체의 커밋 이메일을 GitHub가 주는 대신 쓰는 주소로 바꿨다(사용자 선택: GitHub에서 이메일을 숨겨 둠). 내용·날짜·메시지는 그대로다.
   - `vercel.json`: 화면 주소는 `index.html`로 열고, `/assets/`는 빼서 없는 조각은 404로 둔다. `/assets/`는 1년 캐시.
+  - 배포 주소는 https://travel-go-lemon.vercel.app. 지도 키의 웹사이트 제한에 이 주소를 넣었다(localhost 두 개는 그대로).
+  - 지도 키의 하루 사용량 상한은 결제 계정이 무료 체험판이라 걸 수 없었다. 체험판은 자동 청구가 없으니 유료로 바꿀 때 건다.
+  - Map ID를 만들어 `DEMO_MAP_ID` 대신 쓴다(`.env.local`, Vercel 환경 변수 Config).
+  - 남은 것: 실제 아이폰으로 홈 화면 앱 확인.
