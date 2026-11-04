@@ -20,7 +20,7 @@
 ```bash
 npm run dev       # 개발 서버
 npm run build     # 타입체크 + 프로덕션 빌드
-npm run preview   # 빌드 결과 미리보기 (PWA/오프라인 확인은 여기서)
+npm run preview   # 빌드 결과 미리보기 (PWA/오프라인 확인은 여기서. 지도까지 보려면 --port 5174: API 키 리퍼러에 있는 포트)
 npm test          # Vitest 1회 실행 (npm run test:watch: 감시 모드)
 npm run lint
 ```
@@ -41,6 +41,7 @@ src/
     expenses/     # 가계부: 동행자, 지출 기록, 환율 입력, 예산·요약
     settlement/   # 정산: 잔액, 최소 송금안, 송금 완료 기록, 텍스트 복사
     backup/       # 설정 화면의 백업 내보내기·가져오기
+    install/      # 홈 화면에 추가 안내 (iOS)
   data/
     models/       # 도메인 타입 (Trip, ScheduleItem, PlaceSnapshot, Companion, Expense, ExpenseShare, Settlement, BackupFile)
     repositories/ # 저장소 인터페이스, 입력 타입, 에러 클래스
@@ -214,6 +215,20 @@ src/
 - iOS Safari에서 설치되지 않은 상태면 "공유 → 홈 화면에 추가" 안내를 **1회** 보여준다.
   - 닫으면 다시 띄우지 않고, 설정 화면에서 다시 볼 수 있다.
   - 저장소 보존을 위해 설치를 권장하는 문구를 포함한다.
+- 구현: `vite-plugin-pwa`(`vite.config.ts`).
+  - manifest: 이름 travel GO, `display: standalone`, 흰 테마색, 아이콘(192·512, 마스커블 512).
+  - 아이콘은 `public/favicon.svg`(파란 배경에 흰 지도 핀)에서 그렸다. 마스커블·`apple-touch-icon`(180)은 모서리 없이 꽉 채운 판이고, `favicon.ico`도 있다. 그림을 바꾸면 PNG도 다시 그린다.
+  - `index.html`에 iOS 홈 화면 앱용 메타가 있다(전체 화면, 상태 표시줄 `default`: 흰 바탕에 진한 글씨, 앱 헤더와 같음).
+- 서비스워커(generateSW)는 앱 셸 11개 파일만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
+- 업데이트(`registerType: 'autoUpdate'`): 앱이 `virtual:pwa-register`를 쓰지 않아서 등록 스크립트(`registerSW.js`)는 로드 때 등록만 한다.
+  - 새 서비스워커는 설치되면 바로 자리를 잡고(`skipWaiting`·`clientsClaim`), 열려 있는 화면은 새로고침하지 않는다. 새 버전은 다음에 앱을 열 때 보인다. 입력 중인 폼이 날아가지 않게 하려는 것이다(실제 브라우저로 확인함).
+  - 14단계에서 번들을 나누면 열려 있던 옛 화면이 지워진 옛 조각 파일을 부를 수 있다. 조각을 못 불러오면 새로고침하는 처리를 같이 넣는다.
+- 홈 화면 안내 (`features/install/`)
+  - iOS(iPhone, 또는 Mac처럼 보이지만 터치가 되는 iPad, `lib/platform.ts`의 `isIos`)의 브라우저에서만 보인다. 홈 화면에서 열었으면(`isStandalone`: `display-mode: standalone` 또는 `navigator.standalone`) 보이지 않는다.
+  - 여행 목록 위의 배너(`InstallBanner`)는 닫기(X)를 누를 때까지 보이고, 닫으면 기기에 남겨(localStorage `travel-go:install-banner-closed`) 다시 띄우지 않는다. 방법을 본 것만으로는 닫지 않는다.
+  - 방법 시트(`InstallGuideSheet`): 공유 버튼(안 보이면 ⋯ 먼저) → ‘홈 화면에 추가’ → ‘추가’ 3단계와 데이터 보존 이유가 있다. 이미 만든 여행은 추가 전에 백업으로 내보내고, 홈 화면 앱에서 안 보이면 가져오라는 안내도 있다(홈 화면 앱의 저장 공간이 Safari와 이어지는지는 확인하지 못해서, 어느 쪽이든 안전한 방법을 안내함).
+  - 설정 화면 맨 위의 "홈 화면에 추가" 구역(`InstallSettings`)에서 언제든 다시 볼 수 있다.
+  - Android·데스크톱 Chrome은 브라우저가 설치를 제안하므로 따로 안내하지 않는다.
 
 ### UI (모바일 우선)
 - 기준 폭 360~430px. 데스크톱은 가운데 정렬된 모바일 폭 컨테이너.
@@ -322,6 +337,8 @@ src/
   - 화면 흐름 테스트에서 저장소는 테스트 시계(2026-01-01부터)를 쓰고, 여행 화면의 갱신 판단은 실제 시계를 쓴다. 그래서 갱신되면 안 되는 Google 데이터는 실제 현재 시각으로 찍는다(`placeFlows.test.tsx`의 `OSAKA_CITY`). 30일 지난 데이터는 저장소 테스트에서 `db`에 직접 넣어 확인한다(저장소로 쓰면 바로 지워짐).
 - 클립보드: `userEvent.setup()`이 `navigator.clipboard`를 메모리 스텁으로 바꾸므로 복사한 내용은 `navigator.clipboard.readText()`로 확인한다. 실패는 `vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(...)`. happy-dom에는 `navigator.share`가 없어서, 공유 테스트는 `Object.defineProperty`로 넣고 테스트 뒤에 지운다 (`app/settlementFlows.test.tsx`).
 - 백업 파일: 다운로드는 `URL.createObjectURL`(넘긴 파일)과 `HTMLAnchorElement.prototype.click`(`download` 이름)을 가로채서 확인한다. 파일 고르기는 `user.upload(screen.getByLabelText('백업 파일'), file)`. user-event가 `accept`에 맞지 않는 파일을 버리므로 잘못된 파일 테스트도 `.json` 파일로 한다. 파일 공유는 `navigator.share`와 `navigator.canShare`를 넣는다 (`app/backupFlows.test.tsx`).
+- 홈 화면 안내: iOS는 `vi.spyOn(navigator, 'userAgent', 'get')`, 홈 화면에서 연 상태는 `vi.spyOn(window, 'matchMedia')`로 흉내 낸다(`app/installFlows.test.tsx`). 서비스워커와 오프라인 시작은 happy-dom에 없으므로 빌드 결과를 실제 브라우저로 확인한다(`npm run build` → `vite preview --port 5174` → 오프라인으로 다시 열기).
+- 저장한 뒤에 닫히는 시트(장소 추가 등)는 목록이 먼저 바뀌고 시트가 조금 뒤에 닫힌다. 닫힘도 `waitFor`로 기다린다(바로 검사하면 부하가 걸릴 때 가끔 실패함).
 - 드래그는 happy-dom에서 테스트할 수 없다 (요소 크기가 모두 0). 이동 규칙은 `data/rules`와 스토어 테스트로 검증하고, 드래그 자체는 실제 브라우저에서 확인한다.
 - 표지 사진: happy-dom은 이미지를 디코드하거나 캔버스에 그리지 못한다. 그래서 화면 흐름 테스트는 `vi.mock('@/features/trips/coverPhoto', ...)`으로 `prepareCoverPhoto`를 바꾸고, `user.upload(screen.getByLabelText('표지 사진 파일'), file)`로 고른다(`app/coverFlows.test.tsx`). 저장된 사진은 픽스처 `makeCover(name)`로 만든다.
   - 줄이기 자체(크기, 회전 정보, 투명, 읽지 못하는 파일)는 실제 브라우저에서 확인한다.
@@ -344,7 +361,7 @@ src/
 | 10 | 장소 검색 (Places API) | 완료 |
 | 11 | 지도 (번호 마커, 직선 경로, 구간별 길찾기 링크) | 완료 |
 | 12 | 설정 + 백업 내보내기/가져오기 화면 (가계부 포함) | 완료 |
-| 13 | PWA·오프라인·iOS 설치 안내 | 예정 |
+| 13 | PWA·오프라인·iOS 설치 안내 | 완료 |
 | 14 | 다듬기 (번들 분할 등) | 예정 |
 
 ## 진행 방식
@@ -380,3 +397,15 @@ src/
   - 사진은 기기에서 JPEG로 줄여(긴 변 1600px + 192px 썸네일) 여행 기록 안에 `data:` URL로 둔다. 별도 테이블보다 단순하고, 여행과 함께 병합·백업된다.
   - Dexie v4, 백업 v4. 사진이 없으면 지금처럼 도시 그라데이션이다.
   - 실제 브라우저(Chromium)로 확인함: 4032×3024 사진이 1600×1200으로 0.1초 안에 줄어듦, 회전 정보가 있는 사진이 똑바로 섬, 투명 PNG는 흰 바탕, 백업 파일에 사진이 들어감, 흰 사진 위 글씨 대비 5.1:1 이상.
+- 2026-11-03: 13단계(PWA·오프라인·iOS 설치 안내) 완료.
+  - `vite-plugin-pwa` 2.0.0(1.3.0과 차이는 에셋 생성기 2.x 허용뿐), generateSW, autoUpdate.
+  - 업데이트는 강제 새로고침 없이 다음 실행에 적용한다(가상 모듈 없이 등록만 하는 스크립트).
+  - 런타임 캐시는 두지 않는다(구글 약관, 환율은 앱이 직접 관리).
+  - 아이콘은 파란 배경에 흰 지도 핀(`public/favicon.svg`)이다.
+  - iOS 안내는 모달 대신 목록 위 배너로 했다(처음 연 사람의 화면을 막지 않게). 닫으면 끝이고, 설정에서 다시 볼 수 있다.
+  - 실제 브라우저(Chromium, `vite preview`)로 확인함:
+    - Chromium 기준 설치 가능 오류 없음, 오프라인으로 다시 열기·여행 주소로 바로 열기·일정 추가 됨.
+    - 캐시에는 우리 주소의 파일만 있음.
+    - 폼에 입력하는 중에 새 버전이 설치돼도 새로고침되지 않음.
+    - iPhone UA에서 배너·안내·설정 구역이 보이고, 홈 화면 앱에서는 안 보임.
+  - 실제 iPhone은 아직 확인하지 못함.

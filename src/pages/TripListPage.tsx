@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { MapPinIcon, PlusIcon, SettingsIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { LocalDate, Trip } from '@/data/models';
+import { InstallBanner } from '@/features/install/InstallBanner';
 import { TripCard, TripHeroCard } from '@/features/trips/TripCard';
 import { splitTrips } from '@/features/trips/tripDisplay';
 import { useTrips } from '@/features/trips/useTrips';
@@ -67,7 +68,10 @@ export function TripListPage() {
           </Link>
         }
       />
-      <main className="flex flex-1 flex-col">{content}</main>
+      <main className="flex flex-1 flex-col">
+        <InstallBanner />
+        {content}
+      </main>
       <BottomActionBar>
         <Link to="/trips/new" className={buttonClass('primary', true)}>
           <PlusIcon width={20} height={20} />새 여행 만들기

@@ -71,7 +71,8 @@ describe('place search', () => {
 
     await user.click(result);
     await waitFor(() => expect(cards()).toEqual([`1오사카성${OSAKA_CASTLE.address}`]));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The sheet closes once saving returns, a moment after the list shows the new card.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     // The list credits Google for the place data it shows.
     expect(within(screen.getByRole('tabpanel')).getByText('Google Maps')).toBeInTheDocument();
 
