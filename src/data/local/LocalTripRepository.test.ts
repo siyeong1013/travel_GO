@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from '@/data/repositories';
 import { COVER_IMAGE_MAX_LENGTH } from '@/data/rules/validation';
+import { newId } from '@/lib/id';
 import { createTestRepositories, makeCover, makePlace } from '@/test/fixtures';
 
 let db: TravelGoDB;
@@ -44,6 +45,19 @@ describe('LocalTripRepository', () => {
     await expect(repos.trips.create({ ...osaka, startDate: '2026/11/10' })).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+
+  it('takes an id made up front (the form shows the cover color it picks), if it is a new UUID', async () => {
+    const id = newId();
+    const trip = await repos.trips.create(osaka, { id });
+    expect(trip.id).toBe(id);
+    expect(await repos.trips.get(id)).toEqual(trip);
+
+    for (const bad of ['', 'trip-1', id.toUpperCase()]) {
+      await expect(repos.trips.create(osaka, { id: bad })).rejects.toBeInstanceOf(ValidationError);
+    }
+    await expect(repos.trips.create({ ...osaka, title: '다른 여행' }, { id })).rejects.toThrow();
+    expect(await repos.trips.list()).toEqual([trip]);
   });
 
   it('updates fields and bumps updatedAt', async () => {

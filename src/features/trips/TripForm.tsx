@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
+import type { ID } from '@/data/models';
 import type { PlaceSuggestion } from '@/features/places/placeSearch';
 import { PlaceSuggestionList } from '@/features/places/PlaceSuggestionList';
 import { usePlaceSearch } from '@/features/places/usePlaceSearch';
@@ -19,13 +20,15 @@ import { errorMessage } from '@/lib/errorMessage';
 import { formatTripLength } from '@/lib/format';
 
 interface TripFormProps {
+  /** The trip's id, or the one the new trip will get: it picks the cover's color. */
+  tripId: ID;
   initialValues: TripFormValues;
   submitLabel: string;
   /** Errors thrown here are shown above the submit button. */
   onSubmit: (values: TripFormValues) => Promise<void>;
 }
 
-export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps) {
+export function TripForm({ tripId, initialValues, submitLabel, onSubmit }: TripFormProps) {
   const [values, setValues] = useState(initialValues);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -176,7 +179,7 @@ export function TripForm({ initialValues, submitLabel, onSubmit }: TripFormProps
         )}
         <CoverPhotoField
           cover={values.cover}
-          trip={{ title: values.title, city: { name: values.city } }}
+          tripId={tripId}
           preparing={preparingCover}
           error={coverError}
           onPick={(file) => void pickCover(file)}

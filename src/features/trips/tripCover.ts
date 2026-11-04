@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Trip, TripCity } from '@/data/models';
+import type { Trip } from '@/data/models';
 
 /** Cover gradients (from, to). Both ends keep white text at 4.5:1 or more. */
 const COVERS: readonly (readonly [string, string])[] = [
@@ -13,27 +13,22 @@ const COVERS: readonly (readonly [string, string])[] = [
   ['#a16207', '#c2410c'], // amber → orange
 ];
 
-/** A trip, or one still being typed into the form. */
-type CoverSubject = Pick<Trip, 'title'> & { city: Pick<TripCity, 'name'> };
-
-/** What a trip's cover is named for: its city, or its title without one. */
-const coverName = (trip: CoverSubject) => trip.city.name.trim() || trip.title.trim();
-
 /**
- * A trip's cover when it has no photo: a gradient picked by the city, so trips to one city look
- * alike.
+ * A trip's cover when it has no photo: a gradient picked by the trip's id. So each trip gets one
+ * at random and keeps it, whatever it's called (on every device, and through backups).
  */
-export function coverStyle(trip: CoverSubject): CSSProperties {
-  const [from, to] = COVERS[hash(coverName(trip)) % COVERS.length]!;
+export function coverStyle(trip: Pick<Trip, 'id'>): CSSProperties {
+  const [from, to] = COVERS[hash(trip.id) % COVERS.length]!;
   return {
     backgroundColor: from,
     backgroundImage: `radial-gradient(circle at 85% 10%, rgb(255 255 255 / 0.2), transparent 45%), linear-gradient(135deg, ${from}, ${to})`,
   };
 }
 
-/** The mark on a small cover: `오` for 오사카, `I` for istanbul. */
-export function coverInitial(trip: CoverSubject): string {
-  return (Array.from(coverName(trip))[0] ?? '?').toUpperCase();
+/** The mark on a small cover: `오` for 오사카, `I` for istanbul (the title's without a city). */
+export function coverInitial(trip: Pick<Trip, 'title' | 'city'>): string {
+  const name = trip.city.name.trim() || trip.title.trim();
+  return (Array.from(name)[0] ?? '?').toUpperCase();
 }
 
 function hash(text: string): number {

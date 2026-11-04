@@ -15,6 +15,7 @@ import { compareTrips } from '@/data/rules/trip';
 import {
   cleanBudget,
   cleanCover,
+  cleanId,
   cleanPlaceData,
   cleanSettlementCurrency,
   cleanTripFields,
@@ -47,11 +48,11 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
       });
     },
 
-    create(input) {
+    create(input, options = {}) {
       return db.transaction('rw', db.trips, db.companions, async () => {
         const timestamp = now();
         const trip: Trip = {
-          id: newId(),
+          id: options.id !== undefined ? cleanId(options.id) : newId(),
           ...cleanTripFields(input),
           settlementCurrency: DEFAULT_SETTLEMENT_CURRENCY,
           budget: null,

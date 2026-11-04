@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { coverInitial, coverStyle } from '@/features/trips/tripCover';
+import { derivedId } from '@/lib/id';
 import { makeTrip, typedCity } from '@/test/fixtures';
 
 const trip = (city: string, title = '여행') => makeTrip({ title, city: typedCity(city) });
 
 describe('trip covers', () => {
-  it('look alike for trips to one city, and differ between cities', () => {
-    expect(coverStyle(trip('오사카', '첫 오사카'))).toEqual(coverStyle(trip('오사카', '또 오사카')));
-    const cities = ['오사카', '도쿄', '파리', '방콕', '다낭', '제주', '런던', 'Istanbul'];
-    expect(new Set(cities.map((city) => coverStyle(trip(city)).backgroundColor)).size).toBeGreaterThan(3);
+  it("are colored by the trip's id: kept whatever the trip is called, and spread across trips", () => {
+    const osaka = trip('오사카', '첫 오사카');
+    const renamed = { ...osaka, title: '간사이 여행', city: typedCity('교토') };
+    expect(coverStyle(renamed)).toEqual(coverStyle(osaka));
+    const ids = Array.from({ length: 16 }, (_, i) => derivedId(`trip ${i}`));
+    expect(new Set(ids.map((id) => coverStyle({ id }).backgroundColor)).size).toBeGreaterThan(5);
   });
 
   it("are marked with the city's first letter, else the title's", () => {

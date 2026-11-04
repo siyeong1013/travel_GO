@@ -9,6 +9,14 @@ export type NewTrip = Pick<Trip, 'title' | 'city' | 'startDate' | 'endDate'> &
 /** `cover: null` removes the photo. */
 export type TripPatch = Partial<NewTrip & Pick<Trip, 'settlementCurrency' | 'budget'>>;
 
+export interface TripCreateOptions {
+  /**
+   * The new trip's id (a UUID), made up front by the caller; otherwise a new one. The trip form
+   * makes it when it opens, since the id picks the cover's color it shows.
+   */
+  id?: ID;
+}
+
 export interface TripUpdateOptions {
   /**
    * What to do with dated items that fall outside the new dates.
@@ -24,7 +32,8 @@ export interface TripRepository {
    */
   list(): Promise<Trip[]>;
   get(id: ID): Promise<Trip | undefined>;
-  create(input: NewTrip): Promise<Trip>;
+  /** Throws `ValidationError` for an id that isn't a UUID, and fails for one already in use. */
+  create(input: NewTrip, options?: TripCreateOptions): Promise<Trip>;
   /**
    * Throws `OutOfRangeItemsError` (see options) and `CurrencyLockedError` when changing the
    * settlement currency of a trip that has expenses or settlements. A new settlement currency

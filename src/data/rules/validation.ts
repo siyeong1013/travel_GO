@@ -2,6 +2,7 @@ import type {
   CoverPhoto,
   CurrencyCode,
   GeoPoint,
+  ID,
   ISODateTime,
   LocalTime,
   PlaceData,
@@ -10,6 +11,14 @@ import type {
 import { type NewTrip, ValidationError } from '@/data/repositories';
 import { isCurrency, MAX_AMOUNT } from '@/data/rules/money';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** An id made by the caller instead of the repository: a UUID, written like `newId()` writes it. */
+export function cleanId(id: ID): ID {
+  if (!UUID.test(id)) throw new ValidationError(`id is not a lowercase UUID: ${id}`);
+  return id;
+}
 
 export function cleanSettlementCurrency(code: CurrencyCode): CurrencyCode {
   if (!isCurrency(code)) throw new ValidationError(`unsupported currency: ${code}`);

@@ -47,6 +47,7 @@ export function TripEditPage() {
     <>
       <PageHeader title="여행 정보 수정" back backFallback={`/trips/${trip.id}`} />
       <TripForm
+        tripId={trip.id}
         initialValues={toFormValues(trip)}
         submitLabel="저장"
         onSubmit={async (values) => {

@@ -1,13 +1,13 @@
 import { useId, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { ImageIcon } from '@/components/ui/icons';
-import type { CoverPhoto } from '@/data/models';
+import type { CoverPhoto, ID } from '@/data/models';
 import { coverStyle } from '@/features/trips/tripCover';
 
 interface CoverPhotoFieldProps {
   cover: CoverPhoto | null;
-  /** The trip as typed so far: without a photo, its cover is the gradient of this city. */
-  trip: { title: string; city: { name: string } };
+  /** Without a photo, the cover is this trip's gradient. */
+  tripId: ID;
   /** A picked photo is being made smaller. */
   preparing: boolean;
   error: string | null;
@@ -16,12 +16,12 @@ interface CoverPhotoFieldProps {
 }
 
 /**
- * The trip's cover in the form: the photo, or the city's gradient (tapping it picks a photo).
+ * The trip's cover in the form: the photo, or the trip's gradient (tapping it picks a photo).
  * Photos come from the device's library or camera.
  */
 export function CoverPhotoField({
   cover,
-  trip,
+  tripId,
   preparing,
   error,
   onPick,
@@ -57,7 +57,7 @@ export function CoverPhotoField({
           type="button"
           disabled={preparing}
           onClick={choose}
-          style={coverStyle(trip)}
+          style={coverStyle({ id: tripId })}
           className="flex h-36 w-full flex-col items-center justify-center gap-1.5 rounded-2xl font-semibold text-white transition-opacity active:opacity-90 disabled:opacity-70"
         >
           <ImageIcon width={28} height={28} className={preparing ? 'animate-pulse' : undefined} />

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { CoverPhoto } from '@/data/models';
 import { prepareCoverPhoto } from '@/features/trips/coverPhoto';
+import { coverStyle } from '@/features/trips/tripCover';
 import { renderApp, resetApp, resetStores } from '@/test/app';
 import { makeCover, typedCity } from '@/test/fixtures';
 
@@ -127,5 +128,30 @@ describe('cover photos', () => {
 
     expect(await screen.findByRole('heading', { name: '오사카 여행' })).toBeInTheDocument();
     expect((await repositories.trips.list())[0]!.cover).toBeNull();
+  });
+
+  it('shows a new trip its own color, which stays while typing and once made', async () => {
+    // The form makes the trip's id when it opens; ids made after that are random again.
+    const madeOnOpening = '0b5e8f3a-6c1d-4e2f-9a7b-3c4d5e6f7a8b';
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(madeOnOpening);
+    const { user } = renderApp('/trips/new');
+    const colorOf = async () =>
+      (await screen.findByRole('button', { name: '사진 고르기' })).style.backgroundImage;
+    const color = await colorOf();
+    uuid.mockRestore();
+    await fillNewTrip(user);
+    expect(await colorOf()).toBe(color);
+    await user.click(screen.getByRole('button', { name: '만들기' }));
+
+    // The color was the trip's: picked by the id it was made with.
+    const title = await screen.findByRole('heading', { name: '오사카 여행' });
+    expect(title.closest('section')!.style.backgroundImage).toBe(color);
+    const [trip] = await repositories.trips.list();
+    expect(trip!.id).toBe(madeOnOpening);
+    expect(coverStyle(trip!).backgroundImage).toBe(color);
+
+    await user.click(screen.getByRole('button', { name: '여행 메뉴' }));
+    await user.click(screen.getByRole('button', { name: '여행 정보 수정' }));
+    expect(await colorOf()).toBe(color);
   });
 });
