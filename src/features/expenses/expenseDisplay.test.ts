@@ -3,6 +3,7 @@ import {
   blockReason,
   expenseTitle,
   groupExpenses,
+  itemExpenses,
   splitSummary,
 } from '@/features/expenses/expenseDisplay';
 import { makeCompanion, makeExpense, makeTrip } from '@/test/fixtures';
@@ -70,6 +71,52 @@ describe('groupExpenses', () => {
       [sushi.id, 9_500],
       [stale.id, null],
     ]);
+  });
+});
+
+describe('itemExpenses', () => {
+  it('lists what was spent at a schedule item, with the total in the settlement currency', () => {
+    const castle = 'item-castle';
+    const ticket = makeExpense(
+      {
+        tripId: trip.id,
+        payerId: me.id,
+        amount: 1_000,
+        currency: 'JPY',
+        exchangeRate: { rate: '9.5', quote: 'KRW', source: 'manual', fetchedAt: null },
+        scheduleItemId: castle,
+      },
+      equalShares(1_000, me),
+    );
+    const lunch = makeExpense(
+      { tripId: trip.id, payerId: me.id, amount: 12_000, scheduleItemId: castle },
+      equalShares(12_000, me),
+    );
+    const elsewhere = makeExpense(
+      { tripId: trip.id, payerId: me.id, amount: 5_000, scheduleItemId: 'item-other' },
+      equalShares(5_000, me),
+    );
+    // Rate quoted in another currency: listed, but not in the total.
+    const stale = makeExpense(
+      {
+        tripId: trip.id,
+        payerId: me.id,
+        amount: 500,
+        currency: 'JPY',
+        exchangeRate: { rate: '0.0067', quote: 'USD', source: 'manual', fetchedAt: null },
+        scheduleItemId: castle,
+      },
+      equalShares(500, me),
+    );
+
+    const { rows, total } = itemExpenses(trip, [ticket, elsewhere, lunch, stale], castle);
+    expect(rows.map((r) => [r.expense.id, r.converted])).toEqual([
+      [ticket.id, 9_500],
+      [lunch.id, 12_000],
+      [stale.id, null],
+    ]);
+    expect(total).toBe(21_500);
+    expect(itemExpenses(trip, [ticket, lunch], 'item-other')).toEqual({ rows: [], total: 0 });
   });
 });
 

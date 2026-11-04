@@ -74,6 +74,26 @@ export interface ExpenseRow {
   converted: number | null;
 }
 
+const toRow = (expense: ExpenseWithShares, currency: CurrencyCode): ExpenseRow => ({
+  expense,
+  converted: convertExpense(expense, currency)?.total ?? null,
+});
+
+/**
+ * The expenses linked to schedule item `itemId`, in the given order, and their total in the
+ * settlement currency (leaving out rows that can't convert, as day totals do).
+ */
+export function itemExpenses(
+  trip: Pick<Trip, 'settlementCurrency'>,
+  expenses: ExpenseWithShares[],
+  itemId: ID,
+): { rows: ExpenseRow[]; total: number } {
+  const rows = expenses
+    .filter((expense) => expense.scheduleItemId === itemId)
+    .map((expense) => toRow(expense, trip.settlementCurrency));
+  return { rows, total: rows.reduce((sum, row) => sum + (row.converted ?? 0), 0) };
+}
+
 export interface ExpenseSection extends DayHeading {
   /** Sum of the convertible rows, in the settlement currency. */
   total: number;
@@ -100,10 +120,10 @@ export function groupExpenses(
   };
 
   for (const expense of expenses) {
-    const converted = convertExpense(expense, trip.settlementCurrency)?.total ?? null;
+    const row = toRow(expense, trip.settlementCurrency);
     const section = sectionFor(expense.date);
-    section.rows.push({ expense, converted });
-    section.total += converted ?? 0;
+    section.rows.push(row);
+    section.total += row.converted ?? 0;
   }
   const order = (key: string) => (key === 'before' ? '0' : key === 'after' ? '2' : `1${key}`);
   return [...sections.values()].sort((a, b) => (order(a.key) < order(b.key) ? -1 : 1));

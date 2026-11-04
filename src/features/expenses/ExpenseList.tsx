@@ -1,3 +1,4 @@
+import type { MouseEventHandler } from 'react';
 import { Link } from 'react-router';
 import { MapPinIcon } from '@/components/ui/icons';
 import type { Companion, CurrencyCode, ID, ScheduleItem } from '@/data/models';
@@ -46,7 +47,9 @@ export function ExpenseList({ tripId, sections, currency, companions, scheduleIt
                   currency={currency}
                   showDate={section.subtitle === null}
                   companions={companions}
-                  scheduleItems={scheduleItems}
+                  place={
+                    scheduleItems.find((item) => item.id === row.expense.scheduleItemId)?.place.name
+                  }
                 />
               </li>
             ))}
@@ -61,22 +64,25 @@ interface ExpenseRowLinkProps {
   tripId: ID;
   row: ExpenseRow;
   currency: CurrencyCode;
-  /** Before/after the trip, where the section doesn't say the day. */
+  /** Where nothing above says the day (before/after the trip). */
   showDate: boolean;
   companions: Companion[];
-  scheduleItems: ScheduleItem[];
+  /** Name of the linked schedule item, if any. */
+  place?: string;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
 }
 
-function ExpenseRowLink({
+/** An expense: title, details and amount (with the settlement currency's); opens its form. */
+export function ExpenseRowLink({
   tripId,
   row: { expense, converted },
   currency,
   showDate,
   companions,
-  scheduleItems,
+  place,
+  onClick,
 }: ExpenseRowLinkProps) {
   const payer = companions.find((c) => c.id === expense.payerId)?.name ?? '?';
-  const place = scheduleItems.find((item) => item.id === expense.scheduleItemId)?.place.name;
   const meta = [
     // The title is the memo, or the category when there is none.
     expense.memo.trim() && CATEGORY_LABELS[expense.category],
@@ -91,6 +97,7 @@ function ExpenseRowLink({
   return (
     <Link
       to={`/trips/${tripId}/expenses/${expense.id}`}
+      onClick={onClick}
       className="flex items-center gap-3 rounded-2xl px-3 py-2.5 active:bg-gray-50"
     >
       <span className="min-w-0 flex-1">

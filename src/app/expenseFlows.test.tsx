@@ -6,7 +6,7 @@ import type { Companion, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
 import { formatDateTime } from '@/lib/format';
 import { renderApp, resetApp, resetStores, stubRatesApi } from '@/test/app';
-import { latestRatesBody, RATES_PUBLISHED_AT } from '@/test/fixtures';
+import { latestRatesBody, namedPlace, RATES_PUBLISHED_AT } from '@/test/fixtures';
 
 vi.mock('@/data', async () => {
   const { createTestRepositories } = await import('@/test/fixtures');
@@ -407,5 +407,84 @@ describe('expense flows', () => {
     expect(
       await screen.findByText('이 여행의 지출 1건도 함께 삭제되고, 되돌릴 수 없어요.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('expenses from the schedule', () => {
+  const DAY2 = '2026-11-11';
+  const findCard = (name: string) =>
+    screen.findByRole('button', { name: new RegExp(`^${name}(?! 순서 바꾸기)`) });
+  /** The "지출" part of the open place's sheet. */
+  const spent = () =>
+    within(screen.getByRole('dialog', { name: '일정 편집' })).getByRole('region', { name: '지출' });
+  const addPlace = (name: string) =>
+    repositories.schedule.create({ tripId: trip.id, date: DAY2, place: namedPlace(name) });
+
+  it("shows what was spent at a place, and adds to it from the place's sheet", async () => {
+    const castle = await addPlace('오사카성');
+    await addPlace('도톤보리');
+    await repositories.expenses.create(
+      expense({
+        date: DAY2,
+        amount: 1_200,
+        currency: 'JPY',
+        exchangeRate: { rate: '9', source: 'manual', fetchedAt: null },
+        category: 'sightseeing',
+        memo: '천수각 입장권',
+        scheduleItemId: castle.id,
+      }),
+    );
+    await repositories.expenses.create(expense({ date: DAY2, memo: '라멘' }));
+    const { router, user } = renderApp(`/trips/${trip.id}?day=${DAY2}`);
+
+    // Only what is linked to the place, with the total in the settlement currency.
+    await user.click(await findCard('오사카성'));
+    expect(spent()).toHaveTextContent('천수각 입장권');
+    expect(spent()).toHaveTextContent('¥1,200≈ 10,800원');
+    expect(spent()).toHaveTextContent('합계 10,800원');
+    expect(spent()).not.toHaveTextContent('라멘');
+
+    // A new expense starts linked to the place, on its day.
+    await user.click(within(spent()).getByRole('link', { name: '지출 추가' }));
+    expect(await screen.findByRole('heading', { name: '지출 추가' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('일정 연결')).toHaveValue(castle.id);
+    expect(screen.getByLabelText('날짜')).toHaveValue(DAY2);
+    await user.type(screen.getByLabelText('금액'), '3000');
+    await user.click(screen.getByRole('radio', { name: '식비' }));
+    await user.type(screen.getByLabelText('메모'), '타코야키');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('link', { name: /타코야키/ })).toHaveTextContent('오사카성');
+
+    await router.navigate(`/trips/${trip.id}?day=${DAY2}`);
+    await user.click(await findCard('오사카성'));
+    expect(spent()).toHaveTextContent('타코야키');
+    expect(spent()).toHaveTextContent('합계 13,800원');
+
+    await router.navigate(`/trips/${trip.id}?day=${DAY2}`);
+    await user.click(await findCard('도톤보리'));
+    expect(spent()).toHaveTextContent('이 일정에 연결된 지출이 없어요.');
+  });
+
+  it('saves what was changed in the sheet before going to an expense', async () => {
+    const castle = await addPlace('오사카성');
+    await repositories.expenses.create(
+      expense({ date: DAY2, memo: '천수각 입장권', scheduleItemId: castle.id }),
+    );
+    const { router, user } = renderApp(`/trips/${trip.id}?day=${DAY2}`);
+
+    // Nothing changed: nothing saved (updatedAt decides backup merges).
+    await user.click(await findCard('오사카성'));
+    await user.click(within(spent()).getByRole('link', { name: /천수각 입장권/ }));
+    expect(await screen.findByRole('heading', { name: '지출 수정' })).toBeInTheDocument();
+    expect(await repositories.schedule.listByTrip(trip.id)).toEqual([castle]);
+
+    // A memo typed in would be lost on the way: saved first.
+    await router.navigate(`/trips/${trip.id}?day=${DAY2}`);
+    await user.click(await findCard('오사카성'));
+    const sheet = screen.getByRole('dialog', { name: '일정 편집' });
+    await user.type(within(sheet).getByLabelText('메모'), '10시 오픈');
+    await user.click(within(spent()).getByRole('link', { name: '지출 추가' }));
+    expect(await screen.findByRole('heading', { name: '지출 추가' })).toBeInTheDocument();
+    expect((await repositories.schedule.listByTrip(trip.id))[0]!.memo).toBe('10시 오픈');
   });
 });

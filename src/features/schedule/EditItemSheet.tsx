@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/Button';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { MapPinIcon, TrashIcon } from '@/components/ui/icons';
-import type { GeoPoint, LocalDate, PlaceSnapshot, ScheduleItem } from '@/data/models';
+import type { GeoPoint, LocalDate, PlaceSnapshot, ScheduleItem, Trip } from '@/data/models';
+import { ItemExpenses } from '@/features/expenses/ItemExpenses';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { PlaceSearchSheet } from '@/features/places/PlaceSearchSheet';
 import { useSearchAvailability } from '@/features/places/usePlaceSearch';
@@ -13,6 +15,7 @@ import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
 
 interface EditItemSheetProps {
+  trip: Trip;
   item: ScheduleItem;
   /** Days and the inbox, for the "move to" select. */
   tabs: DayTab[];
@@ -25,12 +28,13 @@ interface EditItemSheetProps {
 
 /**
  * Name, place (found by search: address and location), day (moves to the end of another day or
- * the inbox), time, memo, delete.
+ * the inbox), time, memo, the expenses spent there, delete.
  */
-export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemSheetProps) {
+export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditItemSheetProps) {
   const update = useScheduleStore((state) => state.update);
   const remove = useScheduleStore((state) => state.remove);
   const searchAvailability = useSearchAvailability();
+  const navigate = useNavigate();
 
   const [name, setName] = useState(item.place.name);
   const [place, setPlace] = useState(item.place);
@@ -45,12 +49,13 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
   const [findingPlace, setFindingPlace] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<void>, after?: () => void) {
     setBusy(true);
     setError(null);
     try {
       await action();
       onClose();
+      after?.();
     } catch (err) {
       console.error(err);
       setError(errorMessage(err));
@@ -66,8 +71,8 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
     setNameError(undefined);
   }
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  /** Saves the edits and closes, then does `after`. */
+  function save(after?: () => void) {
     const trimmed = name.trim();
     if (!trimmed) {
       setNameError('장소 이름을 입력해 주세요.');
@@ -77,7 +82,26 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
       await update(item.id, { place: { ...place, name: trimmed }, time: time || null, memo });
       const date = dateOf(groupKey);
       if (date !== item.date) await onMove(item, date);
-    });
+    }, after);
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    save();
+  }
+
+  const edited =
+    name.trim() !== item.place.name ||
+    !samePlace(place, item.place) ||
+    dateOf(groupKey) !== item.date ||
+    (time || null) !== item.time ||
+    memo !== item.memo;
+
+  /** To an expense's screen. Edits here would be lost on the way, so they're saved first. */
+  function openExpense(path: string) {
+    if (busy) return;
+    if (edited) save(() => void navigate(path));
+    else void navigate(path);
   }
 
   return (
@@ -152,6 +176,7 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
           />
+          <ItemExpenses trip={trip} item={item} onOpen={openExpense} />
           {error && (
             <p role="alert" className="text-sm text-red-500">
               {error}
@@ -197,6 +222,14 @@ export function EditItemSheet({ item, tabs, bias, onMove, onClose }: EditItemShe
     </>
   );
 }
+
+/** Whether a place still is the one the item has (its name is compared on its own). */
+const samePlace = (a: PlaceSnapshot, b: PlaceSnapshot) =>
+  a.placeId === b.placeId &&
+  a.address === b.address &&
+  a.location?.lat === b.location?.lat &&
+  a.location?.lng === b.location?.lng &&
+  a.fetchedAt === b.fetchedAt;
 
 /** The item's address (or that it has none), and a way to find its place when search works. */
 function PlaceRow({ place, onFind }: { place: PlaceSnapshot; onFind?: () => void }) {

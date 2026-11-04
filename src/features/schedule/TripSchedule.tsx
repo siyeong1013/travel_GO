@@ -181,6 +181,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       {editing && (
         <EditItemSheet
           key={editing.id}
+          trip={trip}
           item={editing}
           tabs={tabs}
           bias={bias}
