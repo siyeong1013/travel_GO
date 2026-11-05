@@ -13,7 +13,7 @@
 - 지도: Google Maps JavaScript API + Places API (New). React 바인딩 라이브러리 없이 `lib/googleMaps.ts` 로더로 직접 쓴다 (11단계 결정 참고)
 - PWA: `vite-plugin-pwa` (generateSW, autoUpdate)
 - 환율: open.er-api.com (무료·키 없음·CORS 허용·166개 통화·하루 1회 갱신). 약관상 출처 링크 표기 필요, 캐시 허용, 1시간에 1번 이하로 요청 (넘으면 20분간 429).
-- 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom
+- 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom, 서버 SQL은 PGlite(`@electric-sql/pglite` 0.5.11, WASM Postgres)
 - 로그인: Supabase Auth (`@supabase/supabase-js` 2.118, 16단계). 처음 쓸 때 받는 조각이다(214KB, gzip 55KB).
 
 ## 명령어
@@ -42,6 +42,7 @@ src/
     expenses/     # 가계부: 동행자, 지출 기록, 환율 입력, 예산·요약
     settlement/   # 정산: 잔액, 최소 송금안, 송금 완료 기록, 텍스트 복사
     backup/       # 설정 화면의 백업 내보내기·가져오기
+    sync/         # 계정과 동기화(언제 할지, 상태 표시)
     install/      # 홈 화면에 추가 안내 (iOS)
     account/      # 로그인(카카오·구글, Supabase), 계정 화면
   data/
@@ -228,12 +229,13 @@ src/
   - manifest: 이름 travel GO, `display: standalone`, 흰 테마색, 아이콘(192·512, 마스커블 512).
   - 아이콘은 `public/favicon.svg`(파란 배경에 45° 기울어 이륙하는 흰 비행기, 가운데 동그란 구멍)에서 그렸다. 마스커블·`apple-touch-icon`(180)은 모서리 없이 꽉 채운 판이고, `favicon.ico`(16·32·48)도 있다. 비행기는 안드로이드 마스커블의 최소 안전 원(반지름 40%) 안에 들어간다. 그림을 바꾸면 PNG와 `index.html`의 시작 화면 그림도 같이 바꾼다.
   - `index.html`에 iOS 홈 화면 앱용 메타가 있다(전체 화면, 상태 표시줄 `default`: 흰 바탕에 진한 글씨, 앱 헤더와 같음).
-- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 40개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
+- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 41개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
 - 업데이트(`registerType: 'autoUpdate'`): 앱이 `virtual:pwa-register`를 쓰지 않아서 등록 스크립트(`registerSW.js`)는 로드 때 등록만 한다.
   - 새 서비스워커는 설치되면 바로 자리를 잡고(`skipWaiting`·`clientsClaim`), 열려 있는 화면은 새로고침하지 않는다. 새 버전은 다음에 앱을 열 때 보인다. 입력 중인 폼이 날아가지 않게 하려는 것이다(실제 브라우저로 확인함).
   - 화면 코드는 처음 열 때 받는 조각이라("번들 나누기"), 업데이트 전에 열어 둔 화면이 업데이트로 지워진 옛 조각을 부를 수 있다. 그러면 한 번 새로고침해서 새 버전으로 연다(`lib/chunkErrors.ts`).
 - 번들 나누기 (`app/router.tsx`): 여행 목록(첫 화면)과 없는 주소 화면 말고는 처음 열 때 코드를 받는다(React Router `lazy`, `lazyPage()`). 첫 화면에 받는 파일이 625KB에서 468KB(gzip 149KB)로 줄었다. 남은 것은 거의 라이브러리다(react-dom 202KB, Dexie 96KB, React Router 89KB).
   - 16단계(Supabase 조각 추가)부터는 빌드 도구(Rolldown)가 React 부분을 따로 떼어, 첫 화면이 `index` 364KB와 `react` 105KB를 같이 받는다(`index.html`이 미리 받음). 합계(gzip 약 149KB)는 같다. 지난 커밋을 따로 빌드해 비교했고, 목록 화면이 `lib/supabase`를 불러오는 것과는 상관이 없었다.
+  - 17단계(동기화)부터 첫 화면은 gzip 약 155KB다(동기화 코드 +6KB). Rolldown은 공용 조각에 그 안의 아무 모듈 이름을 붙인다(예: React가 든 조각이 `PageHeader-*.js`).
   - `lazy`는 함수 형태로 쓴다. 객체 형태(`lazy: { Component }`)는 React Router가 불러온 항목을 그 객체에서 직접 지워서(`lazy[key] = undefined`), 같은 라우트 정의로 라우터를 여러 번 만드는 테스트에서 두 번째부터 "No route matches"가 난다.
   - 첫 화면의 코드를 받는 동안은 빈 기둥(`hydrateFallbackElement`)을 보여준다.
   - 화면 코드를 받지 못하거나 화면이 오류로 멈추면 `RouteError`("화면을 불러오지 못했어요 · 다시 시도")가 뜬다.
@@ -337,7 +339,7 @@ src/
   - 계정 화면 `/account`(`pages/AccountPage.tsx`): 여행 목록 머리줄의 사람 아이콘(설정 톱니바퀴 왼쪽, 접근성 이름 "계정")으로 연다. 설정 화면에는 계정 구역이 없다(사용자 요청).
   - `AccountProfile.tsx`: 계정 화면 본문이다. 위쪽 프로필 줄(64px 동그라미, 이름 줄, 오른쪽에 테두리 알약 버튼)과 아래 회색 안내 상자로 되어 있다.
     - 로그아웃 상태: 회색 동그라미에 사람 그림, "로그인해 주세요", 알약 "로그인". 안내 상자는 로그인하면 생길 것과, 안 해도 기기에 저장된다는 내용이다.
-    - 로그인 상태: 프로필 사진(없거나 깨지면 이름 첫 글자), 이름, "카카오로/Google로 로그인했어요", 알약 "로그아웃". 안내 상자는 여행이 아직 기기에만 있다는 내용이다.
+    - 로그인 상태: 프로필 사진(없거나 깨지면 이름 첫 글자), 이름, "카카오로/Google로 로그인했어요", 알약 "로그아웃". 프로필 줄 아래에 동기화 상태 한 줄(`SyncNote`)이 있고, 안내 상자는 여행이 계정에 저장된다는 내용이다.
     - 돌아온 로그인이 취소·실패였으면 프로필 줄 아래에 안내(`role="alert"`)를 띄운다.
     - 알약 버튼은 보이는 모양은 작고, 누르는 영역은 44px이다.
   - `LoginSheet.tsx`: "로그인" 알약이 여는 하단 시트다.
@@ -345,7 +347,50 @@ src/
     - 오프라인이면 누를 때 "인터넷에 연결되면 로그인할 수 있어요.", 제공자로 보내지 못하면 "로그인 화면을 열지 못했어요."를 시트 안에 보여준다.
     - 카카오톡 인앱 브라우저(`isKakaoTalk`)에서는 구글이 로그인을 막는다. 그래서 Google 버튼을 끄고 "다른 브라우저로 열기"(`kakaotalk://web/openExternal?url=`)를 둔다.
   - 로그인하고 돌아올 곳은 `/account`다(`accountStore.signIn`).
-- 16단계는 로그인까지다. 여행 데이터는 아직 기기에만 있다(서버 저장은 17단계).
+- 여행을 계정에 저장하는 것은 17단계(아래 "서버 저장·동기화")다.
+
+### 서버 저장·동기화 (17단계, 진행 중)
+- 기기 DB(IndexedDB)가 먼저다. 화면·스토어는 지금처럼 저장소만 쓰고, 동기화 층(`data/sync/`)이 그 아래에서 서버와 맞춘다. 로그인하지 않으면 동기화하지 않는다.
+- 로그아웃하면 이 기기의 여행을 지운다(2026-11-05 사용자 결정). 같은 계정으로 다시 로그인하면 서버에서 다시 받는다. 서버에 못 올린 변경이 있으면 로그아웃 전에 알린다.
+- 서버: `supabase/migrations/20261105120000_sync.sql`. 사용자가 SQL Editor에 붙여 넣어 실행한다. 다시 실행해도 결과가 같다.
+  - `records`: 모든 기록을 앱의 JSON 그대로(`data`) 둔다. `kind`는 trip·scheduleItem·companion·expense(분담 포함)·settlement이다. `format`은 앱의 데이터 형식(`BACKUP_SCHEMA_VERSION`)이라, 모델이 바뀌어도 서버 표는 그대로다.
+  - `trip_members`: 여행을 읽고 쓸 수 있는 계정. 지금은 처음 올린 계정(`owner`)뿐이고, 18단계에서 `member`가 생긴다.
+  - 읽기는 RLS(내가 멤버인 여행의 기록만)로 한다. 쓰기는 `sync_push(changes)`로만 한다(security definer, 표에 직접 쓰는 권한은 없음).
+  - 기록마다 `updatedAt`이 늦은 쪽이 이긴다(같으면 서버 것을 둔다). 새 형식(`format`)으로 쓴 기록은 옛 앱이 덮어쓰지 못한다. 서버가 받지 않으면(`stale`) 서버의 지금 기록을 같이 돌려준다.
+  - 지운 기록은 데이터 없는 줄(`deleted`)로 남긴다. 다른 기기에 삭제를 전하려는 것이다.
+  - 여행 삭제는 언제나 이긴다. 서버에서 그 안의 기록도 함께 지운다. 지운 여행에는 다시 쓸 수 없다(`gone`).
+  - `seq`는 서버에 쓴 순서다. 기기는 마지막으로 본 `seq` 다음부터 읽는다. 쓰기는 한 번에 하나씩(advisory lock)이라 `seq` 순서가 커밋 순서와 같다(뒤늦게 커밋된 작은 번호를 놓치지 않음).
+  - 구글 장소 데이터 30일 규칙은 서버 사본에도 지킨다. pg_cron이 매일 한국 시간 03:17에 `private.expire_place_data()`를 돌린다. `updatedAt`과 `seq`는 바꾸지 않는다.
+  - Supabase API는 16MB 요청도 받는다(2026-11-05 확인). 기기는 4MB씩 나눠 보낸다.
+- 테스트: `src/test/syncDatabase.ts`가 PGlite에 Supabase 흉내(역할, `auth.users`, `auth.uid()`)와 마이그레이션을 넣는다. 서버 규칙은 `data/sync/serverSql.test.ts`가 검사한다.
+- 기기 쪽 (`data/sync/`)
+  - `records.ts`(순수 규칙): 기록을 서버 단위로 본다(지출은 분담과 한 묶음). `syncedRecords`(Dexie v5)에 서버가 가진 각 기록의 `updatedAt`을 둔다. 이것과 다르거나 기기에서 사라진 기록이 올릴 것이다. 받은 기록은 백업과 같은 검사(`parseRecord`)를 거친다.
+  - 기록마다 늦은 `updatedAt`이 이긴다. 기기에서 고친 기록이 서버 것보다 이르면(시계가 늦은 기기) 서버 것보다 1ms 늦은 시각으로 보내고 기기에도 그 시각을 적는다. 본 것을 고친 것은 이겨야 해서다.
+  - 기기에서 지운 기록은 지운 것을 알아챈 시각으로 보낸다. 다른 기기가 그 뒤에 고쳤으면 되살아난다. 여행 삭제는 늘 이긴다.
+  - 받은 것이 있으면 그 여행의 일정 순서를 고친다(`normalizeSchedule`). 예: 두 기기가 같은 날에 동시에 넣은 일정.
+  - `syncEngine.ts`: 받기 → 올리기 순서다.
+    - 받기: 마지막 `seq` 다음부터 100개씩 끝까지 받은 뒤, 한 트랜잭션으로 적는다(중간에 일정을 고치면 아직 안 받은 변경과 엇갈림).
+    - 올리기: 4MB·200개씩, 서버 답에 따라 최대 3번 다시 보낸다. 서버가 거절한 기록(`stale`)은 같이 온 서버 것을 받아들인다(더 늦게 고친 쪽이 남음).
+    - 한 번에 하나만 한다(탭끼리는 `navigator.locks`).
+    - 처음 동기화하면 그 기기의 여행이 계정 것이 된다. 다른 계정의 여행이 있으면 먼저 지운다.
+    - `forget()`은 로그아웃할 때 기기의 여행과 동기화 기록을 지운다. 진행 중이던 동기화는 계정이 바뀐 것을 보고 적지 않는다.
+  - 서버에 이 앱보다 새 형식(`format`)의 기록이 있으면 거기서 받기를 멈추고 "새 버전이 나왔어요"를 띄운다.
+  - `supabaseServer.ts`: `rpc('sync_push')`와 `from('records').select().gt('seq', n)`. 요청은 30초에 끊는다.
+  - `watchWrites.ts`: 저장소의 쓰기가 끝나면 알린다(장소 정보 갱신·만료는 수정이 아니라서 빠짐).
+  - `data/index.ts`는 `createDataLayer`로 `repositories`, `syncEngine`, `onLocalWrite`를 내보낸다.
+- 화면 쪽 (`features/sync/`)
+  - `syncStore`는 이럴 때 동기화한다: 로그인했을 때, 고친 뒤 1.5초, 다시 연결될 때, 앱으로 돌아올 때(`visibilitychange`, 컴퓨터는 창 `focus`), 앱을 보는 동안 2분마다(실시간 반영은 18단계).
+  - 상태는 `off | syncing | synced | pending | offline | error | needsUpdate`다. 계정 화면의 프로필 아래 한 줄(`SyncNote`)이 이를 보여준다.
+  - 받은 것이 있으면 스토어가 그 자리에서 다시 읽는다(`reload()`). 로딩 상태를 거치지 않으므로 여행 상세 화면이 잠깐 비지 않는다.
+  - 앱 시작(`AppLayout` → `startSync`) 때 Supabase 코드는 이 브라우저에 세션(`sb-<ref>-auth-token`, `hasStoredSession`)이 있을 때만 받는다. 로그인하지 않은 사람의 첫 화면은 그대로다.
+  - 로그아웃 순서
+    - 먼저 한 번 동기화한다.
+    - 확인 시트를 띄운다("로그아웃할까요?"). 올리지 못한 변경이 있으면 개수와 빨간 버튼이 나온다.
+    - 확인하면 `syncEngine.forget()` → 스토어 비우기 → Supabase 로그아웃 순서로 한다.
+- 백업 가져오기도 기기의 쓰기라서 로그인 중이면 계정에 올라간다. 덮어쓰기면 계정의 여행도 파일대로 바뀐다. 서버에서 지운 여행은 가져와도 다시 지워진다.
+- 확인함(2026-11-05)
+  - 실제 브라우저(빌드, 로그아웃 상태): 첫 화면에 Supabase 코드를 받지 않는다. IndexedDB가 v5(표 8개)가 되고, 콘솔 오류가 없다.
+  - 사용자가 개발 서버(5173)의 평소 창과 시크릿 창(다른 기기 역할)에서 같은 카카오 계정으로 써 봤다(됨). 여행이 다른 창에 보이고, 고친 것이 건너가고, 로그아웃하면 여행이 지워졌다가 다시 로그인하면 돌아왔다.
 
 ### UI (모바일 우선)
 - 기준 폭 360~430px. 데스크톱은 가운데 정렬된 모바일 폭 컨테이너.
@@ -437,7 +482,9 @@ src/
 - 데이터 레이어 테스트는 `src/test/fixtures.ts`의 `createTestRepositories()`를 쓴다. 테스트마다 새 DB를 쓰고, 끝나면 `db.delete()` 한다.
 - 시간은 `vi.useFakeTimers` 대신 `Clock` 주입(`testClock()`)으로 제어한다.
 - 화면 흐름 테스트(`*.test.tsx`)는 파일 맨 위에 `/** @vitest-environment happy-dom */`를 붙인다 (기본 환경은 node).
-  - `vi.mock('@/data', ...)`로 앱 싱글턴 저장소를 테스트용 DB로 바꾼다. `vi.mock`은 파일마다 호이스팅되므로 각 테스트 파일에 직접 쓴다 (`app/tripFlows.test.tsx` 참고).
+  - `vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData())`로 앱 싱글턴(저장소, 동기화 엔진, `onLocalWrite`)을 테스트용 DB로 바꾼다. `vi.mock`은 파일마다 호이스팅되므로 각 테스트 파일에 직접 쓴다.
+  - 동기화 화면 테스트는 `createTestData(connect)`에 PGlite 서버를 준다(`app/syncFlows.test.tsx`: `vi.hoisted`로 서버를 공유, 테스트마다 `server.reset()`·`syncEngine.forget()`). 기기 둘의 동기화는 `data/sync/syncEngine.test.ts`.
+  - `supabaseFake`의 사용자 id는 UUID(`USER_IDS`)이고, 세션을 `sb-test-auth-token`에 둔다(앱 시작 때 계정을 불러오는 조건).
   - `src/test/app.tsx`의 `resetApp()`(스토어와 데이터 비우기), `resetStores()`(새로고침 흉내), `renderApp(path)`를 쓴다. **새 스토어를 만들면 `resetStores()`에 추가한다.**
   - 날짜가 오늘에 따라 달라지는 화면은 URL에 `?day=`를 명시해서 테스트한다 (기본 선택이 오늘 날짜에 좌우되기 때문).
   - 라우팅은 `createMemoryRouter(routes)`로 실제 라우트를 그대로 쓴다.
@@ -555,7 +602,7 @@ src/
 | 14 | 다듬기 (번들 분할, 옛 조각 처리) | 완료 |
 | 15 | 배포 (Vercel, https 주소) | 완료 |
 | 16 | 로그인 (구글·카카오, Supabase), 계정 화면 | 완료 |
-| 17 | 서버 저장·동기화: 여러 기기에서 같은 여행, 오프라인에서 고친 것은 연결되면 반영 | 예정 |
+| 17 | 서버 저장·동기화: 여러 기기에서 같은 여행, 오프라인에서 고친 것은 연결되면 반영 | 진행 중 |
 | 18 | 친구 초대·참여: 초대 링크, 카카오톡 공유, 동행자 연결, 멤버 관리, 실시간 반영 | 예정 |
 | 19 | 다듬기: 실제 아이폰 로그인 확인, 계정 삭제, 개인정보 처리방침 | 예정 |
 
@@ -645,3 +692,8 @@ src/
   - 사용자가 개발 서버의 계정 화면에서 카카오와 구글로 로그인해 봤다(됨).
   - 16단계를 배포했다(Vercel 환경 변수에 Supabase 두 값을 넣고). 배포 주소에서 로그인 버튼이 카카오·구글 로그인 화면까지 가는 것을 확인했다.
   - 사용자가 실제 아이폰의 Safari와 홈 화면 앱에서 카카오로 로그인해 봤다(됨). 16단계 완료.
+- 2026-11-05: 17단계(서버 저장·동기화)를 시작했다.
+  - 로그아웃하면 이 기기의 여행을 지우고, 같은 계정으로 다시 로그인하면 서버에서 돌려받는다(사용자 선택).
+  - 서버는 기록을 앱 JSON 그대로 두는 표(`records`)와 쓰기 함수 `sync_push`다. 모델이 바뀔 때마다 서버 표를 고치지 않으려는 것이다. 들어오는 기록은 기기가 백업과 같은 규칙으로 검사한다.
+  - 서버 SQL은 PGlite(WASM Postgres)로 테스트한다. 사용자가 SQL을 실행하기 전에 규칙을 확인할 수 있다.
+  - 사용자가 Supabase에 SQL을 실행했고, 개발 서버에서 창 두 개로 동기화를 확인했다. 배포했다.
