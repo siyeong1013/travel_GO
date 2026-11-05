@@ -2,7 +2,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
+import { addDays, toLocalDate } from '@/lib/dates';
 import { renderApp, resetApp } from '@/test/app';
+import { typedCity } from '@/test/fixtures';
 
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
@@ -66,5 +68,38 @@ describe('visited countries', () => {
     const { user } = renderApp('/countries');
     await user.type(await screen.findByLabelText('나라 이름'), '아틀란티스');
     expect(screen.getByText('찾는 나라가 없어요.')).toBeInTheDocument();
+  });
+});
+
+describe("trips' countries", () => {
+  const trip = (startDate: string, countries: string[]) =>
+    repositories.trips.create({
+      title: '여행',
+      countries,
+      cities: [typedCity('도시')],
+      startDate,
+      endDate: addDays(startDate, 2),
+    });
+
+  it('go on the map once the trip has begun', async () => {
+    const today = toLocalDate();
+    await trip(addDays(today, -1), ['TW', 'JP']);
+    await trip(addDays(today, 10), ['VN']);
+    renderApp('/countries');
+    expect(await screen.findByText('2곳')).toBeInTheDocument();
+    const list = screen.getByRole('region', { name: '다녀온 나라 2곳' });
+    expect(within(list).getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+    expect(within(list).getByText('대만')).toBeInTheDocument();
+    expect(within(list).queryByText('베트남')).toBeNull();
+  });
+
+  it('stay off when taken off after the trip began', async () => {
+    // Taken off on the test clock's day (2026-01-01), after the trip began.
+    await trip('2025-12-20', ['TW']);
+    await repositories.countries.set('TW', false);
+    renderApp('/countries');
+    // The count shows once the page has read them, after the marking.
+    expect(await screen.findByText('0곳')).toBeInTheDocument();
+    expect(await repositories.countries.list()).toEqual([]);
   });
 });

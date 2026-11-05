@@ -22,6 +22,10 @@ describe('LocalCountryRepository', () => {
     expect((await repos.countries.list()).map((c) => c.id)).toEqual(['TW']);
     // Kept, so the change reaches the account's other devices.
     expect(await db.visitedCountries.get('JP')).toEqual(off);
+    expect((await repos.countries.listAll()).map((c) => [c.id, c.visited])).toEqual([
+      ['JP', false],
+      ['TW', true],
+    ]);
   });
 
   it('stamps a change after the version it was made on', async () => {

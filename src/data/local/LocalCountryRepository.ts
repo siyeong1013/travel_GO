@@ -11,6 +11,10 @@ export function createLocalCountryRepository(db: TravelGoDB, now: Clock): Countr
       return all.filter((country) => country.visited);
     },
 
+    listAll() {
+      return db.visitedCountries.orderBy('id').toArray();
+    },
+
     async set(code, visited) {
       if (!isCountryCode(code)) throw new ValidationError(`not a country code: ${code}`);
       return db.transaction('rw', db.visitedCountries, async () => {
