@@ -53,6 +53,10 @@ describe('visited countries on the server', () => {
       );
     await expect(save(null, 'JP')).rejects.toThrow();
     await expect(save(A, 'japan')).rejects.toThrow();
+    await expect(save(A, 'JP-1234')).rejects.toThrow();
+    // A region of a country is kept too.
+    await save(A, 'JP-27');
+    expect((await server.serverFor(A).countries()).map((c) => c.id)).toContain('JP-27');
     // No writing around the function.
     await expect(
       server.as(A, (tx) =>

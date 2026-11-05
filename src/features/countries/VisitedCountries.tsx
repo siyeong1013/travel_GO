@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { TextField } from '@/components/ui/Field';
+import { ChevronRightIcon } from '@/components/ui/icons';
 import { PageSection } from '@/components/ui/PageSection';
 import { Snackbar } from '@/components/ui/Snackbar';
+import { isCountryCode } from '@/data/rules/country';
 import { byName, countryName, flagOf, searchCountries } from '@/features/countries/countryNames';
 import { useCountryStore } from '@/features/countries/countryStore';
+import { regionCount } from '@/features/countries/regionMaps';
 import { WorldMap } from '@/features/countries/WorldMap';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
@@ -31,7 +35,13 @@ export function VisitedCountries() {
     void load();
   }, [load]);
 
-  const visited = useMemo(() => new Set(countries.map((country) => country.id)), [countries]);
+  // Countries only: the regions in them are on their own pages.
+  const visited = useMemo(
+    () => new Set(countries.flatMap((mark) => (isCountryCode(mark.id) ? [mark.id] : []))),
+    [countries],
+  );
+  const regionsVisited = (code: string) =>
+    countries.filter((mark) => mark.id.startsWith(`${code}-`)).length;
   const visitedNames = byName([...visited]);
   const found = searchCountries(query);
 
@@ -55,19 +65,30 @@ export function VisitedCountries() {
   }
 
   const row = (code: string) => (
-    <li key={code}>
-      <label className="flex min-h-12 items-center gap-3 px-1">
+    <li key={code} className="flex min-h-12 items-center gap-1 px-1">
+      <label htmlFor={`country-${code}`} className="flex min-w-0 flex-1 items-center gap-3 py-3">
         <span aria-hidden="true" className="text-xl">
           {flagOf(code)}
         </span>
         <span className="min-w-0 flex-1 truncate text-base">{countryName(code)}</span>
-        <input
-          type="checkbox"
-          checked={visited.has(code)}
-          onChange={(event) => void change(code, event.target.checked, false)}
-          className="size-5 accent-brand-600"
-        />
       </label>
+      {regionCount(code) > 0 && (
+        <Link
+          to={`/countries/${code}`}
+          aria-label={`${countryName(code)} 지역`}
+          className="flex h-11 shrink-0 items-center rounded-full pr-1 pl-2.5 text-sm text-gray-500 active:bg-gray-100"
+        >
+          지역 {regionsVisited(code)}/{regionCount(code)}
+          <ChevronRightIcon width={16} height={16} />
+        </Link>
+      )}
+      <input
+        id={`country-${code}`}
+        type="checkbox"
+        checked={visited.has(code)}
+        onChange={(event) => void change(code, event.target.checked, false)}
+        className="ml-2 size-5 shrink-0 accent-brand-600"
+      />
     </li>
   );
 

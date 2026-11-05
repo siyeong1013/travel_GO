@@ -1,4 +1,4 @@
--- travel GO: trips that go to several cities.
+-- travel GO: trips that go to several cities, and regions of a country among the places visited.
 -- Run after 20261106120000_countries.sql: paste into the Supabase SQL Editor and run. Running it
 -- again changes nothing.
 --
@@ -6,6 +6,7 @@
 -- read a trip's city read both, since records written before stay as they were:
 --   private.expire_place_data()   also drops each city's coordinates once 30 days old
 --   public.invite_preview(token)  `city` is the names of the trip's cities, joined with ' · '
+-- And "다녀온 나라" keeps marks for regions too (ISO 3166-2, `JP-27`) in public.visited_countries.
 
 create or replace function private.expire_place_data()
 returns void
@@ -96,3 +97,8 @@ $$;
 
 revoke all on function public.invite_preview(text) from public, anon, authenticated;
 grant execute on function public.invite_preview(text) to anon, authenticated;
+
+-- A country (`JP`) or a region of one (`JP-27`).
+alter table public.visited_countries drop constraint if exists visited_countries_code_check;
+alter table public.visited_countries add constraint visited_countries_code_check
+  check (code ~ '^[A-Z]{2}(-[A-Z0-9]{1,3})?$');

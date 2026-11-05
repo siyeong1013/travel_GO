@@ -20,7 +20,7 @@ import type {
 } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
 import { makeMeCompanion } from '@/data/rules/companion';
-import { isCountryCode } from '@/data/rules/country';
+import { isCountryCode, isPlaceCode } from '@/data/rules/country';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules/expense';
 import { DEFAULT_SETTLEMENT_CURRENCY, isAmount, isCurrency, isRate, MAX_AMOUNT } from '@/data/rules/money';
 import { compareItems } from '@/data/rules/schedule';
@@ -43,7 +43,8 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v4: trips' cover photo (`cover`).
  * v5: companions' `accountId` (a trip shared with friends).
  * v6: the countries the person has been to (`visitedCountries`). Records are as in v5.
- * v7: trips' countries, and several cities (`cities`, was `city`).
+ * v7: trips' countries, and several cities (`cities`, was `city`). Visited places can be regions
+ *     of a country too (`JP-27`).
  */
 export const BACKUP_SCHEMA_VERSION = 7;
 
@@ -310,10 +311,12 @@ function readSettlement(value: unknown, path: string): Settlement {
   };
 }
 
-function readCountry(value: unknown, path: string): VisitedCountry {
+function readCountry(value: unknown, path: string, version: number): VisitedCountry {
   const c = object(value, path);
+  // Regions came with v7.
+  const known: (code: unknown) => code is string = version >= 7 ? isPlaceCode : isCountryCode;
   return {
-    id: isCountryCode(c.id) ? c.id : invalid(`${path}.id`, 'country code like JP'),
+    id: known(c.id) ? c.id : invalid(`${path}.id`, 'country code like JP, or region like JP-27'),
     visited: boolean(c.visited, `${path}.visited`),
     updatedAt: timestamp(c.updatedAt, `${path}.updatedAt`),
   };
@@ -471,7 +474,8 @@ export function parseBackupFile(raw: unknown): BackupFile {
     assertUniqueIds(data[key], `$.${key}`);
   }
   assertConsistent(data);
-  const visitedCountries = version >= 6 ? list('visitedCountries', readCountry) : [];
+  const visitedCountries =
+    version >= 6 ? list('visitedCountries', (v, path) => readCountry(v, path, version)) : [];
   assertUniqueIds(visitedCountries, '$.visitedCountries');
 
   return {

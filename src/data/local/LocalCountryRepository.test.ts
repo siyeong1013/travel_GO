@@ -34,7 +34,9 @@ describe('LocalCountryRepository', () => {
     expect((await repos.countries.set('JP', false)).updatedAt).toBe('2099-01-01T00:00:00.001Z');
   });
 
-  it('refuses what isn’t a country code', async () => {
+  it('takes regions of countries too, and refuses what is neither', async () => {
+    expect(await repos.countries.set('JP-27', true)).toMatchObject({ id: 'JP-27', visited: true });
     await expect(repos.countries.set('jp', true)).rejects.toBeInstanceOf(ValidationError);
+    await expect(repos.countries.set('JP-1234', true)).rejects.toBeInstanceOf(ValidationError);
   });
 });

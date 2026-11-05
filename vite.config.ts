@@ -68,6 +68,15 @@ export default defineConfig({
         navigateFallback: 'index.html',
         // The server's own addresses (api/) are not screens.
         navigateFallbackDenylist: [/^\/api\//],
+        // A country's region map, once opened, opens offline too (and updates when it can). Not
+        // precached: 194 of them, each opened by few.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/regions\/[A-Z]{2}\.json$/.test(url.pathname),
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'travel-go-regions', expiration: { maxEntries: 40 } },
+          },
+        ],
       },
     }),
   ],

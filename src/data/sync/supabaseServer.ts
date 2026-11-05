@@ -49,6 +49,9 @@ export function countryChanges(countries: VisitedCountry[]) {
   return countries.map(({ id, visited, updatedAt }) => ({ code: id, visited, updatedAt }));
 }
 
+/** Visited countries and regions read at a time. */
+const COUNTRY_PAGE = 1000;
+
 /** Sync with the app's Supabase project (supabase/migrations), as its client's signed-in account. */
 export function supabaseSyncServer(client: SupabaseClient): SyncServer {
   return {
@@ -97,13 +100,20 @@ export function supabaseSyncServer(client: SupabaseClient): SyncServer {
     },
 
     async countries() {
-      // Only the account's own rows are readable.
-      const { data, error } = await client
-        .from('visited_countries')
-        .select('code, visited, updated_at')
-        .abortSignal(timeout());
-      if (error) throw new SyncServerError(error.message, error.code);
-      return toCountries(data as CountryRow[]);
+      // Only the account's own rows are readable: a page at a time, as the API gives 1,000 at
+      // most (countries and their regions could come to more).
+      const rows: CountryRow[] = [];
+      for (;;) {
+        const { data, error } = await client
+          .from('visited_countries')
+          .select('code, visited, updated_at')
+          .order('code')
+          .range(rows.length, rows.length + COUNTRY_PAGE - 1)
+          .abortSignal(timeout());
+        if (error) throw new SyncServerError(error.message, error.code);
+        rows.push(...(data as CountryRow[]));
+        if (data.length < COUNTRY_PAGE) return toCountries(rows);
+      }
     },
 
     async saveCountries(countries) {

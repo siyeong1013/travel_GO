@@ -232,6 +232,14 @@ describe('backup file format', () => {
     const file = sampleFile();
     const parsed = roundTrip({ ...file, schemaVersion: 6, trips: file.trips.map(beforeV7) });
     expect(parsed.trips).toEqual(file.trips.map((trip) => ({ ...trip, countries: [] })));
+    // Regions came with v7.
+    const regions = [{ id: 'JP-27', visited: true, updatedAt: file.exportedAt }];
+    expectInvalid(
+      { ...file, schemaVersion: 6, trips: file.trips.map(beforeV7), visitedCountries: regions },
+      'backup_invalid',
+      '$.visitedCountries[0].id',
+    );
+    expect(roundTrip({ ...file, visitedCountries: regions }).visitedCountries).toEqual(regions);
   });
 
   it("takes a trip's countries by code, each once, and one city at least", () => {

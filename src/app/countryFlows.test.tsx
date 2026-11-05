@@ -103,3 +103,54 @@ describe("trips' countries", () => {
     expect(await repositories.countries.list()).toEqual([]);
   });
 });
+
+describe('regions of a country', () => {
+  const JAPAN = {
+    width: 100,
+    height: 100,
+    regions: [
+      ['JP-13', '도쿄도', 'M0 0L10 0L10 10Z'],
+      ['JP-27', '오사카부', 'M20 20L30 20L30 30Z'],
+      ['JP-47', '오키나와현', 'M40 40L41 40L41 41Z', 40, 40],
+    ],
+  };
+
+  it("open from the country's row; a tap fills one in and puts the country on the map", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(JAPAN));
+    vi.stubGlobal('fetch', fetch);
+    const { user } = renderApp('/countries');
+    await user.type(await screen.findByLabelText('나라 이름'), '일본');
+    await user.click(screen.getByRole('link', { name: '일본 지역' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: '일본' })).toBeInTheDocument();
+    await screen.findByRole('img', { name: '일본 지도' });
+    expect(String(fetch.mock.calls[0]![0])).toBe('/regions/JP.json');
+    expect(await screen.findByText('0곳')).toBeInTheDocument();
+
+    await user.click(document.querySelector('svg [data-code="JP-27"]')!);
+    expect(await screen.findByText('오사카부를 다녀온 곳에 넣었어요.')).toBeInTheDocument();
+    expect(screen.getByText('1곳')).toBeInTheDocument();
+    expect((await repositories.countries.list()).map((mark) => mark.id)).toEqual(['JP', 'JP-27']);
+    await user.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(async () =>
+      expect((await repositories.countries.list()).map((mark) => mark.id)).toEqual(['JP']),
+    );
+
+    // Too small to tap on the map: by name.
+    await user.type(screen.getByLabelText('지역 이름'), '오키');
+    const list = screen.getByRole('list', { name: '지역' });
+    expect(within(list).getAllByRole('checkbox')).toHaveLength(1);
+    await user.click(within(list).getByRole('checkbox', { name: '오키나와현' }));
+    await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47"]')).not.toBeNull());
+  });
+
+  it("say when the map didn't come, and try again", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { user } = renderApp('/countries/TH');
+    expect(await screen.findByText('지도를 불러오지 못했어요.')).toBeInTheDocument();
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...JAPAN, regions: [['TH-10', '방콕', 'M0 0L9 0L9 9Z']] })));
+    await user.click(screen.getByRole('button', { name: '다시 시도' }));
+    expect(await screen.findByRole('img', { name: '태국 지도' })).toBeInTheDocument();
+  });
+});

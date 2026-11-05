@@ -6,6 +6,16 @@ export function isCountryCode(code: unknown): code is string {
   return typeof code === 'string' && /^[A-Z]{2}$/.test(code);
 }
 
+/** A region of a country (state, province, prefecture): ISO 3166-2 (`JP-27`). */
+export function isRegionCode(code: unknown): code is string {
+  return typeof code === 'string' && /^[A-Z]{2}-[A-Z0-9]{1,3}$/.test(code);
+}
+
+/** What "다녀온 나라" keeps a mark for: a country, or a region of one. */
+export function isPlaceCode(code: unknown): code is string {
+  return isCountryCode(code) || isRegionCode(code);
+}
+
 /**
  * When a change to a country made at `now` is stamped: after the version this device has, even
  * if its clock is behind, so the change it made on top of that version wins (as in data/sync).
