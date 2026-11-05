@@ -27,4 +27,13 @@ describe('splitTrips', () => {
     expect(current.map((trip) => trip.title)).toEqual(['ongoing', 'december']);
     expect(past.map((trip) => trip.title)).toEqual(['late-october', 'early-october']);
   });
+
+  it('picks out the next trip for the big card only among others', () => {
+    const december = makeTrip({ title: 'december', startDate: '2026-12-01', endDate: '2026-12-03' });
+    const october = makeTrip({ title: 'october', startDate: '2026-10-01', endDate: '2026-10-03' });
+
+    expect(splitTrips([december], '2026-11-02').next).toBeNull();
+    expect(splitTrips([december, october], '2026-11-02').next).toBe(december);
+    expect(splitTrips([october], '2026-11-02').next).toBeNull();
+  });
 });

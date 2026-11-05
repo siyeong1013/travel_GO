@@ -17,7 +17,7 @@ import { supabaseConfig } from '@/lib/supabase';
 export function TripListPage() {
   const { trips, status, error, reload } = useTrips();
   const today = toLocalDate();
-  const { current, past } = splitTrips(trips, today);
+  const { current, past, next } = splitTrips(trips, today);
 
   let content;
   if (status === 'error' && trips.length === 0) {
@@ -41,13 +41,12 @@ export function TripListPage() {
         <ListSkeleton />
       );
   } else {
-    const [next, ...later] = current;
     content = (
       <div className="flex flex-col gap-8 px-4 pt-5 pb-6">
-        {next && (
+        {current.length > 0 && (
           <TripSection title="다가오는 여행" count={current.length}>
-            <TripHeroCard trip={next} today={today} />
-            <TripRows trips={later} today={today} />
+            {next && <TripHeroCard trip={next} today={today} />}
+            <TripRows trips={next ? current.slice(1) : current} today={today} />
           </TripSection>
         )}
         {past.length > 0 && (
