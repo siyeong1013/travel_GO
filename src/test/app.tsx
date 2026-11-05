@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { routes } from '@/app/router';
 import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
+import { accountStore } from '@/features/account/accountStore';
 import { backupStore } from '@/features/backup/backupStore';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
@@ -35,6 +36,16 @@ export function resetStores() {
   expenseStore.setState(expenseStore.getInitialState(), true);
   rateStore.setState(rateStore.getInitialState(), true);
   backupStore.setState(backupStore.getInitialState(), true);
+  accountStore.setState(accountStore.getInitialState(), true);
+}
+
+/**
+ * A Supabase project for this test, so the app has a login. The test file mocks
+ * '@supabase/supabase-js' to answer with `supabaseFake` (`test/supabase.ts`).
+ */
+export function stubSupabase() {
+  vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
+  vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
 }
 
 /** Empties the stores, the database and localStorage (exchange rates kept on the device). */

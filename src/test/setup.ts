@@ -13,6 +13,9 @@ beforeEach(() => {
   // Vitest also reads .env.local: tests must not depend on whether a real key is set there.
   vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
   vi.stubEnv('VITE_GOOGLE_MAPS_MAP_ID', '');
+  // No login unless a test stubs a Supabase project (`stubSupabase`).
+  vi.stubEnv('VITE_SUPABASE_URL', '');
+  vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '');
 });
 afterEach(() => {
   vi.unstubAllGlobals();

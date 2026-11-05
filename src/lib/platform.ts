@@ -9,6 +9,16 @@ export function isIos(nav: Pick<Navigator, 'userAgent' | 'maxTouchPoints'> = nav
   );
 }
 
+/** KakaoTalk's in-app browser, where Google refuses to sign in (`disallowed_useragent`). */
+export function isKakaoTalk(nav: Pick<Navigator, 'userAgent'> = navigator): boolean {
+  return /KAKAOTALK/i.test(nav.userAgent);
+}
+
+/** The same page in the phone's own browser, opened from KakaoTalk's (`isKakaoTalk`). */
+export function openInBrowserUrl(href: string): string {
+  return `kakaotalk://web/openExternal?url=${encodeURIComponent(href)}`;
+}
+
 /** Opened from the home screen (an installed app), not in a browser tab. */
 export function isStandalone(win: Window = window): boolean {
   return (

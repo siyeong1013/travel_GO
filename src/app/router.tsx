@@ -64,6 +64,7 @@ export const routes: RouteObject[] = [
             lazy: lazyPage(() => import('@/pages/ExpenseEditPage'), 'ExpenseEditPage'),
           },
           { path: 'settings', lazy: lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage') },
+          { path: 'account', lazy: lazyPage(() => import('@/pages/AccountPage'), 'AccountPage') },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

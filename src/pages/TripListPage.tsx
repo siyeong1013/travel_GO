@@ -4,7 +4,7 @@ import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { buttonClass, iconButtonClass } from '@/components/ui/buttonClass';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { MapPinIcon, PlusIcon, SettingsIcon } from '@/components/ui/icons';
+import { MapPinIcon, PlusIcon, SettingsIcon, UserIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { LocalDate, Trip } from '@/data/models';
 import { InstallBanner } from '@/features/install/InstallBanner';
@@ -12,6 +12,7 @@ import { TripCard, TripHeroCard } from '@/features/trips/TripCard';
 import { splitTrips } from '@/features/trips/tripDisplay';
 import { useTrips } from '@/features/trips/useTrips';
 import { toLocalDate } from '@/lib/dates';
+import { supabaseConfig } from '@/lib/supabase';
 
 export function TripListPage() {
   const { trips, status, error, reload } = useTrips();
@@ -63,9 +64,16 @@ export function TripListPage() {
       <PageHeader
         title="travel GO"
         right={
-          <Link to="/settings" aria-label="설정" className={iconButtonClass}>
-            <SettingsIcon />
-          </Link>
+          <>
+            {supabaseConfig() && (
+              <Link to="/account" aria-label="계정" className={iconButtonClass}>
+                <UserIcon />
+              </Link>
+            )}
+            <Link to="/settings" aria-label="설정" className={iconButtonClass}>
+              <SettingsIcon />
+            </Link>
+          </>
         }
       />
       <main className="flex flex-1 flex-col">
