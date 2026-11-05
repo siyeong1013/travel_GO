@@ -70,6 +70,10 @@ export const routes: RouteObject[] = [
           { path: 'join/:token', lazy: lazyPage(() => import('@/pages/JoinPage'), 'JoinPage') },
           { path: 'settings', lazy: lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage') },
           { path: 'account', lazy: lazyPage(() => import('@/pages/AccountPage'), 'AccountPage') },
+          {
+            path: 'countries',
+            lazy: lazyPage(() => import('@/pages/CountriesPage'), 'CountriesPage'),
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

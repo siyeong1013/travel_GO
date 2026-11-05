@@ -1,5 +1,5 @@
 import type {
-  BackupData,
+  BackupContents,
   ID,
   ImportCounts,
   ImportMode,
@@ -14,7 +14,7 @@ export interface ImportPlan {
   /** Delete all local data before writing (overwrite mode). */
   clearAll: boolean;
   /** Records to write. */
-  put: BackupData;
+  put: BackupContents;
   /** Local shares of expenses replaced by the file's version (deleted before writing). */
   deleteShareIds: ID[];
 }
@@ -46,8 +46,8 @@ function mergeById<T extends { id: ID; updatedAt: ISODateTime }>(
 
 /** Decides what an import writes. Pure, so preview and import always agree. */
 export function planImport(
-  local: BackupData,
-  file: BackupData,
+  local: BackupContents,
+  file: BackupContents,
   mode: ImportMode,
   now: ISODateTime,
 ): ImportPlan {
@@ -58,11 +58,20 @@ export function planImport(
     companions: emptyCounts(),
     expenses: emptyCounts(),
     settlements: emptyCounts(),
+    visitedCountries: emptyCounts(),
     movedToInbox: 0,
   };
 
   if (mode === 'overwrite') {
-    for (const key of ['trips', 'scheduleItems', 'companions', 'expenses', 'settlements'] as const) {
+    const kinds = [
+      'trips',
+      'scheduleItems',
+      'companions',
+      'expenses',
+      'settlements',
+      'visitedCountries',
+    ] as const;
+    for (const key of kinds) {
       summary[key].added = file[key].length;
       summary[key].removed = local[key].length;
     }
@@ -85,6 +94,11 @@ export function planImport(
   const companions = mergeById(local.companions, file.companions, summary.companions);
   const expenses = mergeById(local.expenses, file.expenses, summary.expenses);
   const settlements = mergeById(local.settlements, file.settlements, summary.settlements);
+  const countries = mergeById(
+    local.visitedCountries,
+    file.visitedCountries,
+    summary.visitedCountries,
+  );
 
   // Merged records can disagree (an item from the file on a day the kept trip no longer has,
   // two items with the same order), so repair the merged result as a whole.
@@ -110,6 +124,7 @@ export function planImport(
       expenses: expenses.writes(),
       expenseShares: file.expenseShares.filter((share) => expenses.written.has(share.expenseId)),
       settlements: settlements.writes(),
+      visitedCountries: countries.writes(),
     },
     deleteShareIds: local.expenseShares
       .filter((share) => expenses.written.has(share.expenseId))

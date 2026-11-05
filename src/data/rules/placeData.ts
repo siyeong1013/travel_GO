@@ -48,7 +48,7 @@ export function expireTrip(trip: Trip, now: ISODateTime): Trip {
 }
 
 /** What may leave the app or come into it (backups): without expired Google data. */
-export function expireBackupData(data: BackupData, now: ISODateTime): BackupData {
+export function expireBackupData<T extends BackupData>(data: T, now: ISODateTime): T {
   return {
     ...data,
     trips: data.trips.map((trip) => expireTrip(trip, now)),

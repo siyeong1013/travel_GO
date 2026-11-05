@@ -1,4 +1,5 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import type { VisitedCountry } from '@/data/models';
 import { createSharingServer, type SharingServer, type TripRole } from '@/data/sharing/sharing';
 import type { PushResult, ServerRow } from '@/data/sync/records';
 import type { SyncServer } from '@/data/sync/syncEngine';
@@ -24,6 +25,28 @@ function timeout(): AbortSignal {
   const controller = new AbortController();
   setTimeout(() => controller.abort(), TIMEOUT_MS);
   return controller.signal;
+}
+
+/** A row of `visited_countries` as the server sends it. */
+export interface CountryRow {
+  code: string;
+  visited: boolean;
+  /** As PostgREST writes it: `2026-11-05T01:00:00.123+00:00`. */
+  updated_at: string;
+}
+
+/** The server's rows as the app keeps countries (`updatedAt` written like the app writes it). */
+export function toCountries(rows: CountryRow[]): VisitedCountry[] {
+  return rows.map((row) => ({
+    id: row.code,
+    visited: row.visited,
+    updatedAt: new Date(row.updated_at).toISOString(),
+  }));
+}
+
+/** Countries as `save_visited_countries` takes them. */
+export function countryChanges(countries: VisitedCountry[]) {
+  return countries.map(({ id, visited, updatedAt }) => ({ code: id, visited, updatedAt }));
 }
 
 /** Sync with the app's Supabase project (supabase/migrations), as its client's signed-in account. */
@@ -71,6 +94,23 @@ export function supabaseSyncServer(client: SupabaseClient): SyncServer {
         tripId: row.trip_id,
         role: row.role,
       }));
+    },
+
+    async countries() {
+      // Only the account's own rows are readable.
+      const { data, error } = await client
+        .from('visited_countries')
+        .select('code, visited, updated_at')
+        .abortSignal(timeout());
+      if (error) throw new SyncServerError(error.message, error.code);
+      return toCountries(data as CountryRow[]);
+    },
+
+    async saveCountries(countries) {
+      const { error } = await client
+        .rpc('save_visited_countries', { changes: countryChanges(countries) })
+        .abortSignal(timeout());
+      if (error) throw new SyncServerError(error.message, error.code);
     },
   };
 }

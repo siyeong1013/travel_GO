@@ -28,6 +28,7 @@ function summary(mode: ImportSummary['mode'], overrides: Partial<ImportSummary> 
     companions: counts(),
     expenses: counts(),
     settlements: counts(),
+    visitedCountries: counts(),
     movedToInbox: 0,
     ...overrides,
   };

@@ -343,6 +343,64 @@ describe('sync', () => {
   });
 });
 
+describe('sync of visited countries', () => {
+  const visited = async (on: Device) => (await on.repos.countries.list()).map((c) => c.id);
+
+  it('brings the account’s countries to its other devices, unchecks too', async () => {
+    const phone = device();
+    const laptop = device();
+    await phone.repos.countries.set('JP', true);
+    await phone.repos.countries.set('TW', true);
+    await phone.sync();
+
+    expect(await laptop.sync()).toMatchObject({ changed: true });
+    expect(await visited(laptop)).toEqual(['JP', 'TW']);
+
+    await laptop.repos.countries.set('JP', false);
+    await laptop.sync();
+    expect(await phone.sync()).toMatchObject({ changed: true });
+    expect(await visited(phone)).toEqual(['TW']);
+    // Nothing more to take.
+    expect(await phone.sync()).toMatchObject({ changed: false });
+  });
+
+  it('makes the countries of a device signing in for the first time the account’s', async () => {
+    const phone = device();
+    await phone.repos.countries.set('VN', true);
+    await phone.sync();
+    const laptop = device();
+    await laptop.repos.countries.set('TH', true);
+
+    await laptop.sync();
+    await phone.sync();
+    expect(await visited(phone)).toEqual(['TH', 'VN']);
+    expect(await visited(laptop)).toEqual(['TH', 'VN']);
+  });
+
+  it('syncs the trips even when the server can’t take countries yet', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const phone = device(undefined, async (userId) => ({
+      ...server.serverFor(userId),
+      countries: () => Promise.reject(new Error('relation "public.visited_countries" does not exist')),
+    }));
+    await addTrip(phone);
+    await phone.repos.countries.set('JP', true);
+    expect(await phone.sync()).toMatchObject({ pending: 0 });
+    expect(await visited(phone)).toEqual(['JP']);
+  });
+
+  it('takes them off the device on signing out', async () => {
+    const phone = device();
+    await phone.repos.countries.set('JP', true);
+    await phone.sync();
+    await phone.engine.forget();
+    expect(await phone.db.visitedCountries.count()).toBe(0);
+
+    await phone.sync();
+    expect(await visited(phone)).toEqual(['JP']);
+  });
+});
+
 describe('sync of shared trips', () => {
   /** The friend joins `tripId` through the owner's link. */
   async function join(tripId: ID) {

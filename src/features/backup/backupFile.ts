@@ -1,5 +1,5 @@
 import type {
-  BackupData,
+  BackupContents,
   BackupFile,
   ImportCounts,
   ImportSummary,
@@ -40,7 +40,13 @@ export function invalidAt(error: unknown): string | null {
   return /^(\$[^\s:]*):/.exec(error.message)?.[1] ?? null;
 }
 
-type Kind = 'trips' | 'scheduleItems' | 'expenses' | 'companions' | 'settlements';
+type Kind =
+  | 'trips'
+  | 'scheduleItems'
+  | 'expenses'
+  | 'companions'
+  | 'settlements'
+  | 'visitedCountries';
 
 const KINDS: readonly [Kind, string][] = [
   ['trips', '여행'],
@@ -48,6 +54,7 @@ const KINDS: readonly [Kind, string][] = [
   ['expenses', '지출'],
   ['companions', '동행자'],
   ['settlements', '송금 기록'],
+  ['visitedCountries', '다녀온 나라'],
 ];
 
 /** `여행 2개 · 일정 18개`, leaving out kinds with none ('' when there is nothing). */
@@ -58,7 +65,7 @@ function countsText(count: (kind: Kind) => number): string {
 }
 
 /** What a backup holds: `여행 3개 · 일정 24개 · 지출 15개 · 동행자 6개`. */
-export function contentsText(data: BackupData): string {
+export function contentsText(data: BackupContents): string {
   return countsText((kind) => data[kind].length) || '비어 있는 백업이에요.';
 }
 

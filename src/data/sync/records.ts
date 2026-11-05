@@ -11,7 +11,7 @@ import type {
   Settlement,
   Trip,
 } from '@/data/models';
-import { BACKUP_SCHEMA_VERSION, parseRecord } from '@/data/rules/backupFormat';
+import { parseRecord, RECORD_SCHEMA_VERSION } from '@/data/rules/backupFormat';
 import type { TripRole } from '@/data/sharing/sharing';
 import { normalizeSchedule } from '@/data/rules/schedule';
 import { compareIsoDateTime } from '@/lib/dates';
@@ -26,7 +26,7 @@ import { compareIsoDateTime } from '@/lib/dates';
 //   takes everything in it along.
 
 /** The app's data format; the server keeps it per record so an older app can't overwrite a newer one's. */
-export const SYNC_FORMAT = BACKUP_SCHEMA_VERSION;
+export const SYNC_FORMAT = RECORD_SCHEMA_VERSION;
 
 /** In push order: a trip before what is in it. */
 export const RECORD_KINDS: readonly RecordKind[] = [

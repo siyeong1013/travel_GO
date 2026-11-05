@@ -7,6 +7,7 @@ import type {
   ScheduleItem,
   Settlement,
   Trip,
+  VisitedCountry,
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { DEFAULT_SETTLEMENT_CURRENCY } from '@/data/rules/money';
@@ -21,6 +22,7 @@ export type TravelGoDB = Dexie & {
   settlements: Table<Settlement, ID>;
   syncedRecords: Table<SyncedRecord, ID>;
   syncState: Table<SyncState, 'state'>;
+  visitedCountries: Table<VisitedCountry, string>;
 };
 
 export const DEFAULT_DB_NAME = 'travel-go';
@@ -113,6 +115,11 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
           companion.accountId = null;
         });
     });
+
+  // v7: the countries the person has been to ("다녀온 나라"), by ISO code.
+  db.version(7).stores({
+    visitedCountries: 'id',
+  });
 
   return db;
 }

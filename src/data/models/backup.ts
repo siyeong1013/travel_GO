@@ -1,4 +1,5 @@
 import type { ISODateTime } from '@/data/models/common';
+import type { VisitedCountry } from '@/data/models/country';
 import type {
   Companion,
   Expense,
@@ -9,7 +10,7 @@ import type {
 import type { ScheduleItem } from '@/data/models/schedule';
 import type { Trip } from '@/data/models/trip';
 
-/** Everything the app stores. */
+/** The trips and everything in them: what syncs as records (`RecordsByKind`). */
 export interface BackupData {
   trips: Trip[];
   scheduleItems: ScheduleItem[];
@@ -33,7 +34,12 @@ export interface RecordsByKind {
 
 export type RecordKind = keyof RecordsByKind;
 
-export interface BackupFile extends BackupData {
+/** Everything the app stores: the trips, and the countries the person has been to. */
+export interface BackupContents extends BackupData {
+  visitedCountries: VisitedCountry[];
+}
+
+export interface BackupFile extends BackupContents {
   app: 'travel-go';
   schemaVersion: number;
   exportedAt: ISODateTime;
@@ -61,6 +67,7 @@ export interface ImportSummary {
   /** Expenses together with their shares. */
   expenses: ImportCounts;
   settlements: ImportCounts;
+  visitedCountries: ImportCounts;
   /** Items that ended up outside their trip's dates and were moved to the inbox. */
   movedToInbox: number;
 }

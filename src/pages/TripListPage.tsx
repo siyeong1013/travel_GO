@@ -4,7 +4,7 @@ import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { buttonClass, iconButtonClass } from '@/components/ui/buttonClass';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { MapPinIcon, PlusIcon, SettingsIcon, UserIcon } from '@/components/ui/icons';
+import { GlobeIcon, MapPinIcon, PlusIcon, SettingsIcon, UserIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { LocalDate, Trip } from '@/data/models';
 import { InstallBanner } from '@/features/install/InstallBanner';
@@ -65,6 +65,9 @@ export function TripListPage() {
         title="travel GO"
         right={
           <>
+            <Link to="/countries" aria-label="다녀온 나라" className={iconButtonClass}>
+              <GlobeIcon />
+            </Link>
             {supabaseConfig() && (
               <Link to="/account" aria-label="계정" className={iconButtonClass}>
                 <UserIcon />

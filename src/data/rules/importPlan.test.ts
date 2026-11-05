@@ -136,3 +136,33 @@ describe('planImport (overwrite)', () => {
     expect(plan.put.scheduleItems).toHaveLength(2);
   });
 });
+
+describe('planImport (visited countries)', () => {
+  const JP = (visited: boolean, updatedAt: string) => ({ id: 'JP', visited, updatedAt });
+
+  const TW = (visited: boolean, updatedAt: string) => ({ id: 'TW', visited, updatedAt });
+  const VN = (visited: boolean, updatedAt: string) => ({ id: 'VN', visited, updatedAt });
+
+  it('keeps the later change per country', () => {
+    const local = backupData({ visitedCountries: [JP(true, OLD), TW(true, NEW)] });
+    const file = createBackupFile(
+      backupData({ visitedCountries: [JP(false, NEW), TW(false, OLD), VN(true, OLD)] }),
+      NOW,
+    );
+
+    const plan = planImport(local, file, 'merge', NOW);
+    expect(plan.summary.visitedCountries).toEqual({ added: 1, updated: 1, kept: 1, removed: 0 });
+    expect(plan.put.visitedCountries).toEqual([JP(false, NEW), VN(true, OLD)]);
+  });
+
+  it('replaces them all when overwriting', () => {
+    const local = backupData({ visitedCountries: [JP(true, OLD)] });
+    const file = createBackupFile(backupData({}), NOW);
+    expect(planImport(local, file, 'overwrite', NOW).summary.visitedCountries).toEqual({
+      added: 0,
+      updated: 0,
+      kept: 0,
+      removed: 1,
+    });
+  });
+});

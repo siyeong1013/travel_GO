@@ -2,6 +2,8 @@ import { PGlite, type Transaction } from '@electric-sql/pglite';
 import { createSharingServer, type SharingServer, type TripRole } from '@/data/sharing/sharing';
 import type { PushResult, ServerRow } from '@/data/sync/records';
 import type { SyncServer } from '@/data/sync/syncEngine';
+import { countryChanges, type CountryRow, toCountries } from '@/data/sync/supabaseServer';
+import countriesMigration from '../../supabase/migrations/20261106120000_countries.sql?raw';
 import sharingMigration from '../../supabase/migrations/20261105200000_sharing.sql?raw';
 import syncMigration from '../../supabase/migrations/20261105120000_sync.sql?raw';
 
@@ -50,6 +52,7 @@ export async function createSyncDatabase(): Promise<SyncDatabase> {
   await db.exec(SUPABASE_STANDINS);
   await db.exec(syncMigration);
   await db.exec(sharingMigration);
+  await db.exec(countriesMigration);
 
   const as: SyncDatabase['as'] = (userId, work) =>
     db.transaction(async (tx) => {
@@ -99,6 +102,19 @@ export async function createSyncDatabase(): Promise<SyncDatabase> {
           );
           return rows;
         }),
+      countries: () =>
+        as(userId, async (tx) => {
+          const { rows } = await tx.query<CountryRow>(
+            `select code, visited, to_json(updated_at) #>> '{}' as updated_at
+             from public.visited_countries`,
+          );
+          return toCountries(rows);
+        }),
+      saveCountries: (countries) =>
+        as(userId, async (tx) => {
+          const changes = JSON.stringify(countryChanges(countries));
+          await tx.query('select public.save_visited_countries($1::jsonb)', [changes]);
+        }),
     }),
     sharingFor: (userId) =>
       createSharingServer((fn, args) =>
@@ -114,7 +130,8 @@ export async function createSyncDatabase(): Promise<SyncDatabase> {
       ),
     async reset() {
       await db.exec(
-        'truncate public.records, public.trip_members, public.invites; delete from auth.users;',
+        `truncate public.records, public.trip_members, public.invites, public.visited_countries;
+         delete from auth.users;`,
       );
     },
     close: () => db.close(),

@@ -15,9 +15,11 @@ import type {
   ScheduleItem,
   Settlement,
   Trip,
+  VisitedCountry,
 } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
 import { makeMeCompanion } from '@/data/rules/companion';
+import { isCountryCode } from '@/data/rules/country';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules/expense';
 import { DEFAULT_SETTLEMENT_CURRENCY, isAmount, isCurrency, isRate, MAX_AMOUNT } from '@/data/rules/money';
 import { compareItems } from '@/data/rules/schedule';
@@ -37,12 +39,23 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v3: `fetchedAt` of Google's place data (places and trip cities), which expires after 30 days.
  * v4: trips' cover photo (`cover`).
  * v5: companions' `accountId` (a trip shared with friends).
+ * v6: the countries the person has been to (`visitedCountries`). Records are as in v5.
  */
-export const BACKUP_SCHEMA_VERSION = 5;
+export const BACKUP_SCHEMA_VERSION = 6;
+
+/**
+ * The version the records (trips and what is in them) last changed in: the sync format
+ * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
+ * the app before it keep syncing.
+ */
+export const RECORD_SCHEMA_VERSION = 5;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-export function createBackupFile(data: BackupData, exportedAt: ISODateTime): BackupFile {
+export function createBackupFile(
+  data: BackupData & { visitedCountries?: VisitedCountry[] },
+  exportedAt: ISODateTime,
+): BackupFile {
   return {
     app: 'travel-go',
     schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -65,6 +78,7 @@ export function createBackupFile(data: BackupData, exportedAt: ISODateTime): Bac
     settlements: [...data.settlements].sort(
       (a, b) => byText(a.tripId, b.tripId) || byText(a.createdAt, b.createdAt),
     ),
+    visitedCountries: [...(data.visitedCountries ?? [])].sort((a, b) => byText(a.id, b.id)),
   };
 }
 
@@ -274,6 +288,15 @@ function readSettlement(value: unknown, path: string): Settlement {
   };
 }
 
+function readCountry(value: unknown, path: string): VisitedCountry {
+  const c = object(value, path);
+  return {
+    id: isCountryCode(c.id) ? c.id : invalid(`${path}.id`, 'country code like JP'),
+    visited: boolean(c.visited, `${path}.visited`),
+    updatedAt: timestamp(c.updatedAt, `${path}.updatedAt`),
+  };
+}
+
 function assertUniqueIds(records: { id: string }[], path: string) {
   const seen = new Set<string>();
   records.forEach((record, i) => {
@@ -426,11 +449,14 @@ export function parseBackupFile(raw: unknown): BackupFile {
     assertUniqueIds(data[key], `$.${key}`);
   }
   assertConsistent(data);
+  const visitedCountries = version >= 6 ? list('visitedCountries', readCountry) : [];
+  assertUniqueIds(visitedCountries, '$.visitedCountries');
 
   return {
     app: 'travel-go',
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: timestamp(root.exportedAt, '$.exportedAt'),
     ...data,
+    visitedCountries,
   };
 }

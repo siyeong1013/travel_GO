@@ -67,6 +67,10 @@ function sampleFile(): BackupFile {
       expenses: [expense],
       expenseShares: shares,
       settlements: [settlement],
+      visitedCountries: [
+        { id: 'TW', visited: true, updatedAt: '2026-11-01T00:00:00.000Z' },
+        { id: 'JP', visited: false, updatedAt: '2026-11-01T00:00:00.000Z' },
+      ],
     }),
     '2026-11-02T00:00:00.000Z',
   );
@@ -209,6 +213,18 @@ describe('backup file format', () => {
     const v4Companions = file.companions.map(({ accountId, ...companion }) => companion);
     const parsed = roundTrip({ ...file, schemaVersion: 4, companions: v4Companions });
     expect(parsed.companions).toEqual(v4Companions.map((c) => ({ ...c, accountId: null })));
+  });
+
+  it('converts v5 files: no countries yet', () => {
+    const { visitedCountries, ...v5 } = sampleFile();
+    expect(visitedCountries.map((c) => c.id)).toEqual(['JP', 'TW']);
+    expect(roundTrip({ ...v5, schemaVersion: 5 }).visitedCountries).toEqual([]);
+  });
+
+  it('takes countries by their codes only', () => {
+    const file = sampleFile();
+    const visitedCountries = [{ id: 'japan', visited: true, updatedAt: file.exportedAt }];
+    expectInvalid({ ...file, visitedCountries }, 'backup_invalid', '$.visitedCountries[0].id');
   });
 
   it('takes a cover photo only as an image held in the file', () => {

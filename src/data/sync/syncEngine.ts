@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import type { TravelGoDB } from '@/data/local/db';
-import type { BackupData, ID } from '@/data/models';
+import type { BackupData, ID, VisitedCountry } from '@/data/models';
 import type { TripRole } from '@/data/sharing/sharing';
 import {
   changesOf,
@@ -18,7 +18,7 @@ import {
   takeRows,
   type Working,
 } from '@/data/sync/records';
-import { type Clock, nowIso } from '@/lib/dates';
+import { type Clock, compareIsoDateTime, nowIso } from '@/lib/dates';
 
 /** The server side of sync as one signed-in account reaches it (Supabase's, or a test's). */
 export interface SyncServer {
@@ -30,6 +30,10 @@ export interface SyncServer {
   pullTrip: (tripId: ID, after: number, limit: number) => Promise<ServerRow[]>;
   /** The trips the account is in. */
   memberships: () => Promise<Membership[]>;
+  /** The account's "다녀온 나라", those taken off too. */
+  countries: () => Promise<VisitedCountry[]>;
+  /** `save_visited_countries`: per country, the later `updatedAt` wins. */
+  saveCountries: (countries: VisitedCountry[]) => Promise<void>;
 }
 
 export interface Membership {
@@ -59,7 +63,7 @@ export interface SyncEngine {
   roles: (userId: string) => Promise<Record<ID, TripRole>>;
   /** Takes a trip the account left off the device, without telling the server. */
   forgetTrip: (tripId: ID) => Promise<void>;
-  /** Takes the account's trips off the device (signing out); they stay on the server. */
+  /** Takes the account's trips and countries off the device (signing out); they stay on the server. */
   forget: () => Promise<void>;
 }
 
@@ -108,7 +112,7 @@ export function createSyncEngine(
     expenseShares: db.expenseShares,
     settlements: db.settlements,
   };
-  const tables = [...Object.values(dataTables), db.syncedRecords, db.syncState];
+  const tables = [...Object.values(dataTables), db.syncedRecords, db.syncState, db.visitedCountries];
 
   // A device from before sharing has no `trips`.
   const readState = async (): Promise<SyncState> => ({ ...NOBODY, ...(await db.syncState.get('state')) });
@@ -128,6 +132,28 @@ export function createSyncEngine(
   async function clearAll() {
     for (const records of Object.values(dataTables)) await records.clear();
     await db.syncedRecords.clear();
+    await db.visitedCountries.clear();
+  }
+
+  /**
+   * The account's countries and the device's, in step: each side takes the other's later
+   * changes. Resolves to whether the device's changed.
+   */
+  async function syncCountries(userId: string, server: SyncServer): Promise<boolean> {
+    const theirs = await server.countries();
+    const later = (a: VisitedCountry, b: VisitedCountry | undefined) =>
+      !b || compareIsoDateTime(a.updatedAt, b.updatedAt) > 0;
+    const took = await db.transaction('rw', db.syncState, db.visitedCountries, async () => {
+      if ((await readState()).userId !== userId) return false;
+      const mine = new Map((await db.visitedCountries.toArray()).map((c) => [c.id, c]));
+      const newer = theirs.filter((country) => later(country, mine.get(country.id)));
+      await db.visitedCountries.bulkPut(newer);
+      return newer.length > 0;
+    });
+    const onServer = new Map(theirs.map((c) => [c.id, c]));
+    const ours = (await db.visitedCountries.toArray()).filter((c) => later(c, onServer.get(c.id)));
+    if (ours.length > 0) await server.saveCountries(ours);
+    return took;
   }
 
   /**
@@ -277,6 +303,12 @@ export function createSyncEngine(
               if (tripsChanged) return { ...state, trips };
             });
           }
+        }
+        // Apart from the trips: a server without the countries' table yet still syncs them.
+        try {
+          changed ||= await syncCountries(userId, server);
+        } catch (error) {
+          console.warn('[sync] countries', error);
         }
         return { changed, pending: await pending(), needsUpdate };
       });

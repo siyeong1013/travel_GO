@@ -9,6 +9,7 @@ import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { accountStore } from '@/features/account/accountStore';
 import { backupStore } from '@/features/backup/backupStore';
+import { countryStore } from '@/features/countries/countryStore';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
@@ -41,6 +42,7 @@ export function resetStores() {
   accountStore.setState(accountStore.getInitialState(), true);
   syncStore.setState(syncStore.getInitialState(), true);
   sharingStore.setState(sharingStore.getInitialState(), true);
+  countryStore.setState(countryStore.getInitialState(), true);
 }
 
 /**

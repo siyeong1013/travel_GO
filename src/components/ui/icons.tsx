@@ -92,6 +92,17 @@ export function PlaneIcon(props: IconProps) {
   );
 }
 
+/** A globe: the "다녀온 나라" map. */
+export function GlobeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
+    </Icon>
+  );
+}
+
 export function UserIcon(props: IconProps) {
   return (
     <Icon {...props}>

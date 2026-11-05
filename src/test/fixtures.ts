@@ -1,7 +1,7 @@
 import { createDataLayer } from '@/data/dataLayer';
 import { createLocalRepositories, createTravelGoDB } from '@/data/local';
 import type {
-  BackupData,
+  BackupContents,
   Companion,
   CoverPhoto,
   Expense,
@@ -134,7 +134,7 @@ export function makeExpense(
   };
 }
 
-export function emptyData(): BackupData {
+export function emptyData(): BackupContents {
   return {
     trips: [],
     scheduleItems: [],
@@ -142,11 +142,12 @@ export function emptyData(): BackupData {
     expenses: [],
     expenseShares: [],
     settlements: [],
+    visitedCountries: [],
   };
 }
 
 /** Backup data with the given records; each trip gets its "나" unless companions are given. */
-export function backupData(data: Partial<BackupData>): BackupData {
+export function backupData(data: Partial<BackupContents>): BackupContents {
   const trips = data.trips ?? [];
   return {
     ...emptyData(),

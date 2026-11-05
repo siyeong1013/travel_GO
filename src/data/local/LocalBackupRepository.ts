@@ -1,5 +1,5 @@
 import type { TravelGoDB } from '@/data/local/db';
-import type { BackupData } from '@/data/models';
+import type { BackupContents } from '@/data/models';
 import type { BackupRepository } from '@/data/repositories';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { planImport } from '@/data/rules/importPlan';
@@ -14,15 +14,17 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
     db.expenses,
     db.expenseShares,
     db.settlements,
+    db.visitedCountries,
   ];
 
-  const snapshot = async (): Promise<BackupData> => ({
+  const snapshot = async (): Promise<BackupContents> => ({
     trips: await db.trips.toArray(),
     scheduleItems: await db.scheduleItems.toArray(),
     companions: await db.companions.toArray(),
     expenses: await db.expenses.toArray(),
     expenseShares: await db.expenseShares.toArray(),
     settlements: await db.settlements.toArray(),
+    visitedCountries: await db.visitedCountries.toArray(),
   });
 
   return {
@@ -56,6 +58,7 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
         await db.expenses.bulkPut(plan.put.expenses);
         await db.expenseShares.bulkPut(plan.put.expenseShares);
         await db.settlements.bulkPut(plan.put.settlements);
+        await db.visitedCountries.bulkPut(plan.put.visitedCountries);
         return plan.summary;
       });
     },
