@@ -17,6 +17,7 @@
 - 로그인: Supabase Auth (`@supabase/supabase-js` 2.118, 16단계). 처음 쓸 때 받는 조각이다(214KB, gzip 55KB).
 - 항공편: AeroDataBox(RapidAPI 무료 Basic), 서버 함수 `api/flight.ts`(Vercel)로 부른다. 아래 "항공편".
 - 세계 지도: Natural Earth 1:50m(공개)를 `scripts/world-map.mjs`로 SVG 경로로 바꿔 앱에 넣었다(`features/countries/worldMap.ts`). 실행할 때 지도 라이브러리가 없다.
+- 나라별 지역 지도: Natural Earth 1:10m 도·주·현(공개)을 `scripts/region-maps.mjs`로 나라마다 SVG 경로 파일(`public/regions/JP.json`)로 만들었다. 그 나라를 열 때 받는다. 아래 "다녀온 나라".
 
 ## 명령어
 
@@ -61,7 +62,8 @@ src/
   components/ui/  # 공용 UI (Button, BottomSheet, EmptyState ...)
   test/           # 테스트 설정·픽스처 (앱 코드에서 import 금지)
 api/              # Vercel 서버 함수 (flight.ts: 항공편 조회). 앱 코드는 타입만 가져온다
-scripts/          # 한 번 돌려 만드는 파일 (world-map.mjs: 세계 지도)
+scripts/          # 한 번 돌려 만드는 파일 (world-map.mjs: 세계 지도, region-maps.mjs: 나라별 지역 지도)
+public/regions/   # 나라별 지역 지도 (region-maps.mjs가 만듦, 앱이 열 때 받음)
 supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 ```
 
@@ -102,6 +104,8 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 - 장소 정보는 Places 응답을 **스냅샷으로 저장** (오프라인 조회 + API 비용 절감). `placeId`는 참조용.
   - 단 Google 약관에 따라 Google에서 받은 **주소·좌표는 30일까지만** 둔다. `PlaceSnapshot.fetchedAt`·`TripCity.fetchedAt`에 받은 시각을 기록하고, 직접 입력했거나 데이터가 없으면 `null`이다. 자세한 규칙은 "Google Maps / Places"의 저장 약관 항목.
   - `PlaceSnapshot`의 `placeId`·`address`·`location`은 nullable이다. 직접 입력한 장소(예: "호텔 체크인")는 이 값들이 없고, `location`이 없으면 지도에 표시하지 않는다.
+- 여행은 가는 나라(`countries`: ISO 3166-1 코드, 고른 순서, 0~15개)와 도시(`cities`: `TripCity` 목록, 고른 순서, 1~20개)를 갖는다. 나라는 15개까지라 도시 검색을 그 나라 안으로 좁힐 수 있다(Google의 한도). 검사는 `cleanTripFields`(코드, 겹침, 개수).
+  - Dexie `version(8)`에서 `city` 하나가 `cities`가 됐고 나라는 빈 목록이다(`updatedAt`은 그대로). 그 전 버전을 만드는 코드는 동작은 그대로 두고 옛 모양의 타입(`TripBeforeV8`)만 붙였다.
 - 여행 표지 사진(`Trip.cover: CoverPhoto | null`)은 사용자가 고른 사진을 기기에서 줄여서 여행 기록 안에 JPEG `data:` URL로 둔다. 큰 표지용 `image`(긴 변 1600px)와 목록용 `thumbnail`(가운데 정사각형 192px) 두 장이다.
   - 그래서 사진이 여행과 함께 저장·병합(`updatedAt`)·백업되고, 화면은 `<img src>`로 바로 쓴다. 사진을 바꾸거나 빼는 것은 여행 수정이다(`trips.update(id, { cover })`, `null`이면 뺌).
   - 저장소는 이미지 `data:` URL만 받는다(`isImageDataUrl`: jpeg/png/webp, 크기 상한). 다른 주소를 받으면 남이 만든 백업 파일이 앱을 열 때마다 외부로 요청을 보내게 할 수 있어서다.
@@ -154,7 +158,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - "나"의 id는 `meCompanionId(tripId)`(= `lib/id.ts`의 `derivedId`, UUID v8)로 여행 id에서 **결정적으로** 만든다. 새 여행·DB 마이그레이션·v1 백업 변환 어디서 만들어도 같은 id가 되어, 병합해도 "나"가 둘이 되지 않는다. 마이그레이션·변환으로 만든 "나"의 시각은 여행의 `createdAt`을 쓴다.
 - 저장소: `companions`(목록·추가·이름 변경·`usage`·삭제), `expenses`(입력은 분담 대상 `participants`, 분담액은 저장소가 `splitExpense`로 계산. `usedRates()`: 모든 여행에서 통화·정산 통화 쌍마다 가장 최근 지출의 환율), `settlements`. 일정 항목을 지우면(직접 또는 기간 축소 시 삭제) 연결된 지출의 `scheduleItemId`만 `null`로 바꾼다. 여행을 지우면 딸린 것을 모두 지운다.
 - 순수 규칙: `data/rules/money.ts`(통화 표·`parseAmount`·`convertAmount`), `split.ts`(`splitExpense`·`participantsFromShares`), `expense.ts`(입력 검증), `companion.ts`, `ledger.ts`(`buildLedger`: 합계·카테고리·날짜·동행자별 낸 돈/쓴 돈·잔액), `settlementPlan.ts`(`planTransfers`).
-- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한, 표지 사진 이후 4: 그 전 파일의 여행은 사진 없음, 18단계 이후 5: 동행자의 `accountId`, 그 전 파일은 `null`, 다녀온 나라 이후 6: `visitedCountries`, 그 전 파일은 빈 목록). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
+- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한, 표지 사진 이후 4: 그 전 파일의 여행은 사진 없음, 18단계 이후 5: 동행자의 `accountId`, 그 전 파일은 `null`, 다녀온 나라 이후 6: `visitedCountries`, 그 전 파일은 빈 목록, 여행의 나라·도시 여러 개 이후 7: 여행의 `countries`·`cities`(그 전 파일은 `city` 하나를 목록으로, 나라는 없음), 다녀온 곳에 지역 코드). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
 - 동행자 삭제: "나"는 삭제 불가. 결제자이거나, 금액 지정 분담·송금 기록에 들어 있거나, 빼면 분담 대상이 아무도 안 남는 지출이 있으면 삭제를 막고(`CompanionInUseError`에 해당 지출·송금 목록) 화면이 그 목록을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다. 확인 화면에 쓸 영향 범위는 `companions.usage()`로 미리 조회한다.
 - 정산 통화: 지출이나 송금 기록이 하나라도 있으면 바꿀 수 없다 (`CurrencyLockedError`). 환율 스냅샷이 기존 정산 통화 기준이기 때문.
 - 예산: 여행 전체(동행자 모두의 지출 합계) 기준. 개인 예산은 범위 밖.
@@ -199,10 +203,13 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 - 키가 없거나 오프라인이면 지도/검색 영역에 안내 상태를 보여주고 앱은 정상 동작해야 한다.
 - 로더: `lib/googleMaps.ts`의 `importMapsLibrary(name)`. Google의 "dynamic library import" 방식이라 처음 쓸 때 스크립트를 한 번만 넣는다(`language=ko`). 로드에 실패하면(오프라인 등) 다음 호출에서 다시 시도한다. 페이지에 이미 `google.maps.importLibrary`가 있으면 그걸 쓴다. 지도도 이 로더로 `maps`·`marker` 라이브러리를 받는다.
 - 장소 검색 (`features/places/`)
-  - `placeSearch.ts`: `createPlaceSearch()`/`placeSearch`(세션 단위 `suggest`·`pick`), `searchBias(trip, items)`. 편향은 여행 도시 위치, 없으면 위치가 있는 일정 중 마지막에 추가한 곳을 중심으로 반경 30km다(제한이 아니라 우선순위).
+  - `placeSearch.ts`: `createPlaceSearch()`/`placeSearch`(세션 단위 `suggest`·`pick`), `searchBias(trip, items)`. 편향은 도시가 하나인 여행은 그 도시, 여러 개면 위치가 있는 일정 중 마지막에 추가한 곳(일정이 거기까지 왔으니), 그것도 없으면 위치가 있는 첫 도시를 중심으로 반경 30km다(제한이 아니라 우선순위).
   - `usePlaceSearch(text, { kind, bias })` 훅: 입력이 멈추고 300ms 뒤에 검색하고, 2글자 미만은 검색하지 않는다. 늦게 온 이전 응답은 버린다. 이어서 입력하는 동안은 이전 결과를 계속 보여준다(`refines`, 조합 중인 마지막 글자 허용). 실패하면 "다시 시도"를 띄운다.
   - 화면: `PlaceSuggestionList`(결과·상태 안내·출처), `PlaceSearchSheet`(기존 일정에 장소 연결), `SearchUnavailableNote`(키 없음/오프라인 안내).
-  - 여행 도시는 `kind: 'region'`(`includedPrimaryTypes: ['(regions)']`: 도시·지방·국가)로 검색한다. 고른 도시는 `TripCity`의 `placeId`·`location`으로 저장한다. 폼은 입력칸 글자가 고른 이름과 같을 때만 연결을 유지하고(`linkedCity`), 저장된 도시는 입력칸에 타이핑하기 전까지 검색하지 않는다.
+  - 여행 도시는 `kind: 'region'`(`includedPrimaryTypes: ['(regions)']`: 도시·지방·국가)로 검색한다. 고른 도시는 `TripCity`의 `placeId`·`location`으로 저장한다.
+    - 여행의 나라를 골랐으면 그 나라 안에서만 찾는다(`includedRegionCodes`, Google은 15개까지).
+    - 도시는 여러 개를 칩으로 넣는다(`TripCitiesField`). 검색 결과 아래 "'○○' 그대로 넣기"는 이름만 넣는다. 고르지 않고 입력칸에 남은 글자는 만들 때 이름만 있는 도시로 들어간다(`formCities`). 같은 장소, 이미 있는 이름은 다시 넣지 않는다(`withCity`).
+    - 저장된 도시는 칩이라서 열 때 검색하지 않는다.
 - 출처 표기(정책): 구글 지도 위가 아닌 곳에 Places 데이터(제안, 이름·주소)를 보여주면 "Google Maps" 텍스트를 둔다(`GoogleMapsAttribution`: 번역 금지 `translate="no"`, 12px, #5E5E5E, 보통 굵기, 같은 영역 안). 제안 목록, Google 장소가 있는 날의 일정 목록 아래, 편집 시트의 장소 줄에 둔다.
 - 저장 약관: place ID는 무기한 저장해도 된다. 위경도는 Places API 서비스 약관상 **최대 30일**만 캐시할 수 있다. 이름·주소는 저장을 허용하는 조항이 없다. 이렇게 지킨다(`data/rules/placeData.ts`).
   - Google에서 받은 주소·좌표(장소)와 좌표(여행 도시)에는 받은 시각 `fetchedAt`을 둔다. 저장소 검증상 Google 데이터에는 `fetchedAt`이 꼭 있어야 하고, 직접 입력한 값에는 없다(`null`, 기한 없음).
@@ -240,7 +247,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - manifest: 이름 travel GO, `display: standalone`, 흰 테마색, 아이콘(192·512, 마스커블 512).
   - 아이콘은 `public/favicon.svg`(파란 배경에 45° 기울어 이륙하는 흰 비행기, 가운데 동그란 구멍)에서 그렸다. 마스커블·`apple-touch-icon`(180)은 모서리 없이 꽉 채운 판이고, `favicon.ico`(16·32·48)도 있다. 비행기는 안드로이드 마스커블의 최소 안전 원(반지름 40%) 안에 들어간다. 그림을 바꾸면 PNG와 `index.html`의 시작 화면 그림도 같이 바꾼다.
   - `index.html`에 iOS 홈 화면 앱용 메타가 있다(전체 화면, 상태 표시줄 `default`: 흰 바탕에 진한 글씨, 앱 헤더와 같음).
-- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 47개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
+- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 49개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 나라별 지역 지도(`/regions/*.json`, `travel-go-regions`)뿐이다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
 - 앞으로 가기는 막는다(`lib/useNoForwardHistory.ts`, `AppLayout`, 사용자 요청 2026-11-05). 아이폰은 오른쪽 끝에서 밀면 앞으로 가서, 떠난 화면(예: 이미 저장한 지출 폼)이 다시 열렸다.
   - 화면은 누르는 것으로만 열고, 기록은 뒤로만 간다(왼쪽 끝에서 밀기, 뒤로 버튼).
   - React Router의 `useBlocker`가 앞으로 가는 POP(`history.state.idx`가 지금보다 큼)을 막으면, 라우터가 브라우저를 원래 자리로 돌려놓는다. 화면은 바뀌지 않는다. 막는 장치는 하나만 둘 수 있다(React Router 제약).
@@ -257,7 +264,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 라우터 몰래 하는 이동: `watchOwnHistorySteps`가 라우터보다 먼저(`router.tsx`) `popstate`를 듣고, 앱이 낸 이동이면 라우터에 넘기지 않는다. 기록을 더 넣을 때는 라우터의 `navigate`로 넣어서 라우터의 번호가 맞는다(넣을 때 지금 번호를 다시 읽음).
   - 이 이동들이 스크롤을 움직이지 않게, 그동안 `history.scrollRestoration`을 `manual`로 둔다. 메인 맨 아래 기록은 계속 `manual`이다.
   - Chrome은 한 번도 누르지 않은 페이지가 넣은 기록을 뒤로 가기에서 건너뛴다. 그래서 누른 적이 없으면(`navigator.userActivation.hasBeenActive`) 정리하지 않는다.
-  - 확인: Chromium(폰 크기)의 탭과 아이폰 홈 화면 앱 흉내(UA, `navigator.standalone`, 기록 1개)에서 기록 번호·길이, 앞으로 가기, 스크롤(400 그대로)을 봤다(개발 서버·빌드). 아이폰의 밀기 자체는 실제 아이폰으로만 확인할 수 있다.
+  - 확인: Chromium(폰 크기)의 탭과 아이폰 홈 화면 앱 흉내(UA, `navigator.standalone`, 기록 1개)에서 기록 번호·길이, 앞으로 가기, 스크롤(400 그대로)을 봤다(개발 서버·빌드, 배포 주소에서도 같음). 아이폰의 밀기 자체는 실제 아이폰으로만 확인할 수 있다.
 - 업데이트(`registerType: 'autoUpdate'`): 앱이 `virtual:pwa-register`를 쓰지 않아서 등록 스크립트(`registerSW.js`)는 로드 때 등록만 한다.
   - 새 서비스워커는 설치되면 바로 자리를 잡고(`skipWaiting`·`clientsClaim`), 열려 있는 화면은 새로고침하지 않는다. 새 버전은 다음에 앱을 열 때 보인다. 입력 중인 폼이 날아가지 않게 하려는 것이다(실제 브라우저로 확인함).
   - 화면 코드는 처음 열 때 받는 조각이라("번들 나누기"), 업데이트 전에 열어 둔 화면이 업데이트로 지워진 옛 조각을 부를 수 있다. 그러면 한 번 새로고침해서 새 버전으로 연다(`lib/chunkErrors.ts`).
@@ -266,6 +273,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 17단계(동기화)부터 첫 화면은 gzip 약 155KB다(동기화 코드 +6KB). Rolldown은 공용 조각에 그 안의 아무 모듈 이름을 붙인다(예: React가 든 조각이 `PageHeader-*.js`).
   - 18단계(공유)부터 첫 화면은 gzip 약 158KB다. 초대·참여 화면은 처음 열 때 받는다.
   - 18단계 뒤 요청 8가지를 넣은 뒤로는 gzip 약 159KB다(빌드 출력의 `index`와 `PageHeader` 합). 다녀온 나라 화면(세계 지도 포함, gzip 38KB)은 처음 열 때 받는다.
+  - 여행의 나라·도시 여러 개 뒤로는 약 162KB다(목록의 국기와 나라 이름, 앱 시작 때 여행의 나라 칠하기).
   - `lazy`는 함수 형태로 쓴다. 객체 형태(`lazy: { Component }`)는 React Router가 불러온 항목을 그 객체에서 직접 지워서(`lazy[key] = undefined`), 같은 라우트 정의로 라우터를 여러 번 만드는 테스트에서 두 번째부터 "No route matches"가 난다.
   - 첫 화면의 코드를 받는 동안은 빈 기둥(`hydrateFallbackElement`)을 보여준다.
   - 화면 코드를 받지 못하거나 화면이 오류로 멈추면 `RouteError`("화면을 불러오지 못했어요 · 다시 시도")가 뜬다.
@@ -405,14 +413,15 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 - 로그아웃하면 이 기기의 여행을 지운다(2026-11-05 사용자 결정). 같은 계정으로 다시 로그인하면 서버에서 다시 받는다. 서버에 못 올린 변경이 있으면 로그아웃 전에 알린다.
 - 서버: `supabase/migrations/20261105120000_sync.sql`. 사용자가 SQL Editor에 붙여 넣어 실행한다. 다시 실행해도 결과가 같다.
   - `records`: 모든 기록을 앱의 JSON 그대로(`data`) 둔다. `kind`는 trip·scheduleItem·companion·expense(분담 포함)·settlement이다. `format`은 기록 모양의 버전(`RECORD_SCHEMA_VERSION`, 백업 버전 중 기록이 마지막으로 바뀐 것)이라, 모델이 바뀌어도 서버 표는 그대로다.
-    - 백업 6판(다녀온 나라)은 기록 모양을 바꾸지 않아서 `format`은 5 그대로다. 올렸다면 아직 업데이트 안 된 기기가 새 기록을 "새 버전이 나왔어요"로 멈췄다. 기록 모양이 바뀔 때만 둘을 같이 올린다.
+    - 백업 6판(다녀온 나라)은 기록 모양을 바꾸지 않아서 `format`은 5였다. 올렸다면 아직 업데이트 안 된 기기가 새 기록을 "새 버전이 나왔어요"로 멈췄을 것이다. 기록 모양이 바뀔 때만 둘을 같이 올린다.
+    - 7판(여행의 나라, 도시 여러 개)은 여행 기록 모양을 바꿔서 `format`도 7이다. 아직 업데이트 안 된 기기는 새 여행 기록을 받으면 "새 버전이 나왔어요"로 멈추고, 앱을 다시 열면(자동 업데이트) 이어 간다. 옛 형식(`city`)으로 남은 기록은 새 앱이 백업과 같은 규칙으로 바꿔 읽는다.
   - `trip_members`: 여행을 읽고 쓸 수 있는 계정. 처음 올린 계정이 `owner`이고, 18단계부터 초대로 참여한 `member`도 있다.
   - 읽기는 RLS(내가 멤버인 여행의 기록만)로 한다. 쓰기는 `sync_push(changes)`로만 한다(security definer, 표에 직접 쓰는 권한은 없음).
   - 기록마다 `updatedAt`이 늦은 쪽이 이긴다(같으면 서버 것을 둔다). 새 형식(`format`)으로 쓴 기록은 옛 앱이 덮어쓰지 못한다. 서버가 받지 않으면(`stale`) 서버의 지금 기록을 같이 돌려준다.
   - 지운 기록은 데이터 없는 줄(`deleted`)로 남긴다. 다른 기기에 삭제를 전하려는 것이다.
   - 여행 삭제는 언제나 이긴다. 서버에서 그 안의 기록도 함께 지운다. 지운 여행에는 다시 쓸 수 없다(`gone`).
   - `seq`는 서버에 쓴 순서다. 기기는 마지막으로 본 `seq` 다음부터 읽는다. 쓰기는 한 번에 하나씩(advisory lock)이라 `seq` 순서가 커밋 순서와 같다(뒤늦게 커밋된 작은 번호를 놓치지 않음).
-  - 구글 장소 데이터 30일 규칙은 서버 사본에도 지킨다. pg_cron이 매일 한국 시간 03:17에 `private.expire_place_data()`를 돌린다. `updatedAt`과 `seq`는 바꾸지 않는다.
+  - 구글 장소 데이터 30일 규칙은 서버 사본에도 지킨다. pg_cron이 매일 한국 시간 03:17에 `private.expire_place_data()`를 돌린다. `updatedAt`과 `seq`는 바꾸지 않는다. 도시가 여러 개인 여행(`cities`)은 `20261107120000_cities_regions.sql`부터 도시마다 지운다(옛 `city`도 계속).
   - Supabase API는 16MB 요청도 받는다(2026-11-05 확인). 기기는 4MB씩 나눠 보낸다.
 - 테스트: `src/test/syncDatabase.ts`가 PGlite에 Supabase 흉내(역할, `auth.users`, `auth.uid()`)와 마이그레이션을 넣는다. 서버 규칙은 `data/sync/serverSql.test.ts`가 검사한다.
 - 기기 쪽 (`data/sync/`)
@@ -450,7 +459,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 - 서버: `supabase/migrations/20261105200000_sharing.sql`(동기화 SQL 다음에 실행, 다시 실행해도 같음). 표에 직접 쓰는 권한은 없고 함수로만 한다. 답은 `{ status, ... }`이고, 세션이 없을 때만 오류다.
   - `invites`: 여행마다 링크 하나. `token`은 무작위 UUID 16바이트를 주소에 쓸 수 있는 base64로 적은 22글자다. 7일 동안 여러 명이 쓸 수 있고, 끊으면 지운다. 만료된 링크는 다음에 만들 때 새것으로 바뀐다.
   - `create_invite`·`current_invite`·`revoke_invite(trip)`: 만든 사람만 쓴다. 거절 이유는 `no_trip`(아직 서버에 없음), `gone`(삭제됨), `forbidden`이다.
-  - `invite_preview(token)`: 로그인 전(anon)에도 링크의 여행 제목·도시·기간·초대한 사람 이름을 준다. 끊겼거나 만료됐거나 여행이 지워졌으면 `invalid`.
+  - `invite_preview(token)`: 로그인 전(anon)에도 링크의 여행 제목·도시(여러 개면 ` · `로 이어서, `20261107120000_cities_regions.sql`부터)·기간·초대한 사람 이름을 준다. 끊겼거나 만료됐거나 여행이 지워졌으면 `invalid`.
   - `join_trip(token)`: 로그인한 계정을 `member`로 넣는다. 이미 들어 있으면 `member` 상태와 그 역할로 답한다.
   - `trip_people(trip)`: 멤버에게만 사람 목록을 준다(만든 사람 먼저). 이름·사진은 `auth.users`의 로그인 정보에서 그때그때 읽는다. 규칙은 앱의 `toAccount`와 같다(`full_name` → `name` → `preferred_username`, 사진은 https로).
   - `leave_trip(trip)`: 멤버가 나간다. 만든 사람은 `forbidden`이고, 대신 여행을 지운다.
@@ -535,18 +544,35 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 지도에서 나라를 누르면 넣거나 빼고, 하단 안내의 "되돌리기"로 되살린다. 너무 작아 안 보이는 나라(싱가포르, 괌, 홍콩 등 69곳)는 다녀왔을 때 점으로 그린다.
   - 나라 찾기: 한국어 이름(기기의 `Intl.DisplayNames`, 홍콩·마카오 등은 짧게 고침), 영어 이름, 코드, 흔히 부르는 이름(사이판 → 북마리아나 제도, 하와이 → 미국, 두바이, 발리)으로 찾는다. 목록의 체크박스로 넣고 뺀다.
   - 지도는 장식(`role="img"`, 다녀온 나라 이름을 읽어 줌)이고, 스크린리더는 목록을 쓴다.
+- 여행의 나라(새 여행 폼에서 고름)는 여행이 시작되면 다녀온 나라에 저절로 들어간다(사용자 선택 2026-11-05, `tripCountriesToMark`).
+  - 앱이 시작할 때(`AppLayout`), 이 화면을 열 때, 동기화로 바뀐 것이 들어왔을 때 확인한다(`countryStore.markTrips`, 한 번에 하나).
+  - 그 여행이 시작된 뒤에 사용자가 직접 뺀 나라는 다시 넣지 않는다. 뺀 날(기기 날짜)이 그 나라의 가장 늦게 시작한 여행의 시작일보다 이르면 다시 넣는다(그 뒤에 또 간 것).
+  - 넣을 때는 저장소의 `set`을 쓴다. 넣을 것이 있을 때만 동기화 알림이 간다(`listAll()`은 뺀 표시까지 읽음).
+- 나라별 지역(도·주·현, 사용자 선택 2026-11-05): 도시는 지도에서 점이라서, 면으로 칠할 수 있는 다음 단위로 했다.
+  - 나라 줄의 "지역 2/47 ›"(`regionCount`)로 `/countries/JP`를 연다(`CountryRegions`). 위에 그 나라에서 다녀온 곳 수와 지도, 아래에 지역 찾기와 체크 목록이 있다.
+  - 지도를 누르면 넣거나 빼고 "되돌리기"가 있다. 작은 지역(워싱턴 D.C., 모스크바 등)은 다녀왔을 때 점으로 그린다. 지역을 넣으면 그 나라도 다녀온 나라에 넣는다(지역을 빼도 나라는 그대로).
+  - 데이터: `scripts/region-maps.mjs`가 Natural Earth 1:10m admin-1(v5.1.2, 40MB GeoJSON)을 나라마다 단순화(점 약 3,500개)해서 `public/regions/JP.json`(가로 1000 기준 SVG 경로와 한국어 이름 `name_ko`, 13~50KB)으로 만든다. 194개 나라, 합쳐 4.5MB다. 다시 만드는 방법은 스크립트 첫머리에 있다.
+    - 지역이 하나뿐인 나라, 100곳을 넘는 나라(슬로베니아·라트비아·우간다의 기초 자치단체), 보스니아(데이터의 지역 모양이 서로 맞지 않음)는 지역 지도가 없다.
+    - 너무 잘게 나뉜 나라는 큰 지역으로 묶고 이름을 직접 붙였다: 프랑스 18 레지옹, 이탈리아 20 주, 스페인 17 자치지방과 세우타·멜리야, 영국 4 구성국, 필리핀 17 지방.
+    - 멀리 떨어진 지역은 지도에서 빼고 목록에만 둔다(프랑스 해외 레지옹, 카나리아, 아조레스·마데이라, 갈라파고스, 산안드레스, 카리브 네덜란드, 스발바르, 채텀). 칠레 이스터섬, 남아공 프린스에드워드, 일본 미나미토리·오키노토리섬은 그 지역의 모양에서만 뺀다(오키나와는 남김).
+    - 투영: 미국은 알래스카·하와이를 옆 칸에 넣는 `geoAlbersUsa`, 나머지는 가장 큰 땅을 가운데 둔 메르카토르다(날짜변경선을 넘는 러시아·피지도 이어짐).
+    - 줄이다 방향이 뒤집힌 다각형(지구 반보다 넓게 계산됨)은 되돌린다. 메릴랜드가 미국 지도 전체를 덮었다.
+  - 앱은 처음 열 때 받는다(`loadRegionMap`, 실패하면 다음에 다시). 서비스워커는 미리 받지 않고(194개를 모두 받을 필요가 없음), 연 나라만 보관한다(StaleWhileRevalidate, 40개). 그래서 한 번 연 나라는 오프라인에서도 열린다.
+  - `vercel.json`의 화면 주소 규칙에서 `regions/`를 뺐다(없는 파일이 `index.html`이 아니라 404).
+  - 저장: 지역 표시도 같은 표(`visitedCountries`, id `JP-27` = ISO 3166-2, `isRegionCode`)와 서버 `visited_countries`에 둔다. 나라 화면의 수와 세계 지도는 나라 코드만 센다.
 - 지도 데이터: `scripts/world-map.mjs`가 Natural Earth 1:50m(world-atlas 2.0.2)를 단순화(점 10%만 남김)해서 Natural Earth 투영의 SVG 경로로 만든다(1000×444, 남극 뺌, 235곳, 104KB, gzip 35KB). 다시 만드는 방법은 스크립트 첫머리에 있다.
   - 북키프로스·소말릴란드는 키프로스·소말리아에 넣고, 코소보는 `XK`로 둔다. 프랑스령 기아나처럼 해외 영토가 본국과 한 모양인 나라도 있다(Natural Earth 그대로).
   - 화면 코드와 함께 처음 열 때 받는 조각이다(서비스워커가 미리 받아 둠, 앱 파일 47개).
 - 저장: `VisitedCountry { id: 나라 코드, visited, updatedAt }`(Dexie v7 `visitedCountries`). 뺀 나라는 `visited: false`로 남겨 다른 기기에 전한다. 고칠 때는 지금 시각, 기기 시계가 늦으면 가진 것보다 1ms 뒤로 찍는다(`countryStamp`).
-  - 백업 6판에 들어간다. 병합은 나라마다 늦은 `updatedAt`이 이긴다(`mergeById`).
+  - 백업 6판에 들어간다(지역 코드는 7판부터). 병합은 나라마다 늦은 `updatedAt`이 이긴다(`mergeById`).
 - 동기화(로그인했을 때): 기록(`records`)과 따로, 계정마다 나라 표를 둔다(`supabase/migrations/20261106120000_countries.sql`, 공유 SQL 다음에 실행).
   - `visited_countries(user_id, code, visited, updated_at)`: RLS로 내 줄만 읽고, 쓰기는 `save_visited_countries(changes)`로만 한다(나라마다 늦은 쪽이 이김).
-  - 동기화 끝에 서버의 나라를 모두 받아 더 늦은 것을 기기에 적고, 기기 쪽이 더 늦은 것을 보낸다(`syncCountries`, 많아야 250줄).
+  - 동기화 끝에 서버의 나라를 모두 받아 더 늦은 것을 기기에 적고, 기기 쪽이 더 늦은 것을 보낸다(`syncCountries`). 서버에서는 1000줄씩 나눠 읽는다(Supabase API가 한 번에 1000줄까지, 지역까지 넣으면 넘을 수도 있음).
+  - 지역 코드를 받으려면 `20261107120000_cities_regions.sql`(나라 SQL 다음에 실행)이 서버의 코드 검사를 넓힌다(`^[A-Z]{2}(-[A-Z0-9]{1,3})?$`).
   - 처음 로그인한 기기의 나라는 계정 것이 되고, 로그아웃하면 기기에서 지운다(여행과 같다).
   - 실시간 알림은 없다(`records`만 듣는다). 앱으로 돌아올 때·2분마다 하는 동기화로 건너간다.
   - 이 단계가 실패해도(SQL을 아직 실행하지 않은 서버 등) 여행 동기화는 끝난다. 경고만 남기고 다음 동기화에 다시 한다.
-- 테스트: `data/sync/countriesSql.test.ts`(서버), `syncEngine.test.ts`의 "sync of visited countries", `app/countryFlows.test.tsx`(지도를 누르는 것은 `svg [data-code="JP"]`).
+- 테스트: `data/sync/countriesSql.test.ts`(서버, 지역 코드 포함), `syncEngine.test.ts`의 "sync of visited countries", `app/countryFlows.test.tsx`(지도를 누르는 것은 `svg [data-code="JP"]`, 여행의 나라 칠하기, 지역 화면은 `fetch`로 작은 가짜 지도를 줌), `data/rules/country.test.ts`(`tripCountriesToMark`).
 
 ### 항공편 (AeroDataBox, 2026-11-05 사용자 요청)
 - 일정 "장소 추가"의 이름 칸에 편명(`KE723`, `7C1301`, `KAL723`: `parseFlightNumber`)을 치면 "KE723 항공편 정보 불러오기" 줄이 뜬다. 날짜 탭에서만 뜬다(보관함은 날짜가 없음).
@@ -556,9 +582,13 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
     - 공항 이름은 자주 가는 공항 127곳을 한국어로 두고(`flightItem.ts`), 나머지는 데이터의 영어 이름이다. 위치는 없다(지도에 안 나옴).
   - 편명일 때는 구글 장소 검색을 하지 않는다(검색마다 요금). "'KE723' 그대로 추가"는 남는다.
   - 로그인하지 않았으면 "로그인하면 항공편 정보를 불러올 수 있어요."다. 못 찾으면 이유를 보여주고, 그대로 추가할 수 있다.
+- 새 여행 폼에도 항공편 칸이 있다(`TripFlightsField`, 만들 때만). 편명과 출발일(첫 편은 시작일, 다음 편부터 종료일이 기본, 기간을 나중에 고르면 빈 출발일을 채움)을 넣고 "○○ 항공편 정보 불러오기"로 찾는다. 편명 칸의 Enter도 찾기다(폼 제출이 아님).
+  - 찾은 편의 도착 나라를 여행의 나라에 더한다(`withFlightCountries`, 공항의 `countryCode`). 먼저 찾은 편이 떠나는 나라(집)는 빼서, 돌아오는 편은 더하지 않는다. 더해진 나라는 칩으로 보이고 뺄 수 있다.
+  - 만들면 찾은 편은 출발일에, 못 찾았거나 불러오지 않은 편은 편명만 그 날에 일정으로 넣는다(`flightScheduleItems`). 여행 기간 밖이면 보관함이다. 일정 넣기가 실패해도 여행은 만들어진다(기록만 남김).
+  - 로그인하지 않았으면 찾기는 "로그인하면… 만들면 편명만 일정에 들어가요."다.
 - 서버 함수 `api/flight.ts`(Vercel, `GET /api/flight?number=KE723&date=2026-12-01`, `Authorization: Bearer <Supabase 세션>`)
   - 세션은 Supabase `/auth/v1/user`로 확인한다. 로그인한 계정만 묻게 해서 무료 한도를 지킨다.
-  - AeroDataBox `GET https://aerodatabox.p.rapidapi.com/flights/number/{편명}/{날짜}?dateLocalRole=Departure`(헤더 `X-RapidAPI-Key`, `X-RapidAPI-Host`)를 부르고, 일정에 필요한 것만 돌려준다(`flightsFromAeroDataBox`: 화물편과 겹친 편은 뺌).
+  - AeroDataBox `GET https://aerodatabox.p.rapidapi.com/flights/number/{편명}/{날짜}?dateLocalRole=Departure`(헤더 `X-RapidAPI-Key`, `X-RapidAPI-Host`)를 부르고, 일정에 필요한 것만 돌려준다(`flightsFromAeroDataBox`: 화물편과 겹친 편은 뺌). 공항마다 나라 코드(`countryCode`, 응답의 `airport.countryCode`)도 준다.
   - 답은 `{ status: ok | notFound | invalid | signedOut | unavailable | busy | error }`다. 204·400·404는 못 찾음, 429는 `busy`, 401·403(키 거절)과 키 없음은 `unavailable`이다.
   - `"type": "module"`이라 Node가 이 파일을 ES 모듈로 돌린다. 확장자 없는 상대 경로 import는 실행할 때 깨질 수 있어서, 앱 코드에서는 타입만 가져온다(`import type`은 사라짐).
   - 개발·미리보기 서버도 `/api/flight`를 받는다(`vite.config.ts`의 `flightApi` 플러그인, `.env.local`의 `AERODATABOX_API_KEY`). 서비스워커는 `/api/`를 화면으로 열지 않는다(`navigateFallbackDenylist`).
@@ -583,7 +613,12 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
 - 입력칸 글자 크기는 16px 이상 (iOS Safari가 포커스 시 확대하지 않도록). 공용 `TextField`를 쓴다.
   - 입력칸 제목 줄의 작은 버튼(`action`: "시간 지우기", "이전 이름으로", "최신 환율 불러오기")은 `-my-3 -mr-2 h-11 px-2`로 줄 높이는 그대로 두고 누르는 영역만 44px로 만든다.
 - 폼 오류는 제출할 때 한꺼번에 보여주고, 첫 번째 오류 칸에 포커스를 옮긴다. 제출 버튼을 비활성화해서 막지 않는다.
-- 날짜 입력은 네이티브 `<input type="date">`를 쓴다 (모바일 기본 날짜 선택기). 시작일을 바꿨을 때 종료일이 비었거나 더 이르면 종료일도 같이 바꾼다.
+- 여행 기간은 한 달력에서 시작일과 종료일을 고른다(`components/ui/DateRangeSheet`, 사용자 요청 2026-11-05: 시작일·종료일을 따로 고르던 것).
+  - 폼의 "여행 기간" 칸(`ButtonField`: 입력칸처럼 보이는 버튼, 이름은 "여행 기간 12.1 (화) – 12.3 (목) · 2박 3일")을 누르면 하단 시트가 열린다.
+  - 달이 아래로 이어진다(사용자 선택). 오늘(또는 고른 시작일) 2달 전부터 오늘 2년 뒤까지 있고, 맨 위 "이전 달 더 보기"가 1년씩 더 붙인다(보던 자리는 그대로). 고른 시작일의 달에서 열린다.
+  - 시작일 → 종료일을 누르면 사이가 띠로 칠해진다. 시작일보다 앞을 누르거나 둘 다 고른 뒤 누르면 새 시작일이다. 같은 날을 두 번 누르거나 시작일만 고르고 "선택"하면 당일치기다. 아무것도 안 골랐으면 "선택"이 이유를 알린다.
+  - 일요일 빨강, 토요일 파랑, 오늘은 `aria-current="date"`. 날짜 버튼의 이름은 `2026년 12월 1일 화요일`(`lib/calendar.ts`의 `dayName`), 고른 날은 `aria-pressed`.
+  - 그 밖의 날짜(지출 날짜, 항공편 출발일)는 네이티브 `<input type="date">`다(모바일 기본 날짜 선택기).
 - UI 문구는 한국어. 데이터 레이어 에러는 `lib/errorMessage.ts`로 한국어 문구로 바꾼다.
 - 뷰포트 메타에 `interactive-widget=resizes-content`를 둔다. Android Chrome에서 키보드가 올라오면 화면 높이가 줄어서, 하단 시트·버튼이 키보드에 가리지 않는다.
 - 여행 상세(일정) 화면:
@@ -598,6 +633,8 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
     - 시트에서 바꾼 내용이 있으면 지출 화면으로 가기 전에 먼저 저장한다(그대로 가면 사라지므로). 바꾼 게 없으면 저장하지 않는다(`updatedAt`이 백업 병합을 좌우하므로).
   - 장소 추가 시트: 이름을 입력하면 검색 결과가 뜨고, 고르면 주소·위치와 함께 저장된다. 결과 아래 "'○○' 그대로 추가"는 이름만 저장한다. 검색이 되는 동안 Enter는 키보드만 닫는다(실수로 위치 없는 장소가 생기지 않게). 키가 없거나 오프라인이면 안내와 함께 예전처럼 이름 + "추가"로 동작한다.
   - 편집 시트의 장소 줄: 주소(없으면 "주소와 위치가 없어요.")와 "장소 찾기 / 다시 찾기"가 있다. 검색 시트(`PlaceSearchSheet`)는 일정 이름으로 바로 검색한다. 고르면 이름도 그 장소 이름으로 바뀌고, 이름칸에 "이전 이름으로"가 생긴다(예: "호텔 체크인"이라는 이름에 호텔 위치만 붙이기). 저장해야 반영된다.
+  - 새 여행 폼(`TripForm`, 여행 정보 수정과 같은 폼): 여행 이름 → 나라(`TripCountriesField`: 국기 칩, "나라 고르기" 시트에서 이름·흔히 부르는 이름으로 찾아 체크, 고른 것이 위에 와서 체크하는 동안 줄이 움직이지 않음) → 도시(`TripCitiesField`, 여러 개) → 여행 기간(달력) → 항공편(새 여행만, `TripFlightsField`) → 표지 사진. 오류는 제목·도시·기간 순서로 첫 칸에 포커스한다(`TRIP_FORM_FIELDS`).
+    - 시트들이 폼 안에 있어서, 시트의 입력칸(나라 이름, 편명)에서 Enter를 눌러도 폼을 보내지 않게 막았다.
   - 여행 정보 수정은 ⋯ 메뉴 → `/trips/:id/edit` (만들기와 같은 `TripForm`). 저장하면 기록상 이전 화면(보던 `?day=` 포함)으로 돌아간다.
     - 바뀐 필드만 저장하고, 아무것도 안 바뀌었으면 저장하지 않는다 (`updatedAt`이 백업 병합을 좌우하므로).
     - 기간을 줄여 범위 밖 일정이 생기면 저장소가 `OutOfRangeItemsError(count, dates)`를 던진다. 화면은 "여행 기간 밖 일정 n개 · 빠지는 날짜" 시트에서 **보관함으로 옮기기(기본) / 일정 n개 삭제 / 취소**를 받아 다시 저장한다. 이 시트가 삭제의 확인 단계를 겸한다.
@@ -632,7 +669,8 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 단계 배지는 사진 위에서 흰 바탕 + 진한 글씨(`coverBadgeClass`)다. 여행 화면은 헤더 아이콘 아래에 위쪽 그늘을 둔다(흰 사진에서 3.3:1 이상). 흰 사진 썸네일이 배경에 묻히지 않게 `ring-1 ring-black/5`.
   - 여행 목록: 가장 가까운(진행 중 포함) 여행은 큰 표지 카드(`TripHeroCard`), 나머지는 작은 표지가 붙은 줄(`TripCard`). 지난 여행의 작은 표지는 흐리게. 큰 카드는 사진이 있으면 조금 더 높다.
     - 여행이 하나뿐이면 큰 카드 없이 줄로 보여준다(사용자 요청, 2026-11-05). 큰 카드는 여러 여행 중 다음 여행을 골라 보여주는 것이라서다(`splitTrips().next`).
-  - 여행 상세: 위쪽이 표지(`TripCover`: 단계·도시, 제목 = 페이지의 h1, 기간)이고 헤더(`TripPageHeader`)가 그 위에 겹친다. 사진이 있으면 표지가 더 높고(헤더 + 17rem) 글씨가 아래에 붙는다. 헤더는 맨 위에서만 투명(흰 아이콘)이고, 조금이라도 스크롤하면 흰 바가 되며, 표지가 다 지나가면 제목이 나온다(`lib/useScrolledPast.ts`, IntersectionObserver. 없으면 계속 투명). 헤더의 제목은 표지 h1과 겹치므로 `aria-hidden`.
+  - 표지와 목록 줄은 나라의 국기와 도시들을 `🇯🇵🇹🇼 오사카 · 교토`처럼 보여 준다(`tripPlacesText`). 국기와 나라 이름은 세계 지도 없이 쓰도록 나라 코드 목록을 따로 둔다(`countryCodes.ts`, `world-map.mjs`가 같이 만듦).
+  - 여행 상세: 위쪽이 표지(`TripCover`: 단계·국기·도시들, 제목 = 페이지의 h1, 기간)이고 헤더(`TripPageHeader`)가 그 위에 겹친다. 사진이 있으면 표지가 더 높고(헤더 + 17rem) 글씨가 아래에 붙는다. 헤더는 맨 위에서만 투명(흰 아이콘)이고, 조금이라도 스크롤하면 흰 바가 되며, 표지가 다 지나가면 제목이 나온다(`lib/useScrolledPast.ts`, IntersectionObserver. 없으면 계속 투명). 헤더의 제목은 표지 h1과 겹치므로 `aria-hidden`.
   - 일정/가계부 전환은 밑줄 탭(`TripViewTabs`, 링크 + `aria-current`)이다.
   - 가계부 요약 카드는 연한 회색(`bg-gray-50`) 카드에 큰 총액이다.
   - 표지 사진 고르기: 여행 만들기·수정 폼의 "표지 사진" 칸(`CoverPhotoField`)이다.
@@ -668,6 +706,7 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 동기화·공유 화면 테스트는 `createTestData(server)`에 PGlite 서버(`createSyncDatabase()`)를 준다. 동기화와 공유 호출(`connectSharing`)이 그 서버로 간다. 실시간 알림(`watchServer`)은 오지 않는다. `app/syncFlows.test.tsx`·`app/sharingFlows.test.tsx`는 `vi.hoisted`로 서버를 공유하고, 테스트마다 `server.reset()`·`syncEngine.forget()`을 부른다. 기기 둘의 동기화는 `data/sync/syncEngine.test.ts`.
   - `supabaseFake`의 사용자 id는 UUID(`USER_IDS`)이고, 세션을 `sb-test-auth-token`에 둔다(앱 시작 때 계정을 불러오는 조건).
   - `src/test/app.tsx`의 `resetApp()`(스토어와 데이터 비우기), `resetStores()`(새로고침 흉내), `renderApp(path)`를 쓴다. **새 스토어를 만들면 `resetStores()`에 추가한다.**
+  - 여행 폼의 기간은 `pickTripDates(user, start, end)`(`test/app.tsx`)로 고른다: 달력을 열어 두 날을 누르고 "선택"한다(지난 날짜면 "이전 달 더 보기"를 누름). 달력은 오늘 2년 뒤까지라서, 먼 미래 날짜 대신 오늘에서 계산한 날짜를 쓴다(`coverFlows.test.tsx`의 `ahead`).
   - 날짜가 오늘에 따라 달라지는 화면은 URL에 `?day=`를 명시해서 테스트한다 (기본 선택이 오늘 날짜에 좌우되기 때문).
   - 라우팅은 `createMemoryRouter(routes)`로 실제 라우트를 그대로 쓴다.
   - 화면 코드는 처음 열 때 받으므로, `test/app.tsx`가 테스트 파일을 불러올 때 모든 화면 코드를 미리 받아 둔다(부하가 걸리면 그것만으로 첫 `findBy*`의 1초를 넘길 수 있어서). 화면 코드를 못 받는 경우는 `vi.mock('@/pages/…', () => { throw … })`로 만든다(`app/routeErrors.test.tsx`).
@@ -903,3 +942,10 @@ supabase/migrations/ # 서버 SQL (사용자가 SQL Editor에서 실행)
   - 앞으로 가기는 막았지만, 아이폰은 앞 기록이 있으면 밀기 그림을 보여 준다. 웹앱이 이 밀기를 끌 방법은 없다(WebKit 코드로 확인).
   - 그래서 뒤로 간 뒤 앞 기록을 지금 화면의 복사본으로 바꾼다. 홈 화면 앱의 메인은 앞 기록이 아예 없게 한다.
   - 대가로 메인에서 왼쪽 끝을 밀면 같은 메인이 한 번 보인다.
+
+- 2026-11-05: 18단계 뒤 요청 3가지를 했다(사용자 선택 4가지).
+  - 새 여행에서 가는 나라를 고른다(여러 개, 지나가는 나라도). 도시도 여러 개다(사용자 선택: 하나 그대로, 비워도 되게 중에서). 여행 기록 모양이 바뀌어 Dexie v8, 백업 7판, 동기화 형식 7이 됐다. 서버 SQL이 하나 더 있다.
+  - 고른 나라는 여행이 시작되면 다녀온 나라에 자동으로 칠한다(사용자 선택). 직접 뺀 나라는 그대로 둔다.
+  - 새 여행 폼에 항공편 칸을 넣었다(사용자 요청). 찾은 편의 도착 나라를 더하고, 만들 때 일정에 넣는다.
+  - 기간은 하나의 달력에서 시작일과 종료일을 고른다. 달이 아래로 이어지는 모양이다(사용자 선택: 한 달씩 넘기기 대신).
+  - 다녀온 나라는 나라마다 도·주·현 지도로도 칠한다(사용자 선택). 도시는 지도에서 점이라 면이 되는 다음 단위로 했고, 지도는 Natural Earth로 만들어 그 나라를 열 때 받는다.
