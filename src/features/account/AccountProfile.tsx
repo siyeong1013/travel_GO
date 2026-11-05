@@ -87,7 +87,7 @@ export function AccountProfile() {
       {!checking && (
         <p className="mt-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm leading-relaxed break-keep text-gray-600">
           {account
-            ? '여행은 이 계정에 저장돼요. 다른 기기에서 같은 계정으로 로그인하면 같은 여행이 보여요. 친구 초대는 곧 생겨요.'
+            ? '여행은 이 계정에 저장돼요. 다른 기기에서 같은 계정으로 로그인하면 같은 여행이 보여요. 친구는 여행의 ⋯ 메뉴에서 ‘친구 초대’로 초대해요.'
             : '로그인하면 여행이 계정에 저장돼서 다른 기기에서도 같은 여행을 볼 수 있어요. 로그인하지 않아도 지금처럼 이 기기에 저장돼요.'}
         </p>
       )}

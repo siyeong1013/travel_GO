@@ -3,6 +3,8 @@ import type { Companion, ID } from '@/data/models';
 export interface NewCompanion {
   tripId: ID;
   name: string;
+  /** Whose companion this is, as with `claim`. */
+  accountId?: string | null;
 }
 
 /** What deleting a companion would touch. */
@@ -24,6 +26,12 @@ export interface CompanionRepository {
   /** Added last. Names are trimmed and must be unique within the trip. */
   create(input: NewCompanion): Promise<Companion>;
   rename(id: ID, name: string): Promise<Companion>;
+  /**
+   * Makes them `accountId`'s companion: the person of that account, in a trip shared with friends.
+   * The account's other companion in the trip (a wrong pick) lets go. `ValidationError` when they
+   * are another account's.
+   */
+  claim(id: ID, accountId: string): Promise<Companion>;
   usage(id: ID): Promise<CompanionUsage>;
   /**
    * Takes them out of equal/ratio splits (re-splitting) and deletes them. Throws

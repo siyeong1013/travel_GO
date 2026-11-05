@@ -11,13 +11,18 @@ export type PaymentMethod = 'cash' | 'card';
 export type SplitMethod = 'equal' | 'amount' | 'ratio';
 export type ExchangeRateSource = 'same' | 'api' | 'last' | 'manual';
 
-/** Someone on the trip. Names only; no accounts. */
+/** Someone on the trip: a name, and in a trip shared with friends maybe their account. */
 export interface Companion {
   id: ID;
   tripId: ID;
   name: string;
-  /** "나", the person using the app: one per trip, created with it. Renamable, not deletable. */
+  /**
+   * "나" of whoever made the trip: one per trip, created with it. Renamable, not deletable. To the
+   * friends a trip is shared with, it is the owner (see `myCompanion`).
+   */
   isMe: boolean;
+  /** The account of the person this is: a friend picks theirs when joining. Null: a name only. */
+  accountId: string | null;
   order: number;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;

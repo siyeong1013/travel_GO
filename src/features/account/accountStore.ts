@@ -14,8 +14,11 @@ export interface AccountState {
   loginError: LoginError | null;
   /** Concurrent calls share one; after that the account follows sign-ins and sign-outs. */
   load: () => Promise<void>;
-  /** Leaves the app for the provider's login page, which brings the page back to the account screen. */
-  signIn: (provider: LoginProvider) => Promise<void>;
+  /**
+   * Leaves the app for the provider's login page, which brings the page back to `returnTo` (a path
+   * of this site), the account screen by default.
+   */
+  signIn: (provider: LoginProvider, returnTo?: string) => Promise<void>;
   /** Takes the account's trips off this device, then signs out here. */
   signOut: () => Promise<void>;
 }
@@ -72,10 +75,9 @@ export function createAccountStore(
         return inflight;
       },
 
-      async signIn(provider) {
+      async signIn(provider, returnTo = '/account') {
         set({ loginError: null });
-        // Back to the account screen, where the login began.
-        await connected().signIn(provider, `${window.location.origin}/account`);
+        await connected().signIn(provider, `${window.location.origin}${returnTo}`);
       },
 
       async signOut() {

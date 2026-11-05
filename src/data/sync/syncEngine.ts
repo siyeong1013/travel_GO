@@ -1,9 +1,12 @@
 import type { Table } from 'dexie';
 import type { TravelGoDB } from '@/data/local/db';
 import type { BackupData, ID } from '@/data/models';
+import type { TripRole } from '@/data/sharing/sharing';
 import {
   changesOf,
   dataChanged,
+  dropTrip,
+  dropTripsOutside,
   openWorking,
   planPush,
   type PushResult,
@@ -23,6 +26,15 @@ export interface SyncServer {
   push: (changes: SyncChange[]) => Promise<PushResult[]>;
   /** The account's rows after `seq` `after`, in `seq` order, at most `limit`. */
   pull: (after: number, limit: number) => Promise<ServerRow[]>;
+  /** Like `pull`, of one trip: a trip just joined has rows from before (smaller `seq`s). */
+  pullTrip: (tripId: ID, after: number, limit: number) => Promise<ServerRow[]>;
+  /** The trips the account is in. */
+  memberships: () => Promise<Membership[]>;
+}
+
+export interface Membership {
+  tripId: ID;
+  role: TripRole;
 }
 
 export interface SyncOutcome {
@@ -43,6 +55,10 @@ export interface SyncEngine {
   sync: (userId: string) => Promise<SyncOutcome>;
   /** How many changes here the server doesn't have yet. */
   pending: () => Promise<number>;
+  /** `userId`'s role in each of its trips on the server, as of the last sync (none if not synced). */
+  roles: (userId: string) => Promise<Record<ID, TripRole>>;
+  /** Takes a trip the account left off the device, without telling the server. */
+  forgetTrip: (tripId: ID) => Promise<void>;
   /** Takes the account's trips off the device (signing out); they stay on the server. */
   forget: () => Promise<void>;
 }
@@ -53,7 +69,12 @@ const PUSH_CHARS = 4_000_000;
 const PUSH_RECORDS = 200;
 /** Answers can leave something to send again (a repaired schedule, a newer copy kept here). */
 const PUSH_ROUNDS = 3;
-const NOBODY: SyncState = { id: 'state', userId: null, cursor: 0 };
+const NOBODY: SyncState = { id: 'state', userId: null, cursor: 0, trips: null };
+
+const sameRoles = (a: Record<ID, TripRole> | null, b: Record<ID, TripRole>) =>
+  a !== null &&
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.entries(b).every(([tripId, role]) => a[tripId] === role);
 
 /** `changes` in pushes of a size the server takes, in order (trips first). */
 function batches(changes: SyncChange[]): SyncChange[][] {
@@ -89,7 +110,8 @@ export function createSyncEngine(
   };
   const tables = [...Object.values(dataTables), db.syncedRecords, db.syncState];
 
-  const readState = async () => (await db.syncState.get('state')) ?? NOBODY;
+  // A device from before sharing has no `trips`.
+  const readState = async (): Promise<SyncState> => ({ ...NOBODY, ...(await db.syncState.get('state')) });
 
   async function readWorking(): Promise<Working> {
     const data: BackupData = {
@@ -143,15 +165,19 @@ export function createSyncEngine(
       if (state.userId === userId) return false;
       const someoneElses = state.userId !== null;
       if (someoneElses) await clearAll();
-      await db.syncState.put({ id: 'state', userId, cursor: 0 });
+      await db.syncState.put({ ...NOBODY, userId });
       return someoneElses;
     });
   }
 
-  async function pullAll(server: SyncServer, after: number): Promise<ServerRow[]> {
+  /** All the rows after `after`, a page (`pull`) at a time. */
+  async function pullAll(
+    pull: (after: number, limit: number) => Promise<ServerRow[]>,
+    after: number,
+  ): Promise<ServerRow[]> {
     const rows: ServerRow[] = [];
     for (let cursor = after; ; ) {
-      const page = await server.pull(cursor, PULL_PAGE);
+      const page = await pull(cursor, PULL_PAGE);
       rows.push(...page);
       const last = page.at(-1)?.seq;
       if (page.length < PULL_PAGE || last === undefined || last <= cursor) return rows;
@@ -180,14 +206,38 @@ export function createSyncEngine(
         let changed = await adopt(userId);
         let needsUpdate = false;
 
-        const rows = await pullAll(server, (await readState()).cursor);
-        if (rows.length > 0) {
+        const before = await readState();
+        const rows = await pullAll((after, limit) => server.pull(after, limit), before.cursor);
+        // After the pull: a trip joined meanwhile is pulled whole below, not missed.
+        const roles: Record<ID, TripRole> = {};
+        for (const { tripId, role } of await server.memberships()) roles[tripId] = role;
+        // Trips joined since the last sync (on any device): their records from before. Without a
+        // list yet, the pulls covered the trips the account made: only joined ones are missing.
+        const joined = Object.keys(roles).filter((tripId) =>
+          before.trips ? !(tripId in before.trips) : roles[tripId] === 'member',
+        );
+        const joinedRows = new Map<ID, ServerRow[]>();
+        for (const tripId of joined) {
+          joinedRows.set(tripId, await pullAll((after, limit) => server.pullTrip(tripId, after, limit), 0));
+        }
+
+        if (rows.length > 0 || joined.length > 0 || !sameRoles(before.trips, roles)) {
           const took = await change(userId, (w, state) => {
             const taken = takeRows(w, rows);
             needsUpdate = taken.newer;
+            const trips = { ...roles };
+            for (const [tripId, tripRows] of joinedRows) {
+              const whole = takeRows(w, tripRows);
+              taken.invalid.push(...whole.invalid);
+              // Stopped short: pulled whole again (after an update).
+              if (whole.newer) {
+                needsUpdate = true;
+                delete trips[tripId];
+              }
+            }
             if (taken.invalid.length > 0) console.warn('[sync] skipped invalid records', taken.invalid);
-            if (taken.cursor === null) return;
-            return { ...state, cursor: Math.max(state.cursor, taken.cursor) };
+            dropTripsOutside(w, roles);
+            return { ...state, cursor: Math.max(state.cursor, taken.cursor ?? 0), trips };
           });
           changed ||= took;
         }
@@ -206,8 +256,25 @@ export function createSyncEngine(
                 console.warn(`[sync] ${result.status}: ${result.id}`);
               }
             }
-            changed ||= await change(userId, (w) => {
+            changed ||= await change(userId, (w, state) => {
               takePushResults(w, batch, plan.basedOn, results);
+              const trips = { ...state.trips };
+              let tripsChanged = false;
+              batch.forEach((c, i) => {
+                const status = results[i]?.id === c.id ? results[i].status : null;
+                if (c.kind !== 'trip') return;
+                if (!c.deleted && status === 'applied' && !(c.id in trips)) {
+                  // Made here, so all of it is on the server now: the account owns it.
+                  trips[c.id] = 'owner';
+                  tripsChanged = true;
+                } else if (c.deleted && status === 'forbidden' && c.id in trips) {
+                  // Only its owner deletes a trip: one a member deleted comes back, pulled whole.
+                  dropTrip(w, c.id);
+                  delete trips[c.id];
+                  tripsChanged = true;
+                }
+              });
+              if (tripsChanged) return { ...state, trips };
             });
           }
         }
@@ -216,6 +283,24 @@ export function createSyncEngine(
     },
 
     pending,
+
+    async roles(userId) {
+      const state = await readState();
+      return state.userId === userId ? (state.trips ?? {}) : {};
+    },
+
+    forgetTrip(tripId) {
+      return exclusive(async () => {
+        const { userId } = await readState();
+        if (!userId) return;
+        await change(userId, (w, state) => {
+          dropTrip(w, tripId);
+          const trips = { ...state.trips };
+          delete trips[tripId];
+          return { ...state, trips };
+        });
+      });
+    },
 
     async forget() {
       // Not queued behind a sync: one still running finds the device no longer the account's.

@@ -7,4 +7,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   /** Supabase publishable key (`sb_publishable_…`, public by design). */
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+  /** The Kakao app's JavaScript key (public). Without it invites go by link and share sheet. */
+  readonly VITE_KAKAO_JAVASCRIPT_KEY?: string;
 }

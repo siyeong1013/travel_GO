@@ -21,9 +21,15 @@ function setup(outcome: () => Promise<SyncOutcome> = async () => DONE) {
   const engine = {
     sync: vi.fn<SyncEngine['sync']>(outcome),
     pending: vi.fn<SyncEngine['pending']>(async () => 3),
+    roles: vi.fn<SyncEngine['roles']>(async () => ({ 'trip-1': 'member' })),
+    forgetTrip: vi.fn<SyncEngine['forgetTrip']>(async () => {}),
     forget: vi.fn<SyncEngine['forget']>(async () => {}),
   };
   let write = () => {};
+  const server: { hear: () => void; stopped: number } = {
+    hear: () => {},
+    stopped: 0,
+  };
   const afterChange = vi.fn();
   const store = createSyncStore({
     engine,
@@ -33,11 +39,19 @@ function setup(outcome: () => Promise<SyncOutcome> = async () => DONE) {
       return () => {};
     },
     afterChange,
+    watch: async (onChange) => {
+      server.hear = onChange;
+      return () => {
+        server.hear = () => {};
+        server.stopped += 1;
+      };
+    },
     now: testClock(),
     writeDelayMs: 10,
+    serverDelayMs: 10,
   });
   const signIn = () => account.setState({ status: 'signedIn', account: ME });
-  return { store, engine, account, afterChange, signIn, write: () => write() };
+  return { store, engine, account, afterChange, signIn, server, write: () => write() };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
@@ -59,7 +73,7 @@ describe('syncStore', () => {
     signIn();
     await settle();
     expect(engine.sync).toHaveBeenCalledWith('user-1');
-    expect(store.getState()).toMatchObject({ status: 'synced', pending: 0 });
+    expect(store.getState()).toMatchObject({ status: 'synced', pending: 0, roles: { 'trip-1': 'member' } });
     expect(store.getState().lastSyncedAt).not.toBe(T0);
     expect(afterChange).toHaveBeenCalledTimes(1);
   });
@@ -113,8 +127,9 @@ describe('syncStore', () => {
     const first = store.getState().syncNow();
     void store.getState().syncNow();
     void store.getState().syncNow();
+    await vi.waitFor(() => expect(engine.sync).toHaveBeenCalledTimes(1));
     finish();
-    await settle();
+    await vi.waitFor(() => expect(engine.sync).toHaveBeenCalledTimes(2));
     finish();
     await first;
     expect(engine.sync).toHaveBeenCalledTimes(2);
@@ -128,11 +143,36 @@ describe('syncStore', () => {
   });
 
   it('stops when signed out', async () => {
-    const { store, account, signIn } = setup();
+    const { store, account, signIn, server } = setup();
     store.getState().start();
     signIn();
     await settle();
     account.setState({ status: 'signedOut', account: null });
-    expect(store.getState()).toMatchObject({ status: 'off', pending: 0, lastSyncedAt: null });
+    expect(store.getState()).toMatchObject({ status: 'off', pending: 0, lastSyncedAt: null, roles: {} });
+    await settle();
+    expect(server.stopped).toBe(1);
+  });
+
+  it('syncs when the server says a trip changed, once for a burst', async () => {
+    const { store, engine, signIn, server } = setup();
+    store.getState().start();
+    signIn();
+    await settle();
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+
+    server.hear();
+    server.hear();
+    server.hear();
+    await settle();
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes a trip it left off the device, and has the screens read the trips again', async () => {
+    const { store, engine, afterChange, signIn } = setup();
+    signIn();
+    await store.getState().forgetTrip('trip-1');
+    expect(engine.forgetTrip).toHaveBeenCalledWith('trip-1');
+    expect(afterChange).toHaveBeenCalledTimes(1);
+    expect(store.getState().roles).toEqual({ 'trip-1': 'member' });
   });
 });

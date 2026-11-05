@@ -13,6 +13,7 @@ import type {
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
 import type { ShareDraft } from '@/data/rules/split';
+import type { SharingServer } from '@/data/sharing/sharing';
 import type { SyncServer } from '@/data/sync/syncEngine';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
@@ -90,7 +91,15 @@ export function makeItem(
 export function makeCompanion(
   overrides: Partial<Companion> & Pick<Companion, 'tripId' | 'name'>,
 ): Companion {
-  return { id: newId(), isMe: false, order: 1, createdAt: T0, updatedAt: T0, ...overrides };
+  return {
+    id: newId(),
+    isMe: false,
+    accountId: null,
+    order: 1,
+    createdAt: T0,
+    updatedAt: T0,
+    ...overrides,
+  };
 }
 
 /** An expense in KRW (unless overridden) with the given shares. */
@@ -174,18 +183,28 @@ export function createTestRepositories(clock: Clock = testClock()) {
   return { db, repos: createLocalRepositories(db, clock) };
 }
 
-const noSyncServer = (): Promise<SyncServer> =>
-  Promise.reject(new Error('this test has no sync server'));
+/** The server side for a test: the real SQL on PGlite (`createSyncDatabase`). */
+export interface TestServer {
+  serverFor: (userId: string) => SyncServer;
+  sharingFor: (userId: string | null) => SharingServer;
+}
+
+const noServer = () => Promise.reject(new Error('this test has no server'));
 
 /**
  * What `@/data` exports, on a fresh database and the test clock: screen tests swap it in with
  * `vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData())`.
- * `connect` is the sync server (none unless given).
+ * `server` answers sync and sharing (none unless given). Nothing comes in realtime.
  */
-export function createTestData(
-  connect: (userId: string) => Promise<SyncServer> = noSyncServer,
-  clock: Clock = testClock(),
-) {
+export function createTestData(server?: TestServer, clock: Clock = testClock()) {
   const db = createTravelGoDB(`test-${newId()}`);
-  return { db, ...createDataLayer(db, connect, clock) };
+  const connect = server ? async (userId: string) => server.serverFor(userId) : noServer;
+  return {
+    db,
+    ...createDataLayer(db, connect, clock),
+    connectSharing: server ? async (userId: string | null) => server.sharingFor(userId) : noServer,
+    watchServer: noRealtime,
+  };
 }
+
+const noRealtime: (onChange: () => void) => Promise<() => void> = async () => () => {};

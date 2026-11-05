@@ -15,7 +15,7 @@ vi.mock('@/data', async () => {
   const { createTestData } = await import('@/test/fixtures');
   const { createSyncDatabase } = await import('@/test/syncDatabase');
   shared.server = await createSyncDatabase();
-  return createTestData(async (userId) => shared.server!.serverFor(userId));
+  return createTestData(shared.server);
 });
 
 vi.mock('@supabase/supabase-js', async () => {
@@ -69,7 +69,7 @@ describe('sync', () => {
   });
 
   it('shows a trip made on another device', async () => {
-    const laptop = createTestData(async (userId) => server().serverFor(userId));
+    const laptop = createTestData(server());
     await laptop.repositories.trips.create({ ...OSAKA, title: '삿포로' });
     await laptop.syncEngine.sync(USER_IDS.kakao);
     await laptop.db.delete();

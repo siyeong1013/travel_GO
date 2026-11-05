@@ -10,19 +10,29 @@ export function KakaoLoginButton({ className, ...props }: LoginButtonProps) {
   return (
     <button
       type="button"
-      className={`${baseClass} bg-[#fee500] text-black/85 active:bg-[#f2d900] ${className ?? ''}`}
+      className={`${kakaoButtonClass} ${className ?? ''}`}
       {...props}
     >
-      <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden="true">
-        <path
-          fill="#000"
-          d="M12 3.5c-5.25 0-9.5 3.36-9.5 7.5 0 2.62 1.7 4.92 4.28 6.26l-1.08 3.95c-.1.36.31.65.63.44l4.7-3.11c.32.03.64.05.97.05 5.25 0 9.5-3.36 9.5-7.5S17.25 3.5 12 3.5Z"
-        />
-      </svg>
+      <KakaoSymbol />
       카카오 로그인
     </button>
   );
 }
+
+/** Kakao's speech bubble, as its login and share buttons carry it. */
+export function KakaoSymbol() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden="true">
+      <path
+        fill="#000"
+        d="M12 3.5c-5.25 0-9.5 3.36-9.5 7.5 0 2.62 1.7 4.92 4.28 6.26l-1.08 3.95c-.1.36.31.65.63.44l4.7-3.11c.32.03.64.05.97.05 5.25 0 9.5-3.36 9.5-7.5S17.25 3.5 12 3.5Z"
+      />
+    </svg>
+  );
+}
+
+/** Kakao's yellow, for a button of its service (login, KakaoTalk share). */
+export const kakaoButtonClass = `${baseClass} bg-[#fee500] text-black/85 active:bg-[#f2d900]`;
 
 /** Google's sign-in button, light theme (its branding guide): white, gray outline, the four-color G. */
 export function GoogleLoginButton({ className, ...props }: LoginButtonProps) {

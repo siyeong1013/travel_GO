@@ -18,6 +18,7 @@ import {
   expenseTitle,
 } from '@/features/expenses/expenseDisplay';
 import { useExpenseStore } from '@/features/expenses/expenseStore';
+import { useMyCompanion } from '@/features/sharing/useMyCompanion';
 import { errorMessage } from '@/lib/errorMessage';
 import { formatDate, formatMoney, josa } from '@/lib/format';
 
@@ -44,6 +45,7 @@ export function CompanionSheet({
 }: CompanionSheetProps) {
   const addCompanion = useExpenseStore((state) => state.addCompanion);
   const companionUsage = useExpenseStore((state) => state.companionUsage);
+  const me = useMyCompanion(tripId, companions);
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string>();
   const [error, setError] = useState<string | null>(null);
@@ -83,8 +85,8 @@ export function CompanionSheet({
             {companions.map((companion) => (
               <li key={companion.id} className="flex min-h-14 items-center gap-1">
                 <span className="min-w-0 truncate text-base font-medium">{companion.name}</span>
-                {/* Marks "나" once renamed, e.g. 시영 (나). */}
-                {companion.isMe && companion.name !== ME_NAME && (
+                {/* Marks the person using the app once named, e.g. 시영 (나). */}
+                {companion.id === me?.id && companion.name !== ME_NAME && (
                   <span className="ml-1 shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">
                     나
                   </span>
@@ -99,9 +101,10 @@ export function CompanionSheet({
                 >
                   <PencilIcon width={20} height={20} />
                 </button>
-                {/* "나" can't be deleted; the gap keeps the pencils lined up. */}
-                {companion.isMe && <span className="size-11 shrink-0" />}
-                {!companion.isMe && (
+                {/* "나" (the owner, to friends) and the person using the app can't be deleted;
+                    the gap keeps the pencils lined up. */}
+                {(companion.isMe || companion.id === me?.id) && <span className="size-11 shrink-0" />}
+                {!companion.isMe && companion.id !== me?.id && (
                   <button
                     type="button"
                     aria-label={`${companion.name} 삭제`}

@@ -101,5 +101,18 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
     syncState: 'id',
   });
 
+  // v6: a companion can be someone's account, in a trip shared with friends. None is yet
+  // (`updatedAt` stays: not an edit, which would win merges and syncs).
+  db.version(6)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<Companion, ID>('companions')
+        .toCollection()
+        .modify((companion) => {
+          companion.accountId = null;
+        });
+    });
+
   return db;
 }

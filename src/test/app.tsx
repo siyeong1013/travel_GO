@@ -12,6 +12,7 @@ import { backupStore } from '@/features/backup/backupStore';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
+import { sharingStore } from '@/features/sharing/sharingStore';
 import { syncStore } from '@/features/sync/syncStore';
 import { tripStore } from '@/features/trips/tripStore';
 import { emptyData, T0 } from '@/test/fixtures';
@@ -39,6 +40,7 @@ export function resetStores() {
   backupStore.setState(backupStore.getInitialState(), true);
   accountStore.setState(accountStore.getInitialState(), true);
   syncStore.setState(syncStore.getInitialState(), true);
+  sharingStore.setState(sharingStore.getInitialState(), true);
 }
 
 /**

@@ -14,10 +14,26 @@ export function makeMeCompanion(tripId: ID, timestamp: ISODateTime): Companion {
     tripId,
     name: ME_NAME,
     isMe: true,
+    accountId: null,
     order: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+/**
+ * Who the person using the app is among a trip's companions: the one linked to their account, or
+ * else "나" in a trip they own (or that isn't shared). A friend who joined the trip has none until
+ * they pick one. `role`: their part in the trip on the server, if it is there.
+ */
+export function myCompanion(
+  companions: Companion[],
+  accountId: string | null,
+  role: 'owner' | 'member' | undefined,
+): Companion | undefined {
+  const linked = accountId === null ? undefined : companions.find((c) => c.accountId === accountId);
+  if (linked || role === 'member') return linked;
+  return companions.find((c) => c.isMe && (c.accountId === null || c.accountId === accountId));
 }
 
 const nameKey = (name: string) => name.trim().toLocaleLowerCase('ko-KR');

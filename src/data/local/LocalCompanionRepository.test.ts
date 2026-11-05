@@ -73,6 +73,27 @@ describe('LocalCompanionRepository', () => {
     expect((await repos.companions.rename(chulsoo.id, '철수')).name).toBe('철수');
   });
 
+  it('links someone to their account, letting go of the account’s earlier pick', async () => {
+    const FRIEND = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const chulsoo = await add('철수');
+    const younghee = await add('영희');
+    expect(await repos.companions.claim(younghee.id, FRIEND)).toMatchObject({ accountId: FRIEND });
+    expect(await repos.companions.claim(chulsoo.id, FRIEND)).toMatchObject({ accountId: FRIEND });
+    const byName = new Map(
+      (await repos.companions.listByTrip(trip.id)).map((c) => [c.name, c.accountId]),
+    );
+    expect(byName).toEqual(new Map([['나', null], ['철수', FRIEND], ['영희', null]]));
+    await expect(
+      repos.companions.claim(chulsoo.id, 'cccccccc-0000-4000-8000-000000000003'),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const minsu = await repos.companions.create({ tripId: trip.id, name: '민수', accountId: FRIEND });
+    expect(minsu.accountId).toBe(FRIEND);
+    expect((await repos.companions.listByTrip(trip.id)).filter((c) => c.accountId === FRIEND)).toEqual([
+      minsu,
+    ]);
+  });
+
   it('never deletes "나"', async () => {
     await expect(repos.companions.delete(me.id)).rejects.toBeInstanceOf(ValidationError);
   });

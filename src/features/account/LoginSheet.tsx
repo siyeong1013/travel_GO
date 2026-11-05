@@ -9,12 +9,18 @@ import { isKakaoTalk, openInBrowserUrl } from '@/lib/platform';
 export function LoginSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="로그인">
-      <LoginChoices />
+      <div className="px-3 pb-4">
+        <LoginChoices />
+      </div>
     </BottomSheet>
   );
 }
 
-function LoginChoices() {
+/**
+ * Kakao, then Google (off inside KakaoTalk, which Google refuses: "다른 브라우저로 열기"). The login
+ * comes back to `returnTo` (the account screen by default).
+ */
+export function LoginChoices({ returnTo }: { returnTo?: string }) {
   const signIn = useAccountStore((state) => state.signIn);
   const [inKakaoTalk] = useState(() => isKakaoTalk());
   const [leaving, setLeaving] = useState(false);
@@ -28,7 +34,7 @@ function LoginChoices() {
     }
     setLeaving(true);
     try {
-      await signIn(provider); // the page then leaves for the provider
+      await signIn(provider, returnTo); // the page then leaves for the provider
     } catch (err) {
       console.error(err);
       setError('로그인 화면을 열지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -37,7 +43,7 @@ function LoginChoices() {
   }
 
   return (
-    <div className="px-3 pb-4">
+    <div>
       <div className="flex flex-col gap-2">
         <KakaoLoginButton disabled={leaving} onClick={() => void start('kakao')} />
         <GoogleLoginButton disabled={leaving || inKakaoTalk} onClick={() => void start('google')} />

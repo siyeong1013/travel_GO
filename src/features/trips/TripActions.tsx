@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router';
 import { BottomSheet, SheetAction } from '@/components/ui/BottomSheet';
 import { iconButtonClass } from '@/components/ui/buttonClass';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
-import { MoreIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
+import { MoreIcon, PencilIcon, TrashIcon, UsersIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
+import { useSyncStore } from '@/features/sync/syncStore';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
 
@@ -19,7 +20,10 @@ interface TripActionsProps {
   buttonClassName?: string;
 }
 
-/** Header "⋯" button with the trip menu and the delete confirmation. */
+/**
+ * Header "⋯" button with the trip menu and the delete confirmation. In a trip shared with the
+ * account (a member), deleting is its owner's: there is no delete.
+ */
 export function TripActions({
   trip,
   itemCount,
@@ -28,6 +32,7 @@ export function TripActions({
   buttonClassName = iconButtonClass,
 }: TripActionsProps) {
   const navigate = useNavigate();
+  const member = useSyncStore((state) => state.roles[trip.id] === 'member');
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,6 +63,15 @@ export function TripActions({
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="여행 관리">
         <SheetAction
+          icon={<UsersIcon width={20} height={20} />}
+          onClick={() => {
+            setMenuOpen(false);
+            void navigate(`/trips/${trip.id}/people`);
+          }}
+        >
+          {member ? '함께하는 사람' : '친구 초대'}
+        </SheetAction>
+        <SheetAction
           icon={<PencilIcon width={20} height={20} />}
           onClick={() => {
             setMenuOpen(false);
@@ -66,16 +80,18 @@ export function TripActions({
         >
           여행 정보 수정
         </SheetAction>
-        <SheetAction
-          tone="danger"
-          icon={<TrashIcon width={20} height={20} />}
-          onClick={() => {
-            setMenuOpen(false);
-            setConfirmOpen(true);
-          }}
-        >
-          여행 삭제
-        </SheetAction>
+        {!member && (
+          <SheetAction
+            tone="danger"
+            icon={<TrashIcon width={20} height={20} />}
+            onClick={() => {
+              setMenuOpen(false);
+              setConfirmOpen(true);
+            }}
+          >
+            여행 삭제
+          </SheetAction>
+        )}
       </BottomSheet>
 
       <ConfirmSheet

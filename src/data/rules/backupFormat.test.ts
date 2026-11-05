@@ -26,7 +26,11 @@ function sampleFile(): BackupFile {
     cover: makeCover('osaka'),
   });
   const me = makeMeCompanion(trip.id, T0);
-  const friend = makeCompanion({ tripId: trip.id, name: '철수' });
+  const friend = makeCompanion({
+    tripId: trip.id,
+    name: '철수',
+    accountId: 'bbbbbbbb-0000-4000-8000-000000000002',
+  });
   const item = makeItem({ tripId: trip.id, place: makePlace('오사카성'), time: '09:30', memo: '입장권' });
   const { shares, ...expense } = makeExpense(
     {
@@ -198,6 +202,13 @@ describe('backup file format', () => {
     const { cover, ...v3Trip } = file.trips[0]!;
     const parsed = roundTrip({ ...file, schemaVersion: 3, trips: [v3Trip] });
     expect(parsed.trips[0]).toEqual({ ...v3Trip, cover: null });
+  });
+
+  it('converts v4 files: companions are names only', () => {
+    const file = sampleFile();
+    const v4Companions = file.companions.map(({ accountId, ...companion }) => companion);
+    const parsed = roundTrip({ ...file, schemaVersion: 4, companions: v4Companions });
+    expect(parsed.companions).toEqual(v4Companions.map((c) => ({ ...c, accountId: null })));
   });
 
   it('takes a cover photo only as an image held in the file', () => {

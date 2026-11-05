@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalRepositories, createTravelGoDB, type TravelGoDB } from '@/data/local';
-import { meCompanionId } from '@/data/rules/companion';
+import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
 import { newId } from '@/lib/id';
 import { makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
 
@@ -38,6 +38,7 @@ describe('schema migrations', () => {
         tripId: v1Trip.id,
         name: '나',
         isMe: true,
+        accountId: null,
         order: 0,
         createdAt: v1Trip.createdAt,
         updatedAt: v1Trip.createdAt,
@@ -135,5 +136,30 @@ describe('schema migrations', () => {
     expect(await db.trips.toArray()).toEqual([trip]);
     expect(await db.syncedRecords.count()).toBe(0);
     expect(await db.syncState.get('state')).toBeUndefined();
+  });
+
+  it('v5 → v6: companions are names only, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip();
+    const { accountId, ...v5Me } = makeMeCompanion(trip.id, '2025-12-21T00:00:00.000Z');
+
+    // A database as version 5 of the app left it.
+    const v5 = new Dexie(name);
+    v5.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v5.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v5.version(3).stores({});
+    v5.version(4).stores({});
+    v5.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    await v5.table('trips').add(trip);
+    await v5.table('companions').add(v5Me);
+    v5.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.companions.toArray()).toEqual([{ ...v5Me, accountId: null }]);
   });
 });

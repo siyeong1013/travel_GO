@@ -36,8 +36,9 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v2: settlement currency and budget on trips; companions, expenses, shares, settlements.
  * v3: `fetchedAt` of Google's place data (places and trip cities), which expires after 30 days.
  * v4: trips' cover photo (`cover`).
+ * v5: companions' `accountId` (a trip shared with friends).
  */
-export const BACKUP_SCHEMA_VERSION = 4;
+export const BACKUP_SCHEMA_VERSION = 5;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -205,13 +206,14 @@ function readScheduleItem(value: unknown, path: string, version: number): Schedu
   };
 }
 
-function readCompanion(value: unknown, path: string): Companion {
+function readCompanion(value: unknown, path: string, version: number): Companion {
   const c = object(value, path);
   return {
     id: text(c.id, `${path}.id`),
     tripId: text(c.tripId, `${path}.tripId`),
     name: text(c.name, `${path}.name`),
     isMe: boolean(c.isMe, `${path}.isMe`),
+    accountId: version >= 5 ? nullable(text)(c.accountId, `${path}.accountId`) : null,
     order: number(c.order, `${path}.order`),
     createdAt: timestamp(c.createdAt, `${path}.createdAt`),
     updatedAt: timestamp(c.updatedAt, `${path}.updatedAt`),
@@ -355,7 +357,7 @@ export function parseRecord<K extends RecordKind>(
   const readers: { [Kind in RecordKind]: () => RecordsByKind[Kind] } = {
     trip: () => readTrip(raw, path, version),
     scheduleItem: () => readScheduleItem(raw, path, version),
-    companion: () => readCompanion(raw, path),
+    companion: () => readCompanion(raw, path, version),
     settlement: () => readSettlement(raw, path),
     expense: () => {
       const expense = readExpense(raw, path);
@@ -414,7 +416,7 @@ export function parseBackupFile(raw: unknown): BackupFile {
       : {
           trips,
           scheduleItems: list('scheduleItems', (v, path) => readScheduleItem(v, path, version)),
-          companions: list('companions', readCompanion),
+          companions: list('companions', (v, path) => readCompanion(v, path, version)),
           expenses: list('expenses', readExpense),
           expenseShares: list('expenseShares', readShare),
           settlements: list('settlements', readSettlement),

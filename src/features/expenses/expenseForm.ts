@@ -107,6 +107,8 @@ interface NewExpenseContext {
   rates?: Map<CurrencyCode, RateDraft>;
   /** Prefills the link and the day. */
   scheduleItem?: ScheduleItem | null;
+  /** The person using the app (`myCompanion`), who pays; "나" otherwise. */
+  me?: Companion;
 }
 
 /**
@@ -120,13 +122,14 @@ export function newExpenseValues({
   today,
   rates = lastRates(expenses, trip.settlementCurrency),
   scheduleItem,
+  me = companions.find((c) => c.isMe),
 }: NewExpenseContext): ExpenseFormValues {
   const latest = expenses.reduce<ExpenseWithShares | null>(
     (last, expense) => (!last || expense.createdAt > last.createdAt ? expense : last),
     null,
   );
   const currency = latest?.currency ?? trip.settlementCurrency;
-  const me = companions.find((c) => c.isMe) ?? companions[0];
+  const payer = me ?? companions[0];
   return {
     amount: '',
     currency,
@@ -136,7 +139,7 @@ export function newExpenseValues({
       scheduleItem?.date ??
       (isDateInRange(today, trip.startDate, trip.endDate) ? today : trip.startDate),
     paymentMethod: latest?.paymentMethod ?? 'card',
-    payerId: me?.id ?? '',
+    payerId: payer?.id ?? '',
     splitMethod: 'equal',
     participantIds: companions.map((c) => c.id),
     shareAmounts: {},

@@ -63,6 +63,11 @@ export const routes: RouteObject[] = [
             path: 'trips/:tripId/expenses/:expenseId',
             lazy: lazyPage(() => import('@/pages/ExpenseEditPage'), 'ExpenseEditPage'),
           },
+          {
+            path: 'trips/:tripId/people',
+            lazy: lazyPage(() => import('@/pages/TripPeoplePage'), 'TripPeoplePage'),
+          },
+          { path: 'join/:token', lazy: lazyPage(() => import('@/pages/JoinPage'), 'JoinPage') },
           { path: 'settings', lazy: lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage') },
           { path: 'account', lazy: lazyPage(() => import('@/pages/AccountPage'), 'AccountPage') },
           { path: '*', element: <NotFoundPage /> },

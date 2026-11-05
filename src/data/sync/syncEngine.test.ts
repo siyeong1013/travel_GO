@@ -30,6 +30,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await server.close();
   for (const db of databases.splice(0)) await db.delete();
 });
@@ -37,12 +38,22 @@ afterEach(async () => {
 function device(
   deviceClock: Clock = () => clock(),
   connect = async (userId: string): Promise<SyncServer> => server.serverFor(userId),
+  account = ME,
 ) {
   const db = createTravelGoDB(`test-${newId()}`);
   databases.push(db);
   const layer = createDataLayer(db, connect, deviceClock);
-  return { db, repos: layer.repositories, engine: layer.syncEngine, sync: () => layer.syncEngine.sync(ME) };
+  return {
+    db,
+    repos: layer.repositories,
+    engine: layer.syncEngine,
+    sync: () => layer.syncEngine.sync(account),
+  };
 }
+
+/** A device of the friend (`SOMEONE`). */
+const friendsDevice = (connect?: (userId: string) => Promise<SyncServer>) =>
+  device(undefined, connect, SOMEONE);
 
 type Device = ReturnType<typeof device>;
 
@@ -183,7 +194,7 @@ describe('sync', () => {
     const phone = device(undefined, async (userId) => {
       const real = server.serverFor(userId);
       return {
-        pull: real.pull,
+        ...real,
         async push(changes) {
           const first = interrupt;
           interrupt = null;
@@ -277,7 +288,7 @@ describe('sync', () => {
     const phone = device(undefined, async (userId) => {
       const real = server.serverFor(userId);
       return {
-        pull: real.pull,
+        ...real,
         push: (changes) => {
           pushes.push(changes.length);
           return real.push(changes);
@@ -331,3 +342,133 @@ describe('sync', () => {
     expect(await laptop.repos.schedule.listByTrip(trip.id)).toEqual([]);
   });
 });
+
+describe('sync of shared trips', () => {
+  /** The friend joins `tripId` through the owner's link. */
+  async function join(tripId: ID) {
+    const { token } = await server.sharingFor(ME).createInvite(tripId);
+    await server.sharingFor(SOMEONE).join(token);
+  }
+
+  it('brings a joined trip whole, also what was in it before, and changes go both ways', async () => {
+    const phone = device();
+    const trip = await addTrip(phone);
+    await addItem(phone, trip.id, '오사카성');
+    await phone.repos.expenses.create(expenseOf(trip.id, 12000));
+    await phone.sync();
+
+    // The friend's device has read past the owner's rows before joining.
+    const friends = friendsDevice();
+    await addTrip(friends, 'Sapporo');
+    await friends.sync();
+    await join(trip.id);
+
+    expect(await friends.sync()).toMatchObject({ changed: true, pending: 0 });
+    expect((await friends.repos.trips.list()).map((t) => t.title).sort()).toEqual(['Osaka', 'Sapporo']);
+    expect(await names(friends, trip.id)).toEqual([['오사카성', '2026-12-01', 0]]);
+    expect(await friends.repos.expenses.listByTrip(trip.id)).toHaveLength(1);
+    expect(await friends.engine.roles(SOMEONE)).toEqual({
+      [trip.id]: 'member',
+      [(await friends.repos.trips.list()).find((t) => t.title === 'Sapporo')!.id]: 'owner',
+    });
+
+    await addItem(friends, trip.id, '도톤보리');
+    await friends.sync();
+    await phone.sync();
+    expect(await names(phone, trip.id)).toEqual([
+      ['오사카성', '2026-12-01', 0],
+      ['도톤보리', '2026-12-01', 1],
+    ]);
+    // The owner's other trips stay the owner's.
+    expect((await phone.repos.trips.list()).map((t) => t.title)).toEqual(['Osaka']);
+  });
+
+  it('pulls a trip joined on the friend’s other device', async () => {
+    const phone = device();
+    const trip = await addTrip(phone);
+    await addItem(phone, trip.id, '오사카성');
+    await phone.sync();
+    const friendsPhone = friendsDevice();
+    const friendsLaptop = friendsDevice();
+    await addTrip(friendsLaptop, 'Sapporo');
+    await friendsLaptop.sync();
+
+    await join(trip.id);
+    await friendsPhone.sync();
+    await friendsLaptop.sync();
+    expect(await names(friendsLaptop, trip.id)).toEqual([['오사카성', '2026-12-01', 0]]);
+  });
+
+  it('takes the trip off the friend’s devices when they leave or are taken out, not off the server', async () => {
+    const phone = device();
+    const trip = await addTrip(phone);
+    await phone.sync();
+    await join(trip.id);
+    const friendsPhone = friendsDevice();
+    const friendsLaptop = friendsDevice();
+    await friendsPhone.sync();
+    await friendsLaptop.sync();
+
+    // Leaving on the phone: it drops the trip right away, without deleting it on the server.
+    await server.sharingFor(SOMEONE).leave(trip.id);
+    await friendsPhone.engine.forgetTrip(trip.id);
+    expect(await friendsPhone.repos.trips.list()).toEqual([]);
+    expect(await friendsPhone.engine.pending()).toBe(0);
+    expect(await friendsLaptop.sync()).toMatchObject({ changed: true, pending: 0 });
+    expect(await friendsLaptop.repos.trips.list()).toEqual([]);
+    expect(await friendsLaptop.engine.roles(SOMEONE)).toEqual({});
+
+    await join(trip.id);
+    await friendsLaptop.sync();
+    expect(await friendsLaptop.repos.trips.list()).toHaveLength(1);
+    await server.sharingFor(ME).removeMember(trip.id, SOMEONE);
+    await friendsLaptop.sync();
+    expect(await friendsLaptop.repos.trips.list()).toEqual([]);
+
+    expect(await phone.sync()).toMatchObject({ changed: false });
+    expect((await phone.repos.trips.list()).map((t) => t.id)).toEqual([trip.id]);
+  });
+
+  it('brings back a trip a member deleted, since only its owner deletes it', async () => {
+    const phone = device();
+    const trip = await addTrip(phone);
+    await addItem(phone, trip.id, '오사카성');
+    await phone.sync();
+    await join(trip.id);
+    const friends = friendsDevice();
+    await friends.sync();
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await friends.repos.trips.delete(trip.id);
+    await friends.sync();
+    expect(await friends.engine.pending()).toBe(0);
+    await friends.sync();
+    expect(await names(friends, trip.id)).toEqual([['오사카성', '2026-12-01', 0]]);
+    expect((await phone.repos.trips.list()).map((t) => t.id)).toEqual([trip.id]);
+  });
+
+  it('on a device from before sharing, pulls only the trips it joined whole', async () => {
+    const pulled: ID[] = [];
+    const phone = device(undefined, async (userId) => {
+      const real = server.serverFor(userId);
+      return {
+        ...real,
+        pullTrip: (tripId, after, limit) => {
+          pulled.push(tripId);
+          return real.pullTrip(tripId, after, limit);
+        },
+      };
+    });
+    const trip = await addTrip(phone);
+    await phone.sync();
+    const { trips, ...before } = (await phone.db.syncState.get('state'))!;
+    expect(trips).toEqual({ [trip.id]: 'owner' });
+    await phone.db.syncState.put(before as never);
+
+    expect(await phone.sync()).toMatchObject({ changed: false, pending: 0 });
+    expect(pulled).toEqual([]);
+    expect(await phone.engine.roles(ME)).toEqual({ [trip.id]: 'owner' });
+    expect(await phone.engine.roles(SOMEONE)).toEqual({});
+  });
+});
+

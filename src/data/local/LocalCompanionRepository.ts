@@ -23,6 +23,15 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
     return companion;
   }
 
+  /** `accountId`'s companions among `companions` stop being theirs. */
+  async function letGo(companions: Companion[], accountId: string, timestamp: string) {
+    for (const companion of companions) {
+      if (companion.accountId === accountId) {
+        await db.companions.put({ ...companion, accountId: null, updatedAt: timestamp });
+      }
+    }
+  }
+
   /** See `CompanionUsage`; also the participants left for each expense to re-split. */
   async function usageOf(companion: Companion) {
     const expenses = await db.expenses.where('tripId').equals(companion.tripId).toArray();
@@ -69,10 +78,12 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
           tripId: input.tripId,
           name: cleanCompanionName(input.name, others),
           isMe: false,
+          accountId: input.accountId ?? null,
           order: Math.max(-1, ...others.map((other) => other.order)) + 1,
           createdAt: timestamp,
           updatedAt: timestamp,
         };
+        if (companion.accountId) await letGo(others, companion.accountId, timestamp);
         await db.companions.add(companion);
         return companion;
       });
@@ -83,6 +94,20 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
         const current = await requireCompanion(id);
         const others = (await ofTrip(current.tripId)).filter((other) => other.id !== id);
         const next = { ...current, name: cleanCompanionName(name, others), updatedAt: now() };
+        await db.companions.put(next);
+        return next;
+      });
+    },
+
+    claim(id, accountId) {
+      return db.transaction('rw', db.companions, async () => {
+        const current = await requireCompanion(id);
+        if (current.accountId === accountId) return current;
+        if (current.accountId !== null) throw new ValidationError('companion is another account’s');
+        const timestamp = now();
+        const others = (await ofTrip(current.tripId)).filter((other) => other.id !== id);
+        await letGo(others, accountId, timestamp);
+        const next = { ...current, accountId, updatedAt: timestamp };
         await db.companions.put(next);
         return next;
       });

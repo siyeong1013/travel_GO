@@ -16,6 +16,8 @@ beforeEach(() => {
   // No login unless a test stubs a Supabase project (`stubSupabase`).
   vi.stubEnv('VITE_SUPABASE_URL', '');
   vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '');
+  // Invites go as a link (no KakaoTalk SDK).
+  vi.stubEnv('VITE_KAKAO_JAVASCRIPT_KEY', '');
 });
 afterEach(() => {
   vi.unstubAllGlobals();

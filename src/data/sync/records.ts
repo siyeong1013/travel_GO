@@ -12,6 +12,7 @@ import type {
   Trip,
 } from '@/data/models';
 import { BACKUP_SCHEMA_VERSION, parseRecord } from '@/data/rules/backupFormat';
+import type { TripRole } from '@/data/sharing/sharing';
 import { normalizeSchedule } from '@/data/rules/schedule';
 import { compareIsoDateTime } from '@/lib/dates';
 
@@ -52,6 +53,12 @@ export interface SyncState {
   userId: string | null;
   /** The last `seq` read from the server. */
   cursor: number;
+  /**
+   * The account's trips on the server that this device has all the records of, with its role in
+   * each. A trip joined since has records from before `cursor`: they are pulled on their own.
+   * Null until the first pull (or on a device from before sharing, whose pulls covered all).
+   */
+  trips: Record<ID, TripRole> | null;
 }
 
 /** A change for the server (`sync_push`). */
@@ -217,6 +224,20 @@ function removeRecord(w: Working, kind: RecordKind, id: ID) {
   if (kind === 'expense') removeShares(w, id);
   table(w, kind).delete(id);
   if (kind === 'scheduleItem') w.touched.add(tripIdOf(kind, record));
+}
+
+/**
+ * Takes off the device the trips the server has (as far as it knows) that the account is no
+ * longer in: it left them, or their owner took it out. Trips not on the server yet stay.
+ */
+export function dropTripsOutside(w: Working, roles: Record<ID, TripRole>) {
+  const onServer = new Set([...w.synced.values()].map((entry) => entry.tripId));
+  for (const tripId of onServer) if (!(tripId in roles)) removeRecord(w, 'trip', tripId);
+}
+
+/** Takes a trip off the device without telling the server (the account left it). */
+export function dropTrip(w: Working, tripId: ID) {
+  removeRecord(w, 'trip', tripId);
 }
 
 function know(w: Working, entry: SyncedRecord) {

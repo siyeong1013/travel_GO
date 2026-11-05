@@ -4,7 +4,7 @@ import type { Repositories } from '@/data/repositories';
 const WRITES: { [K in keyof Repositories]: (keyof Repositories[K])[] } = {
   trips: ['create', 'update', 'delete'],
   schedule: ['create', 'update', 'delete', 'move'],
-  companions: ['create', 'rename', 'delete'],
+  companions: ['create', 'rename', 'claim', 'delete'],
   expenses: ['create', 'update', 'delete'],
   settlements: ['create', 'delete'],
   backup: ['importAll'],

@@ -29,6 +29,8 @@ export interface ExpenseState {
   reload: () => Promise<void>;
   addCompanion: (input: NewCompanion) => Promise<Companion>;
   renameCompanion: (id: ID, name: string) => Promise<Companion>;
+  /** Makes them the account's companion (`CompanionRepository.claim`); its earlier pick lets go. */
+  claimCompanion: (id: ID, accountId: string) => Promise<Companion>;
   /** What deleting would touch; the confirmation shows it. */
   companionUsage: (id: ID) => Promise<CompanionUsage>;
   /** Expenses are re-read afterwards: equal/ratio splits they were in get re-split. */
@@ -112,6 +114,13 @@ export function createExpenseStore(repos: LedgerRepositories) {
         const renamed = await repos.companions.rename(id, name);
         set((state) => ({ companions: state.companions.map((c) => (c.id === id ? renamed : c)) }));
         return renamed;
+      },
+
+      async claimCompanion(id, accountId) {
+        const claimed = await repos.companions.claim(id, accountId);
+        // The account's earlier pick changed too.
+        await get().reload();
+        return claimed;
       },
 
       companionUsage(id) {
