@@ -14,6 +14,7 @@
 - PWA: `vite-plugin-pwa` (generateSW, autoUpdate)
 - 환율: open.er-api.com (무료·키 없음·CORS 허용·166개 통화·하루 1회 갱신). 약관상 출처 링크 표기 필요, 캐시 허용, 1시간에 1번 이하로 요청 (넘으면 20분간 429).
 - 테스트: Vitest + `fake-indexeddb`, 컴포넌트 테스트는 Testing Library + happy-dom
+- 로그인: Supabase Auth (`@supabase/supabase-js` 2.118, 16단계). 처음 쓸 때 받는 조각이다(214KB, gzip 55KB).
 
 ## 명령어
 
@@ -42,6 +43,7 @@ src/
     settlement/   # 정산: 잔액, 최소 송금안, 송금 완료 기록, 텍스트 복사
     backup/       # 설정 화면의 백업 내보내기·가져오기
     install/      # 홈 화면에 추가 안내 (iOS)
+    account/      # 로그인(카카오·구글, Supabase), 계정 화면
   data/
     models/       # 도메인 타입 (Trip, ScheduleItem, PlaceSnapshot, Companion, Expense, ExpenseShare, Settlement, BackupFile)
     repositories/ # 저장소 인터페이스, 입력 타입, 에러 클래스
@@ -226,11 +228,12 @@ src/
   - manifest: 이름 travel GO, `display: standalone`, 흰 테마색, 아이콘(192·512, 마스커블 512).
   - 아이콘은 `public/favicon.svg`(파란 배경에 45° 기울어 이륙하는 흰 비행기, 가운데 동그란 구멍)에서 그렸다. 마스커블·`apple-touch-icon`(180)은 모서리 없이 꽉 채운 판이고, `favicon.ico`(16·32·48)도 있다. 비행기는 안드로이드 마스커블의 최소 안전 원(반지름 40%) 안에 들어간다. 그림을 바꾸면 PNG와 `index.html`의 시작 화면 그림도 같이 바꾼다.
   - `index.html`에 iOS 홈 화면 앱용 메타가 있다(전체 화면, 상태 표시줄 `default`: 흰 바탕에 진한 글씨, 앱 헤더와 같음).
-- 서비스워커(generateSW)는 앱 파일(화면별 조각 포함, 37개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
+- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 40개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
 - 업데이트(`registerType: 'autoUpdate'`): 앱이 `virtual:pwa-register`를 쓰지 않아서 등록 스크립트(`registerSW.js`)는 로드 때 등록만 한다.
   - 새 서비스워커는 설치되면 바로 자리를 잡고(`skipWaiting`·`clientsClaim`), 열려 있는 화면은 새로고침하지 않는다. 새 버전은 다음에 앱을 열 때 보인다. 입력 중인 폼이 날아가지 않게 하려는 것이다(실제 브라우저로 확인함).
   - 화면 코드는 처음 열 때 받는 조각이라("번들 나누기"), 업데이트 전에 열어 둔 화면이 업데이트로 지워진 옛 조각을 부를 수 있다. 그러면 한 번 새로고침해서 새 버전으로 연다(`lib/chunkErrors.ts`).
 - 번들 나누기 (`app/router.tsx`): 여행 목록(첫 화면)과 없는 주소 화면 말고는 처음 열 때 코드를 받는다(React Router `lazy`, `lazyPage()`). 첫 화면에 받는 파일이 625KB에서 468KB(gzip 149KB)로 줄었다. 남은 것은 거의 라이브러리다(react-dom 202KB, Dexie 96KB, React Router 89KB).
+  - 16단계(Supabase 조각 추가)부터는 빌드 도구(Rolldown)가 React 부분을 따로 떼어, 첫 화면이 `index` 364KB와 `react` 105KB를 같이 받는다(`index.html`이 미리 받음). 합계(gzip 약 149KB)는 같다. 지난 커밋을 따로 빌드해 비교했고, 목록 화면이 `lib/supabase`를 불러오는 것과는 상관이 없었다.
   - `lazy`는 함수 형태로 쓴다. 객체 형태(`lazy: { Component }`)는 React Router가 불러온 항목을 그 객체에서 직접 지워서(`lazy[key] = undefined`), 같은 라우트 정의로 라우터를 여러 번 만드는 테스트에서 두 번째부터 "No route matches"가 난다.
   - 첫 화면의 코드를 받는 동안은 빈 기둥(`hydrateFallbackElement`)을 보여준다.
   - 화면 코드를 받지 못하거나 화면이 오류로 멈추면 `RouteError`("화면을 불러오지 못했어요 · 다시 시도")가 뜬다.
@@ -263,6 +266,83 @@ src/
   - 규칙은 Vercel이 쓰는 변환기(`@vercel/routing-utils`)로 확인했다: 헤더 → 파일 → `rewrites` 순서.
 - 환경 변수는 Vercel 프로젝트 설정에 둔다(`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_MAP_ID`). 빌드할 때 번들에 들어가므로 값을 바꾸면 다시 배포해야 반영된다.
 - Hobby 플랜은 계정 주인의 커밋만 배포한다(커밋 이메일이 GitHub 계정의 주소여야 함). 그래서 커밋 이메일은 GitHub가 주는 대신 쓰는 주소(`134910028+siyeong1013@users.noreply.github.com`, 이 저장소의 `.git/config`)다. 공개 저장소라서 진짜 이메일을 기록에 남기지 않으려는 것이기도 하다.
+
+### 로그인 (Supabase Auth, 16단계)
+- 프로젝트는 `.env.local`·Vercel의 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`(`sb_publishable_…`, 공개용)다. 비어 있으면 로그인이 없다(여행 목록의 계정 버튼도 없고, `/account`는 "로그인을 쓸 수 없어요"). secret 키는 앱에 절대 넣지 않는다.
+  - 2026-11-04에 사용자가 무료 프로젝트 `szjkqiatfclsoxoluetf`(`https://szjkqiatfclsoxoluetf.supabase.co`)를 만들었다(GitHub 계정으로 가입). 두 값은 `.env.local`에 넣었고, Vercel에는 16단계를 배포할 때 넣는다.
+  - 켜진 로그인 방식은 `curl https://<ref>.supabase.co/auth/v1/settings -H 'apikey: <publishable 키>'`의 `external`로 본다. 제공자가 꺼져 있으면 로그인 버튼이 Supabase의 400 페이지(`provider is not enabled`)로 간다.
+  - 돌아올 주소 목록은 `GET /auth/v1/verify?token=x&type=magiclink&redirect_to=<주소>`의 `Location`으로 확인한다. 목록에 있는 주소면 그 주소로, 없으면 Site URL로 오류(`otp_expired`)와 함께 보낸다. 로그인은 일어나지 않는다.
+    - 2026-11-04 확인: 5173·5174·배포 주소의 `/settings`·`/account`는 그대로 돌아오고, 목록에 없는 주소는 Site URL로 간다.
+- 대시보드 설정 (Authentication)
+  - URL Configuration: Site URL은 `https://travel-go-lemon.vercel.app`. Redirect URLs는 `http://localhost:5173/**`, `http://localhost:5174/**`와 처음 넣은 `https://travel-go-lemon.vercel.app/settings`(이제 쓰지 않음)다.
+    - Site URL과 scheme·host·port가 같은 주소는 목록에 없어도 받아 준다(supabase/auth `internal/utilities/request.go`의 `IsRedirectURLValid`). 그래서 배포 주소의 어느 화면으로 돌아와도 되고, 로그인 화면을 `/account`로 옮길 때 대시보드를 고치지 않았다.
+    - 그 밖의 주소(다른 포트 등)는 목록에 없으면 Site URL(`/`)로 보낸다. `/`에서는 로그인 코드를 읽지 않아서 받은 `?code=`가 그대로 버려진다.
+    - 개발 서버에서 로그인했는데 배포 주소의 `/?code=`로 가면, 브라우저 주소의 포트가 5173·5174가 아닌 것이다.
+      - 사용자는 VS Code 원격 접속(Remote-SSH)으로 개발 서버를 연다. VS Code가 원격 5173을 내 컴퓨터의 다른 포트로 이어 줄 수 있다. 2026-11-04에 첫 로그인은 됐지만, 서버를 다시 켠 뒤에 이렇게 됐다.
+      - 같은 이유로 지도 키(리퍼러 제한)도 막힌다. VS Code 포트(PORTS) 탭에서 5173의 로컬 포트를 5173으로 맞춘다.
+      - 내가 띄운 확인용 서버(5174)도 VS Code가 자동으로 이어 주므로, 내 컴퓨터의 포트를 차지할 수 있다.
+      - 원격의 `localhost`와 달리 `127.0.0.1`은 포트와 상관없이 받아 준다(`IsRedirectURLValid`의 loopback 규칙). 하지만 지도 키 리퍼러에는 없다.
+  - Sign In / Providers
+    - 이메일 로그인은 끈다(앱은 카카오·구글만 쓴다).
+    - 새 사용자 가입(Allow new users to sign up)은 켜 둔다. 끄면 처음 로그인하는 사람이 `signup_disabled`로 막힌다.
+- 구글 (Google Cloud의 Google 인증 플랫폼)
+  - 지도 키와 같은 프로젝트(My First Project)에 둔다. 무료 체험이 끝나면 그 프로젝트의 결제가 꺼지지만, 로그인은 결제가 필요 없어서 그대로다.
+  - 2026-11-04에 설정했다.
+    - `/auth/v1/settings`에서 구글이 켜지고 이메일이 꺼진 것을 확인했다.
+    - `/auth/v1/authorize?provider=google`이 오류 없이 구글 로그인 화면(`/v3/signin/identifier`)으로 간다. `client_id`는 프로젝트 번호 `705597297951-`로 시작한다.
+    - 사용자가 개발 서버(5173)에서 실제 구글 계정으로 로그인했다. 설정 화면에 이름, 사진(사진이 없는 계정이라 구글이 만든 이름 그림), "Google로 로그인했어요"가 보였다.
+  - 웹 애플리케이션 클라이언트 `travel GO`의 승인된 리디렉션 URI는 `https://szjkqiatfclsoxoluetf.supabase.co/auth/v1/callback` 하나다. 구글과는 Supabase 서버가 주고받으므로 자바스크립트 원본은 필요 없다.
+  - Client ID·secret은 Supabase의 Google 제공자에만 넣는다. secret은 만들 때 한 번만 보인다(2025년 4월부터). 잃어버리면 그 클라이언트에 secret을 새로 추가한다.
+  - Supabase는 구글에 `email`·`profile`만 요청한다(supabase/auth `internal/api/provider/google.go`).
+    - 이름·이메일·프로필만 요청하는 앱은 '테스트' 상태여도 누구나 로그인된다. 테스트 사용자 목록에 없어도 되고, 경고나 7일 만료도 없다(Google 도움말 "Manage App Audience").
+    - 그래서 앱을 게시(Publish)하지 않고, 데이터 액세스(범위)도 설정하지 않는다.
+  - 구글 로그인 창에는 앱 이름 대신 `szjkqiatfclsoxoluetf.supabase.co`가 나온다.
+    - 이름을 띄우려면 브랜드 인증이 필요하다.
+    - 브랜드 인증을 받으려면 리디렉션 주소의 도메인을 우리가 소유해야 한다. 그러려면 Supabase 맞춤 도메인(유료)이 먼저다.
+  - 6개월 동안 구글 로그인 요청이 없는 클라이언트는 구글이 지운다.
+    - 지우기 30일 전에 메일이 오고, 지운 뒤에도 30일 이상 복구할 수 있다.
+    - Supabase 세션은 구글 없이 갱신된다. 그래서 모두 로그인한 채로 지내기만 해도 지워질 수 있다. 메일이 오면 한 번 구글로 로그인한다.
+- 카카오 (카카오디벨로퍼스, 2025년에 바뀐 메뉴 기준)
+  - 앱 `travel GO`. 아이콘은 배포 주소의 `apple-touch-icon.png`(180px), 앱 대표 도메인은 배포 주소다.
+  - 비즈 앱 전환: [앱] > [일반] > [비즈니스 정보] > [개인 개발자 비즈 앱]. 앱 주인이 먼저 프로필 > [계정 설정] > [본인인증]을 해야 한다.
+    - 이메일 동의항목은 비즈 앱(또는 테스트 앱)이면 심사 없이 설정된다.
+    - [앱] > [추가 기능 신청]의 심사(영업일 3~5일, 개인정보 처리방침 필요)는 다른 개인정보 항목용이다.
+  - [카카오 로그인] > [사용 설정]의 상태를 ON으로 한다.
+  - [동의항목]은 닉네임 필수, 프로필 사진 선택, 카카오계정(이메일) 선택이다. 항목마다 동의 목적을 적는다.
+  - 리다이렉트 URI와 클라이언트 시크릿은 [앱] > [플랫폼 키] > [REST API 키]의 키 설정에 있다(예전의 [카카오 로그인] 메뉴가 아님).
+    - 리다이렉트 URI는 Supabase 콜백 하나다.
+    - 호출 허용 IP 주소는 비운다. 토큰은 Supabase 서버가 받는다.
+    - 클라이언트 시크릿은 키를 만들 때부터 켜져 있다. 코드가 카카오 로그인·비즈니스 인증 두 줄인데, 카카오 로그인 줄의 것을 쓴다.
+    - 리다이렉트 URI 칸 옆의 [+]는 칸을 하나 더 만드는 버튼이다. 입력하고 오른쪽 아래 [저장]만 누르면 된다.
+  - Supabase의 Kakao 제공자에 REST API Key, Client Secret Code를 넣고 "Allow users without an email"을 켠다. 칸 이름은 supabase/supabase의 `AuthProvidersFormValidation.tsx`에서 확인했다.
+  - 확인 방법: 카카오의 인가 주소(`kauth.kakao.com/oauth/authorize`)는 키나 리다이렉트 URI가 틀려도 먼저 카카오 로그인 화면으로 보낸다(검사는 로그인 뒤).
+    - 그래서 키는 토큰 주소(`/oauth/token`)에 가짜 코드를 보내 본다. 아는 키면 KOE010(`Bad client credentials`, 시크릿이 필요함), 없는 키면 KOE101이다.
+    - 2026-11-05: `/auth/v1/settings`에서 카카오가 켜졌고, Supabase가 쓰는 키가 KOE010이었다.
+  - 2026-11-05: 사용자가 개발 서버(5173)의 계정 화면에서 실제 카카오 계정으로 로그인했다.
+  - 180일 동안 설정 변경이나 API 호출이 없으면 '장기 미이용 앱'이 된다. 앱 관리 페이지에서 해제한다.
+- `lib/supabase.ts`: `supabaseConfig()`, `supabase(config)`. 클라이언트는 처음 쓸 때 코드를 받아 하나만 만든다. 로그인은 PKCE다. 제공자가 `?code=`를 붙여 돌려보내면 클라이언트가 시작하면서 세션으로 바꾸고 주소에서 지운다.
+- `features/account/`
+  - `account.ts`: `Account`(이름·사진·제공자, `toAccount(user)`: 카카오 닉네임은 `full_name`·`name`, 사진은 `avatar_url`이고 `http://`는 `https://`로), `loginOutcome(search)`.
+  - `auth.ts`: `Auth` 인터페이스(`start`·`onChange`·`signIn`·`signOut`)와 Supabase 구현 `supabaseAuth()`.
+    - `start()`는 돌아온 로그인을 마친 뒤 세션을 읽는다. 주소에 `error`가 있거나 `code`가 남아 있으면(이 브라우저에서 시작한 로그인이 아님) 그 결과를 돌려주고 주소에서 지운다.
+    - Supabase는 오류를 query와 fragment(`#error=…&sb=`) 두 곳에 붙인다. 그래서 둘 다 지운다.
+    - `access_denied`에 `error_code`가 없으면 카카오·구글에서 거절한 것(취소)이다.
+    - `error_code`가 있으면 Supabase가 막은 것(가입 꺼짐, 차단된 사용자, 이메일 확인 필요)이라 실패로 본다.
+    - 2026-11-04에 supabase/auth의 `redirectErrors`·`getErrorQueryString`(`internal/api/external.go`)에서 확인했다. 실제 클라이언트(개발 서버)로 돌아온 주소를 열어 보니, 안내가 뜨고 주소에 화면 경로만 남았다.
+    - 로그아웃은 이 기기에서만(`scope: 'local'`) 한다. 연결이 없어도 이 기기의 세션은 지운다.
+  - `accountStore.ts`: `status`(`idle → loading → signedIn | signedOut`, 설정이 없으면 `unavailable`), `account`, `loginError`. `load()`는 한 번만 시작하고, 그 뒤로는 `onChange`(다른 탭, 세션 만료)를 따른다.
+  - 계정 화면 `/account`(`pages/AccountPage.tsx`): 여행 목록 머리줄의 사람 아이콘(설정 톱니바퀴 왼쪽, 접근성 이름 "계정")으로 연다. 설정 화면에는 계정 구역이 없다(사용자 요청).
+  - `AccountProfile.tsx`: 계정 화면 본문이다. 위쪽 프로필 줄(64px 동그라미, 이름 줄, 오른쪽에 테두리 알약 버튼)과 아래 회색 안내 상자로 되어 있다.
+    - 로그아웃 상태: 회색 동그라미에 사람 그림, "로그인해 주세요", 알약 "로그인". 안내 상자는 로그인하면 생길 것과, 안 해도 기기에 저장된다는 내용이다.
+    - 로그인 상태: 프로필 사진(없거나 깨지면 이름 첫 글자), 이름, "카카오로/Google로 로그인했어요", 알약 "로그아웃". 안내 상자는 여행이 아직 기기에만 있다는 내용이다.
+    - 돌아온 로그인이 취소·실패였으면 프로필 줄 아래에 안내(`role="alert"`)를 띄운다.
+    - 알약 버튼은 보이는 모양은 작고, 누르는 영역은 44px이다.
+  - `LoginSheet.tsx`: "로그인" 알약이 여는 하단 시트다.
+    - 카카오 로그인(노란 #FEE500, 검정 말풍선)과 Google 계정으로 로그인(흰 바탕, 회색 테두리, 네 색 G) 버튼이 있다(`LoginButtons.tsx`, 각 회사 디자인 가이드).
+    - 오프라인이면 누를 때 "인터넷에 연결되면 로그인할 수 있어요.", 제공자로 보내지 못하면 "로그인 화면을 열지 못했어요."를 시트 안에 보여준다.
+    - 카카오톡 인앱 브라우저(`isKakaoTalk`)에서는 구글이 로그인을 막는다. 그래서 Google 버튼을 끄고 "다른 브라우저로 열기"(`kakaotalk://web/openExternal?url=`)를 둔다.
+  - 로그인하고 돌아올 곳은 `/account`다(`accountStore.signIn`).
+- 16단계는 로그인까지다. 여행 데이터는 아직 기기에만 있다(서버 저장은 17단계).
 
 ### UI (모바일 우선)
 - 기준 폭 360~430px. 데스크톱은 가운데 정렬된 모바일 폭 컨테이너.
@@ -366,6 +446,10 @@ src/
 - 메모리 라우터에는 브라우저 기록(`history.state.idx`)이 없어서, 테스트에서 저장 후 "뒤로"는 항상 대체 경로(`backFallback`)로 간다.
 - 테스트는 네트워크에 나가지 않는다. `test/setup.ts`가 테스트마다 `fetch`를 실패하게 바꿔서 환율 API는 오프라인처럼 보인다. API 응답이 필요하면 `stubRatesApi(() => latestRatesBody('JPY', { KRW: 8.510259 }))`(`test/app.tsx`, `test/fixtures.ts`)를 쓴다. `resetApp()`은 localStorage(기기에 둔 환율)도 비운다.
 - 숨긴 radio 칩(`ChoiceGroup`)은 Playwright 같은 실제 브라우저 자동화에서 radio가 아니라 `label`을 눌러야 한다. 송금 체크박스는 체크하면 그 줄이 목록에서 빠지므로 `check()`가 아니라 `click()`을 쓴다 (`check()`는 같은 자리의 다음 줄을 다시 누른다).
+- 로그인: 테스트는 Supabase 설정이 없는 상태로 시작한다(`test/setup.ts`가 비움). 로그인이 필요한 화면 흐름 테스트는 파일에서 `vi.mock('@supabase/supabase-js', …)`로 `createClient`가 `supabaseFake.client`(`test/supabase.ts`)를 돌려주게 하고 `stubSupabase()`(`test/app.tsx`)를 부른다(`app/accountFlows.test.tsx`).
+  - 앱이 처음 만든 클라이언트를 계속 쓰므로 가짜는 파일에 하나다. 테스트마다 `supabaseFake.reset()`을 부른다.
+  - 가짜로 하는 일: `signedIn(user)`(기기에 세션), `returnsAs(user)` + 주소 `?code=`(로그인하고 돌아옴), `changeElsewhere(user | null)`(다른 탭). `signIns`·`signOuts`로 호출을 확인한다. 사용자 픽스처는 `kakaoUser()`, `googleUser()`.
+  - 돌아온 주소는 `window.history.replaceState`로 만든다. 메모리 라우터와 별개라서, 앱의 로그인 코드는 `window.location`을 읽는다.
 - 장소 검색: 테스트는 API 키가 없는 상태로 시작한다. Vitest가 `.env.local`도 읽으므로 `test/setup.ts`가 `VITE_GOOGLE_MAPS_API_KEY`(와 `VITE_GOOGLE_MAPS_MAP_ID`)를 매번 비운다. 검색이 필요하면 `stubPlacesApi([OSAKA_CASTLE, ...])`(`test/app.tsx`)를 쓴다. 테스트 키와 가짜 `google.maps.importLibrary`(`test/places.ts`의 `fakePlacesApi`: 이름에 입력이 들어간 장소를 제안, `failSearch`·`failPick` 옵션)를 넣고 요청 기록(`requests`, `fetched`)을 돌려준다. 가짜 `importLibrary`는 라이브러리 이름별로 답하고, 장소 검색 스텁에도 가짜 지도가 들어 있다.
 - 길찾기 링크는 목록 안에 있다: `screen.queryAllByRole('link', { name: /까지 길찾기$/ })`(`app/mapFlows.test.tsx`의 `legLinks()`).
 - 지도: `stubMapsApi()`(`test/app.tsx`)가 테스트 키와 가짜 `maps`·`marker` 라이브러리(`test/maps.ts`의 `fakeMapsApi`)를 넣고, 그린 것을 돌려준다: `maps`(만든 지도, `cameras`), `markers()`(지도에 있는 마커의 `[번호, title]`), `lines`(`path`). 단위 테스트는 `createRouteMap(div, fakeMapsApi().libraries)`. 로드 실패는 `vi.spyOn(google.maps, 'importLibrary').mockRejectedValueOnce(...)`(`app/mapFlows.test.tsx`).
@@ -385,9 +469,9 @@ src/
   - 줄이기 자체(크기, 회전 정보, 투명, 읽지 못하는 파일)는 실제 브라우저에서 확인한다.
   - 표지 사진은 장식(`alt=""`)이라 역할로 찾을 수 없어서 `img[src="…"]`로 찾는다. 폼의 미리보기만 이름("고른 표지 사진")이 있다.
 
-## 로그인·친구 초대 계획 (15~19단계, 시작 전)
+## 로그인·친구 초대 계획 (15~19단계)
 
-2026-11-04 사용자 요청으로 계획에 넣었다. 아래 "추천 방식"은 15단계를 시작할 때 사용자와 확정한다.
+2026-11-04 사용자 요청으로 계획에 넣었다. 같은 날 16단계를 시작하며 아래 "방식"을 사용자와 확정했다(추천안 그대로). Supabase는 무료 플랜으로 시작한다.
 
 - 목표: 구글·카카오로 로그인하고, 카톡으로 초대 링크를 보내면 친구가 그 링크로 여행에 참여해 같은 일정·가계부를 같이 보고 고친다.
 - 큰 변경인 이유: 지금은 데이터가 각자 기기(IndexedDB)에만 있다. 같이 보려면 서버에 공용 저장소가 있어야 한다.
@@ -395,29 +479,54 @@ src/
   - Supabase: PostgreSQL + 로그인(Google·Kakao 기본 지원) + 권한 규칙(RLS: 여행 멤버만 읽고 쓰기) + 실시간 반영. 따로 서버 코드 없이 앱에서 쓴다. 데이터 모델은 이미 PostgreSQL에 맞춰져 있다(UUID, `null`, 문자열 날짜, 최소 단위 정수).
   - 배포: Vercel(무료). 로그인 후 돌아올 주소, 카카오 도메인 등록, 실제 아이폰 확인에 https 주소가 필요하다.
   - 화면·스토어는 지금처럼 저장소 인터페이스만 쓰고 기기 DB를 먼저 읽고 쓴다. 서버와 맞추는 층(동기화)을 그 아래에 더한다.
-- 추천 방식(확정 전)
+- 방식(2026-11-04 확정)
   - 로그인은 선택이다. 안 하면 지금처럼 기기에만 저장하고, 로그인하면 서버 저장·여러 기기·초대가 열린다. 처음 로그인할 때 기기의 여행을 계정으로 올린다.
   - 오프라인에서도 입력하고, 연결되면 서버와 맞춘다. 같은 항목을 동시에 고치면 나중에 고친 쪽(`updatedAt`)이 남는다(백업 병합과 같은 규칙). 삭제를 전하려면 삭제 기록(tombstone)이 필요하다.
   - 초대받은 사람도 일정·지출을 고칠 수 있다. 여행 삭제와 초대 관리는 만든 사람만.
   - 초대 링크는 7일 유효, 여러 명이 쓸 수 있고, 만든 사람이 끊을 수 있다. 카카오톡 공유(카카오 JavaScript SDK, "참여하기" 버튼이 있는 카드)로 보내고, 안 되면 링크 복사·공유 시트.
   - 참여하면 "이 여행에서 누가 나예요?"로 가계부 동행자와 계정을 잇는다(없으면 새로 추가). 그래서 "나"가 사람마다 다르다. 동행자에 계정 연결이 필요하고 지금의 `isMe`는 바뀐다.
-  - 카카오 이메일은 받지 않는다(닉네임·프로필 사진만). 이메일은 카카오 앱을 '개인 개발자 비즈 앱'으로 전환(본인인증)해야 받을 수 있다. Supabase의 Kakao 설정에서 "Allow users without an email"을 켠다.
+  - 카카오 이메일은 앱에서 쓰지 않는다(닉네임·프로필 사진만).
+    - 그런데 Supabase의 카카오 로그인은 `account_email`·`profile_image`·`profile_nickname`을 항상 요청한다. 2026-11-04 supabase/auth의 `internal/api/provider/kakao.go`에서 확인했다. 넘긴 scope는 이 목록에 덧붙을 뿐이다.
+    - 이메일 동의 항목이 없는 카카오 앱이면 카카오가 KOE205로 막는다. 이메일 동의 항목은 비즈 앱만 쓸 수 있다.
+    - 그래서 카카오 앱을 '개인 개발자 비즈 앱'으로 전환(본인인증, 무료)하고, 이메일을 '선택 동의'로 둔다. 동의하지 않은 사용자를 위해 Supabase의 Kakao 설정에서 "Allow users without an email"을 켠다.
 - 조사한 제약(2026-11-04)
   - 카카오톡 안의 브라우저(UA에 `KAKAOTALK`)에서는 구글이 로그인을 막는다(403 `disallowed_useragent`). 카카오 로그인은 된다. 초대 화면은 카카오 로그인을 먼저 두고, 구글은 "다른 브라우저로 열기"로 안내한다(`kakaotalk://web/openExternal?url=`은 널리 쓰이지만 공식 문서는 없음).
   - 아이폰 홈 화면 앱: 소셜 로그인 뒤 앱이 아니라 Safari로 돌아가는 문제가 오래 보고됐다(쿠키·저장소가 Safari와 따로). 최신 iOS에서 고쳐졌다는 자료는 없다. 실제 아이폰으로 확인하고, 안 되면 로그인 결과를 서버를 거쳐 앱으로 넘겨준다.
   - Supabase 무료: DB 500MB, 파일 1GB, 월 사용자 5만 명. 일주일쯤 활동이 적으면 일시 정지된다(데이터는 남고, 미리 메일이 오고, 대시보드에서 다시 켬). 유료(월 25달러부터)는 정지되지 않는다. 기기 DB를 먼저 쓰므로 정지돼도 앱은 기기 데이터로 동작한다.
-    - 오래 정지된 프로젝트는 대시보드에서 다시 켤 수 없고, 백업을 내려받아 새 프로젝트로 옮겨야 한다. 그 기한이 공식 문서끼리도 90일과 1년으로 엇갈린다. 여행 사이에 몇 달씩 쓰지 않는 앱이라, 무료로 갈지는 15단계에서 이것까지 보고 정한다.
+    - 오래 정지된 프로젝트는 대시보드에서 다시 켤 수 없고, 백업을 내려받아 새 프로젝트로 옮겨야 한다.
+      - 그 기한이 공식 문서끼리 90일과 1년으로 엇갈렸다.
+      - 2026-11-04 다시 보니 두 문서(정지·비용) 모두 "정지 후 1년까지 다시 켤 수 있다"이다.
+    - 여행 사이에 몇 달씩 쓰지 않는 앱이지만, 무료로 시작하기로 했다(2026-11-04 사용자 선택, 언제든 유료로 바꿀 수 있다).
   - 표지 사진(`data:` URL, 장당 약 0.5MB)은 DB 용량을 많이 쓰므로, 서버에서는 파일 저장소(Storage)로 옮기는 것을 검토한다.
   - 구글 장소 데이터의 30일 규칙은 서버 사본에도 지킨다.
   - 브라우저에는 공개 키(anon)만 둔다. 서비스 롤 키는 절대 앱에 넣지 않는다.
   - 친구 말고 다른 사람에게도 열려면 개인정보 처리방침 페이지와 계정 삭제가 필요하다.
-- 비용(2026-11-04 조사): 친구끼리 쓰는 정도면 모두 무료다. 주의할 것은 위의 Supabase 정지와 아래 지도 키다.
-  - Vercel Hobby는 무료지만 개인·비상업 용도만이다. 광고·유료 기능 등으로 돈을 벌면 Pro(사용자당 월 20달러)가 필요하다. 주소는 `*.vercel.app`이 무료이고, 내 도메인은 선택이다(연 1~2만 원).
-  - 구글·카카오 로그인, 카카오톡 공유, GitHub는 무료다.
-  - Google Maps는 2025년 3월부터 SKU마다 월 무료량이 있다(Essentials 1만, Pro 5천, Enterprise 1천). 우리가 쓰는 Dynamic Maps·Place Details Essentials는 1만이다.
+- 비용(2026-11-04 조사, 같은 날 공식 페이지로 다시 확인): 친구끼리 쓰는 정도면 모두 무료다. 주의할 것은 위의 Supabase 정지와 아래 지도 키다.
+  - 넘었을 때 저절로 돈이 나갈 수 있는 것은 Google Maps뿐이다. 그것도 결제 계정을 유료로 바꾼 뒤에만 그렇다. 나머지는 무료 한도를 넘으면 막히거나 멈출 뿐 청구되지 않는다.
+  - 환율 API(open.er-api.com): 키·계정이 없는 무료 서비스라 청구될 수 없다.
+    - 1시간에 한 번 이하로 부르면 막히지 않는다. 더 자주 부르면 그 IP가 20분 동안 429를 받는다(사용자 기기마다 따로 센다).
+    - "무료 플랜은 예고 없이 끝날 수 있다"고 적혀 있다. 응답의 `time_eol`이 종료 예고다. 끝나면 환율 자동 입력만 안 되고 직접 입력은 그대로다. 데이터를 다른 곳에 다시 배포하는 것은 금지다.
+  - Vercel Hobby
+    - 무료지만 개인·비상업 용도만이다. 광고·결제가 있으면 상업용이고, 기부 요청은 아니다.
+    - 무료 한도는 한 달에 데이터 전송 100GB, CDN 요청(예전 이름 Edge Requests) 100만 건이다. 넘으면 청구 없이 30일 동안 그 기능을 못 쓴다.
+    - Pro는 월 20달러다.
+    - 주소는 `*.vercel.app`이 무료이고, 내 도메인은 선택이다(연 1~2만 원).
+  - 구글 로그인: 요금 안내가 없다. 이름·이메일·프로필만 요청하므로 사용자 수 상한(100명)도 해당하지 않는다.
+  - 카카오 로그인: 무료다. 앱의 모든 카카오 API를 합쳐 한 달 300만 건까지이고, 넘으면 오류(-10)가 날 뿐 청구는 없다. 유료 API 목록에는 카카오톡 공유와 카카오맵만 있다.
+  - 카카오톡 공유(18단계): 하루 3만 건까지 무료다. 그 이상은 비즈월렛을 만들어 유료 사용을 직접 켜야만 건당 50원이다(2026-02-02~2027-12-31은 10원). 켜지 않으면 오류만 난다.
+  - GitHub: 공개 저장소는 무료다.
+  - Google Maps는 2025년 3월부터 SKU마다 월 무료량이 있다(Essentials 1만, Pro 5천, Enterprise 1천). 무료량은 결제 계정마다 매달 1일 0시(미국 태평양 시간, 한국은 1일 오후 4~5시)에 다시 차고, 남은 양은 다음 달로 넘어가지 않는다. 한 번뿐인 것은 체험판 크레딧(300달러, 90일)이다.
+    - 우리가 쓰는 것과 무료량을 넘었을 때의 첫 구간 가격(1,000건당)이다.
+    - Dynamic Maps(지도 한 번 띄우기): 월 1만, 7달러.
+    - Autocomplete Requests(검색 입력 요청): 월 1만, 2.83달러.
+    - Place Details Essentials(고른 장소의 주소·좌표, 7일 갱신): 월 1만, 5달러.
+    - Advanced Marker와 Map ID에는 따로 SKU가 없다.
+    - 세션 요금: 세션을 Essentials 필드(`formattedAddress`, `location`)로 끝내면 그 세션의 자동완성 요청이 처음 12번까지 Autocomplete Requests로 청구되고, 13번째부터는 무료다. 상세 요청은 Place Details Essentials로 따로 청구된다.
+    - 그래서 검색 한 번은 자동완성 몇 번과 상세 1번이다. 무료량으로 한 달에 대략 2천 번 검색할 수 있다.
+    - Pro 필드(`displayName`)를 넣으면 자동완성은 모두 무료가 되지만, 상세가 Enterprise + Atmosphere(월 1천, 25달러)로 청구된다. 세션당 자동완성이 7번 이하면 지금 방식이 더 싸다.
   - 배포하면 지도 키가 공개 사이트에 실리고, 리퍼러 제한은 브라우저 밖에서 꾸밀 수 있다. 그래서 15단계에서 Cloud 콘솔의 API별 하루 할당량을 무료량 안으로 건다. 예산 알림은 알리기만 하고 막지 않는다.
     - 단, 결제 계정이 무료 체험판인 동안에는 할당량을 바꿀 수 없다. 2026-11-04에 확인했다: 수정 메뉴가 꺼져 있고 "무료 체험판에서는 할당량 상향이 허용되지 않습니다"가 뜬다.
-    - 체험판은 크레딧만 쓰고 자동으로 청구하지 않는다. 그래서 체험이 끝나 유료 계정으로 바꿀 때 상한을 건다: Maps JavaScript API의 `Map loads per day`, Places API (New)의 `AutocompletePlaces…`·`GetPlace…` per day를 각각 300.
+    - 체험판은 크레딧만 쓰고 자동으로 청구하지 않는다. 그래서 체험이 끝나 유료 계정으로 바꿀 때 상한을 건다: Maps JavaScript API의 `Map loads per day`, Places API (New)의 `AutocompletePlaces…`·`GetPlace…` per day를 각각 300. 하루 할당량도 태평양 시간 0시(한국 오후 4~5시)에 다시 차므로, 한 달에 많아야 300 × 31 = 9,300번이라 월 무료량(1만) 안이다.
   - 앱스토어를 쓰지 않으므로(PWA) Apple 개발자 등록비(연 99달러)가 없다.
 - 사용자가 준비할 것(단계마다 화면별로 안내한다): Supabase 프로젝트, Google Cloud OAuth 클라이언트(동의 화면), 카카오 디벨로퍼스 앱(카카오 로그인 켜기, Redirect URI, 사이트 도메인, JavaScript 키), Vercel(GitHub 저장소 연결), 구글 지도 API 키 리퍼러에 배포 주소 추가와 하루 할당량 상한.
 
@@ -441,7 +550,7 @@ src/
 | 13 | PWA·오프라인·iOS 설치 안내 | 완료 |
 | 14 | 다듬기 (번들 분할, 옛 조각 처리) | 완료 |
 | 15 | 배포 (Vercel, https 주소) | 완료 |
-| 16 | 로그인 (구글·카카오, Supabase), 설정 화면의 계정 구역 | 예정 |
+| 16 | 로그인 (구글·카카오, Supabase), 계정 화면 | 진행 중 |
 | 17 | 서버 저장·동기화: 여러 기기에서 같은 여행, 오프라인에서 고친 것은 연결되면 반영 | 예정 |
 | 18 | 친구 초대·참여: 초대 링크, 카카오톡 공유, 동행자 연결, 멤버 관리, 실시간 반영 | 예정 |
 | 19 | 다듬기: 실제 아이폰 로그인 확인, 계정 삭제, 개인정보 처리방침 | 예정 |
@@ -518,3 +627,15 @@ src/
   - 로고의 지도 핀을 비행기로 바꿨다. 파란 판과 가운데 동그란 구멍은 그대로다. 45° 기울여 이륙하는 모양이 똑바로 선 것(장난감 로켓처럼 보임)보다 나아서 골랐다.
   - 앱을 열면 아이콘과 "travel GO"가 약 1초 보이는 시작 화면을 넣었다. 새로고침에는 안 나온다.
   - 이미 홈 화면에 추가한 아이폰은 아이콘을 추가할 때 저장해 두므로, 새 아이콘을 보려면 지우고 다시 추가해야 한다.
+- 2026-11-04: 16단계(로그인) 시작.
+  - "로그인·친구 초대 계획"의 방식을 추천안 그대로 확정했다. Supabase는 무료 플랜으로 시작한다(사용자 선택).
+  - 설정 맨 위에 계정 구역(카카오·구글 로그인, 로그아웃)을 만들었다. Supabase 코드는 설정 화면에서 처음 쓸 때 받는다.
+  - Supabase의 카카오 로그인은 이메일을 늘 요청한다. 그래서 카카오 앱을 개인 개발자 비즈 앱으로 바꾸고 이메일을 선택 동의로 둔다(계획의 방식 참고).
+- 2026-11-04: 로그인을 설정에서 빼서 계정 화면(`/account`)으로 옮겼다(사용자 요청).
+  - 여행 목록의 톱니바퀴 옆에 사람 아이콘을 둔다.
+  - 화면은 사용자가 보여 준 음악 앱처럼 만들었다. 프로필 줄에 "로그인해 주세요"와 알약 "로그인"이 있고, 알약을 누르면 카카오·구글을 고르는 시트가 열린다. 로그인하면 같은 줄에 사진·이름·로그아웃이 나온다.
+  - 머리줄 아이콘은 로그인 여부와 상관없이 같은 사람 그림이다. 사진을 띄우려면 첫 화면에서 Supabase 코드를 받아야 해서 미뤘다(17단계 동기화에서 어차피 시작할 때 받게 되면 다시 본다).
+  - Supabase 프로젝트를 만들고 구글 로그인을 켰다. 사용자가 실제 구글 계정으로 로그인해 봤다. 카카오는 다음 날 켰다.
+- 2026-11-05: 카카오 로그인을 켰다.
+  - 카카오 앱을 개인 개발자 비즈 앱으로 바꿨다. 동의항목은 닉네임 필수, 프로필 사진·이메일 선택이다.
+  - 사용자가 개발 서버의 계정 화면에서 카카오와 구글로 로그인해 봤다(됨). 16단계를 배포한다.
