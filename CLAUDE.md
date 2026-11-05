@@ -43,6 +43,7 @@ src/
     settlement/   # 정산: 잔액, 최소 송금안, 송금 완료 기록, 텍스트 복사
     backup/       # 설정 화면의 백업 내보내기·가져오기
     sync/         # 계정과 동기화(언제 할지, 상태 표시)
+    sharing/      # 친구 초대·참여, 함께하는 사람
     install/      # 홈 화면에 추가 안내 (iOS)
     account/      # 로그인(카카오·구글, Supabase), 계정 화면
   data/
@@ -50,6 +51,8 @@ src/
     repositories/ # 저장소 인터페이스, 입력 타입, 에러 클래스
     rules/        # 저장소와 무관한 순수 규칙: 정렬·이동, 입력 검증, 백업 포맷, 가져오기 계획, 금액·환산, 분담, 잔액·정산
     local/        # IndexedDB(Dexie) 구현체
+    sync/         # 서버와 맞추기: 기록 단위 규칙, 동기화 엔진, Supabase 호출
+    sharing/      # 여행 공유: 초대 링크·참여·멤버 (서버 함수 호출)
     index.ts      # 구현체 주입 지점 (나중에 http 구현으로 교체)
   lib/            # 날짜 유틸, id 생성, 환율 API, google maps 로더 등
   components/ui/  # 공용 UI (Button, BottomSheet, EmptyState ...)
@@ -105,7 +108,7 @@ src/
 ### 가계부·정산
 - 모델: `Companion`, `Expense`, `ExpenseShare`, `Settlement`. 기존 규칙(UUID, 날짜 문자열, `createdAt/updatedAt`, 값 없음은 `null`, 저장소 인터페이스 경유)을 그대로 따른다.
   - `Trip`에 `settlementCurrency`(정산 통화, 기본 `'KRW'`)와 `budget`(정산 통화 최소 단위 정수 | `null`)을 추가한다.
-  - `Companion { tripId, name, isMe, order }`: 여행을 만들면 "나"(`isMe`)가 자동으로 생긴다. "나"는 이름만 바꿀 수 있고 삭제할 수 없다. 이름은 한 여행 안에서 겹치지 않게 한다.
+  - `Companion { tripId, name, isMe, accountId, order }`: 여행을 만들면 "나"(`isMe`)가 자동으로 생긴다. "나"는 이름만 바꿀 수 있고 삭제할 수 없다. 이름은 한 여행 안에서 겹치지 않게 한다. `accountId`는 친구와 같이 쓰는 여행에서 그 사람의 계정이다(18단계, 아래 "친구 초대·함께 쓰기").
   - `Expense { tripId, date, amount, currency, exchangeRate, category, paymentMethod, payerId, splitMethod, memo, scheduleItemId }`
     - `category`: `food | transport | lodging | shopping | sightseeing | other` (식비/교통/숙소/쇼핑/관광/기타)
     - `paymentMethod`: `cash | card`, `splitMethod`: `equal | amount | ratio`
@@ -143,7 +146,7 @@ src/
   - "나"의 id는 `meCompanionId(tripId)`(= `lib/id.ts`의 `derivedId`, UUID v8)로 여행 id에서 **결정적으로** 만든다. 새 여행·DB 마이그레이션·v1 백업 변환 어디서 만들어도 같은 id가 되어, 병합해도 "나"가 둘이 되지 않는다. 마이그레이션·변환으로 만든 "나"의 시각은 여행의 `createdAt`을 쓴다.
 - 저장소: `companions`(목록·추가·이름 변경·`usage`·삭제), `expenses`(입력은 분담 대상 `participants`, 분담액은 저장소가 `splitExpense`로 계산. `usedRates()`: 모든 여행에서 통화·정산 통화 쌍마다 가장 최근 지출의 환율), `settlements`. 일정 항목을 지우면(직접 또는 기간 축소 시 삭제) 연결된 지출의 `scheduleItemId`만 `null`로 바꾼다. 여행을 지우면 딸린 것을 모두 지운다.
 - 순수 규칙: `data/rules/money.ts`(통화 표·`parseAmount`·`convertAmount`), `split.ts`(`splitExpense`·`participantsFromShares`), `expense.ts`(입력 검증), `companion.ts`, `ledger.ts`(`buildLedger`: 합계·카테고리·날짜·동행자별 낸 돈/쓴 돈·잔액), `settlementPlan.ts`(`planTransfers`).
-- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한, 표지 사진 이후 4: 그 전 파일의 여행은 사진 없음). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
+- 백업: `BACKUP_SCHEMA_VERSION`을 2로 올린다(10단계 이후 3: 아래 장소 데이터 기한, 표지 사진 이후 4: 그 전 파일의 여행은 사진 없음, 18단계 이후 5: 동행자의 `accountId`, 그 전 파일은 `null`). v1 파일은 기본값과 "나"를 채워 변환한다. 병합할 때 지출과 그 분담은 한 묶음으로 다룬다 (파일 쪽 지출이 더 최근이면 분담 전체를 파일 것으로 교체).
 - 동행자 삭제: "나"는 삭제 불가. 결제자이거나, 금액 지정 분담·송금 기록에 들어 있거나, 빼면 분담 대상이 아무도 안 남는 지출이 있으면 삭제를 막고(`CompanionInUseError`에 해당 지출·송금 목록) 화면이 그 목록을 보여준다. 균등·비율 분담에만 들어 있으면 확인 후 빼고 남은 사람끼리 다시 나눈다. 확인 화면에 쓸 영향 범위는 `companions.usage()`로 미리 조회한다.
 - 정산 통화: 지출이나 송금 기록이 하나라도 있으면 바꿀 수 없다 (`CurrencyLockedError`). 환율 스냅샷이 기존 정산 통화 기준이기 때문.
 - 예산: 여행 전체(동행자 모두의 지출 합계) 기준. 개인 예산은 범위 밖.
@@ -229,13 +232,14 @@ src/
   - manifest: 이름 travel GO, `display: standalone`, 흰 테마색, 아이콘(192·512, 마스커블 512).
   - 아이콘은 `public/favicon.svg`(파란 배경에 45° 기울어 이륙하는 흰 비행기, 가운데 동그란 구멍)에서 그렸다. 마스커블·`apple-touch-icon`(180)은 모서리 없이 꽉 채운 판이고, `favicon.ico`(16·32·48)도 있다. 비행기는 안드로이드 마스커블의 최소 안전 원(반지름 40%) 안에 들어간다. 그림을 바꾸면 PNG와 `index.html`의 시작 화면 그림도 같이 바꾼다.
   - `index.html`에 iOS 홈 화면 앱용 메타가 있다(전체 화면, 상태 표시줄 `default`: 흰 바탕에 진한 글씨, 앱 헤더와 같음).
-- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 41개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
+- 서비스워커(generateSW)는 앱 파일(화면별 조각과 Supabase 조각 포함, 46개)만 프리캐시하고, 화면 주소는 모두 `index.html`로 연다(`navigateFallback`). 런타임 캐시는 없다. 그래서 구글·환율 요청은 서비스워커를 거치지 않는다.
 - 업데이트(`registerType: 'autoUpdate'`): 앱이 `virtual:pwa-register`를 쓰지 않아서 등록 스크립트(`registerSW.js`)는 로드 때 등록만 한다.
   - 새 서비스워커는 설치되면 바로 자리를 잡고(`skipWaiting`·`clientsClaim`), 열려 있는 화면은 새로고침하지 않는다. 새 버전은 다음에 앱을 열 때 보인다. 입력 중인 폼이 날아가지 않게 하려는 것이다(실제 브라우저로 확인함).
   - 화면 코드는 처음 열 때 받는 조각이라("번들 나누기"), 업데이트 전에 열어 둔 화면이 업데이트로 지워진 옛 조각을 부를 수 있다. 그러면 한 번 새로고침해서 새 버전으로 연다(`lib/chunkErrors.ts`).
 - 번들 나누기 (`app/router.tsx`): 여행 목록(첫 화면)과 없는 주소 화면 말고는 처음 열 때 코드를 받는다(React Router `lazy`, `lazyPage()`). 첫 화면에 받는 파일이 625KB에서 468KB(gzip 149KB)로 줄었다. 남은 것은 거의 라이브러리다(react-dom 202KB, Dexie 96KB, React Router 89KB).
   - 16단계(Supabase 조각 추가)부터는 빌드 도구(Rolldown)가 React 부분을 따로 떼어, 첫 화면이 `index` 364KB와 `react` 105KB를 같이 받는다(`index.html`이 미리 받음). 합계(gzip 약 149KB)는 같다. 지난 커밋을 따로 빌드해 비교했고, 목록 화면이 `lib/supabase`를 불러오는 것과는 상관이 없었다.
   - 17단계(동기화)부터 첫 화면은 gzip 약 155KB다(동기화 코드 +6KB). Rolldown은 공용 조각에 그 안의 아무 모듈 이름을 붙인다(예: React가 든 조각이 `PageHeader-*.js`).
+  - 18단계(공유)부터 첫 화면은 gzip 약 158KB다. 초대·참여 화면은 처음 열 때 받는다.
   - `lazy`는 함수 형태로 쓴다. 객체 형태(`lazy: { Component }`)는 React Router가 불러온 항목을 그 객체에서 직접 지워서(`lazy[key] = undefined`), 같은 라우트 정의로 라우터를 여러 번 만드는 테스트에서 두 번째부터 "No route matches"가 난다.
   - 첫 화면의 코드를 받는 동안은 빈 기둥(`hydrateFallbackElement`)을 보여준다.
   - 화면 코드를 받지 못하거나 화면이 오류로 멈추면 `RouteError`("화면을 불러오지 못했어요 · 다시 시도")가 뜬다.
@@ -273,7 +277,7 @@ src/
   - `/assets/`는 이 규칙에서 뺀다. 그래서 없는 조각은 404다. `index.html`을 내주면 업데이트 뒤의 옛 조각 요청이 HTML을 받고, 서비스워커 설치도 200이라서 그 HTML을 조각으로 저장해 버린다.
   - `/assets/`는 파일 이름에 해시가 있어서 1년 캐시(`immutable`)다. `index.html`·`sw.js`는 Vercel 기본값(`max-age=0, must-revalidate`)이라 매번 새 버전을 확인한다.
   - 규칙은 Vercel이 쓰는 변환기(`@vercel/routing-utils`)로 확인했다: 헤더 → 파일 → `rewrites` 순서.
-- 환경 변수는 Vercel 프로젝트 설정에 둔다(`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_MAP_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`). 종류는 Config(저장한 뒤에도 값이 보임)로 둔다. 모두 브라우저에 실리는 값이라 Secret으로 숨길 이유가 없다. 빌드할 때 번들에 들어가므로 값을 바꾸면 다시 배포해야 반영된다.
+- 환경 변수는 Vercel 프로젝트 설정에 둔다(`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_MAP_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, 18단계부터 `VITE_KAKAO_JAVASCRIPT_KEY`). 종류는 Config(저장한 뒤에도 값이 보임)로 둔다. 모두 브라우저에 실리는 값이라 Secret으로 숨길 이유가 없다. 빌드할 때 번들에 들어가므로 값을 바꾸면 다시 배포해야 반영된다.
 - Hobby 플랜은 계정 주인의 커밋만 배포한다(커밋 이메일이 GitHub 계정의 주소여야 함). 그래서 커밋 이메일은 GitHub가 주는 대신 쓰는 주소(`134910028+siyeong1013@users.noreply.github.com`, 이 저장소의 `.git/config`)다. 공개 저장소라서 진짜 이메일을 기록에 남기지 않으려는 것이기도 하다.
 
 ### 로그인 (Supabase Auth, 16단계)
@@ -358,7 +362,7 @@ src/
 - 로그아웃하면 이 기기의 여행을 지운다(2026-11-05 사용자 결정). 같은 계정으로 다시 로그인하면 서버에서 다시 받는다. 서버에 못 올린 변경이 있으면 로그아웃 전에 알린다.
 - 서버: `supabase/migrations/20261105120000_sync.sql`. 사용자가 SQL Editor에 붙여 넣어 실행한다. 다시 실행해도 결과가 같다.
   - `records`: 모든 기록을 앱의 JSON 그대로(`data`) 둔다. `kind`는 trip·scheduleItem·companion·expense(분담 포함)·settlement이다. `format`은 앱의 데이터 형식(`BACKUP_SCHEMA_VERSION`)이라, 모델이 바뀌어도 서버 표는 그대로다.
-  - `trip_members`: 여행을 읽고 쓸 수 있는 계정. 지금은 처음 올린 계정(`owner`)뿐이고, 18단계에서 `member`가 생긴다.
+  - `trip_members`: 여행을 읽고 쓸 수 있는 계정. 처음 올린 계정이 `owner`이고, 18단계부터 초대로 참여한 `member`도 있다.
   - 읽기는 RLS(내가 멤버인 여행의 기록만)로 한다. 쓰기는 `sync_push(changes)`로만 한다(security definer, 표에 직접 쓰는 권한은 없음).
   - 기록마다 `updatedAt`이 늦은 쪽이 이긴다(같으면 서버 것을 둔다). 새 형식(`format`)으로 쓴 기록은 옛 앱이 덮어쓰지 못한다. 서버가 받지 않으면(`stale`) 서버의 지금 기록을 같이 돌려준다.
   - 지운 기록은 데이터 없는 줄(`deleted`)로 남긴다. 다른 기기에 삭제를 전하려는 것이다.
@@ -383,7 +387,7 @@ src/
   - `watchWrites.ts`: 저장소의 쓰기가 끝나면 알린다(장소 정보 갱신·만료는 수정이 아니라서 빠짐).
   - `data/index.ts`는 `createDataLayer`로 `repositories`, `syncEngine`, `onLocalWrite`를 내보낸다.
 - 화면 쪽 (`features/sync/`)
-  - `syncStore`는 이럴 때 동기화한다: 로그인했을 때, 고친 뒤 1.5초, 다시 연결될 때, 앱으로 돌아올 때(`visibilitychange`, 컴퓨터는 창 `focus`), 앱을 보는 동안 2분마다(실시간 반영은 18단계).
+  - `syncStore`는 이럴 때 동기화한다: 로그인했을 때, 고친 뒤 1.5초, 다시 연결될 때, 앱으로 돌아올 때(`visibilitychange`, 컴퓨터는 창 `focus`), 서버가 변경을 알릴 때(18단계 실시간), 앱을 보는 동안 2분마다. 계정이 든 여행의 역할(`roles`)도 둔다.
   - 상태는 `off | syncing | synced | pending | offline | error | needsUpdate`다. 계정 화면의 프로필 아래 한 줄(`SyncNote`)이 이를 보여준다.
   - 받은 것이 있으면 스토어가 그 자리에서 다시 읽는다(`reload()`). 로딩 상태를 거치지 않으므로 여행 상세 화면이 잠깐 비지 않는다.
   - 앱 시작(`AppLayout` → `startSync`) 때 Supabase 코드는 이 브라우저에 세션(`sb-<ref>-auth-token`, `hasStoredSession`)이 있을 때만 받는다. 로그인하지 않은 사람의 첫 화면은 그대로다.
@@ -396,6 +400,79 @@ src/
   - 실제 브라우저(빌드, 로그아웃 상태): 첫 화면에 Supabase 코드를 받지 않는다. IndexedDB가 v5(표 8개)가 되고, 콘솔 오류가 없다.
   - 사용자가 개발 서버(5173)의 평소 창과 시크릿 창(다른 기기 역할)에서 같은 카카오 계정으로 써 봤다(됨). 여행이 다른 창에 보이고, 고친 것이 건너가고, 로그아웃하면 여행이 지워졌다가 다시 로그인하면 돌아왔다.
   - 배포한 뒤 사용자가 실제 아이폰(홈 화면 앱)과 PC 브라우저로 배포 주소를 써 봤다(됨). 서로의 여행이 보이고, 고친 것이 건너갔다.
+
+### 친구 초대·함께 쓰기 (18단계, 진행 중)
+- 여행을 만든 계정(`owner`)이 초대 링크를 보내면, 받은 사람이 로그인해서 참여한다(`member`). 참여한 사람도 일정·가계부·여행 정보를 고친다. 여행 삭제와 초대 관리(링크 만들기·끊기, 내보내기)는 만든 사람만 한다.
+- 서버: `supabase/migrations/20261105200000_sharing.sql`(동기화 SQL 다음에 실행, 다시 실행해도 같음). 표에 직접 쓰는 권한은 없고 함수로만 한다. 답은 `{ status, ... }`이고, 세션이 없을 때만 오류다.
+  - `invites`: 여행마다 링크 하나. `token`은 무작위 UUID 16바이트를 주소에 쓸 수 있는 base64로 적은 22글자다. 7일 동안 여러 명이 쓸 수 있고, 끊으면 지운다. 만료된 링크는 다음에 만들 때 새것으로 바뀐다.
+  - `create_invite`·`current_invite`·`revoke_invite(trip)`: 만든 사람만 쓴다. 거절 이유는 `no_trip`(아직 서버에 없음), `gone`(삭제됨), `forbidden`이다.
+  - `invite_preview(token)`: 로그인 전(anon)에도 링크의 여행 제목·도시·기간·초대한 사람 이름을 준다. 끊겼거나 만료됐거나 여행이 지워졌으면 `invalid`.
+  - `join_trip(token)`: 로그인한 계정을 `member`로 넣는다. 이미 들어 있으면 `member` 상태와 그 역할로 답한다.
+  - `trip_people(trip)`: 멤버에게만 사람 목록을 준다(만든 사람 먼저). 이름·사진은 `auth.users`의 로그인 정보에서 그때그때 읽는다. 규칙은 앱의 `toAccount`와 같다(`full_name` → `name` → `preferred_username`, 사진은 https로).
+  - `leave_trip(trip)`: 멤버가 나간다. 만든 사람은 `forbidden`이고, 대신 여행을 지운다.
+  - `remove_member(trip, member)`: 만든 사람이 내보낸다. 자기 자신은 내보낼 수 없다.
+  - 멤버의 쓰기는 `sync_push`가 받는다. 여행 삭제만 `forbidden`이다(17단계 SQL 그대로).
+  - `records`를 Realtime 발행(`supabase_realtime`)에 넣는다.
+  - 2026-11-05에 사용자가 SQL Editor에서 실행했다. 확인: `POST /rest/v1/rpc/invite_preview`(publishable 키, `{"token":"x"}`)가 `{"status": "invalid"}`이고, 로그인 없이 부른 `join_trip`은 401(`permission denied`)이다. 실행 전에는 404다.
+- 동기화 (`data/sync/`)
+  - 기기는 계정이 든 여행과 그 역할을 `syncState.trips`에 둔다(`memberships()`: `trip_members`의 내 줄).
+  - 마지막 `seq` 다음부터 받는 것만으로는 참여하기 전에 쓰인 기록(작은 `seq`)을 못 받는다. 그래서 목록에 새로 생긴 여행은 그 여행의 기록을 처음부터 받는다(`pullTrip`).
+  - 받기 순서: `seq` 다음부터 받기 → 멤버 목록 → 새 여행 통째로 받기 → 한 트랜잭션에 적용.
+  - 서버에 있던(`syncedRecords`에 있는) 여행인데 목록에 없으면 기기에서 지운다(나갔거나 내보내짐). 아직 올리지 않은 여행은 그대로다.
+  - 17단계 기기(`trips` 없음)는 처음 한 번, 만든 여행은 이미 다 받았다고 보고 참여한 여행만 통째로 받는다.
+  - 멤버가 여행을 지우면(백업 덮어쓰기 등) 서버가 거절(`forbidden`)한다. 그러면 그 여행을 잊고 다음 동기화에서 통째로 다시 받는다.
+  - `forgetTrip(id)`: 나간 여행을 서버에 알리지 않고 기기에서 지운다. `roles(userId)`: 화면이 쓰는 역할.
+- "나"와 계정 (`Companion.accountId`, Dexie v6, 백업 v5)
+  - 동행자에 계정을 이을 수 있다. `companions.claim(id, accountId)`는 그 계정이 전에 고른 동행자의 연결을 푼다. 다른 계정의 동행자면 `ValidationError`다.
+  - 앱을 쓰는 사람의 동행자는 `myCompanion(companions, accountId, role)`이다. 내 계정이 이어진 동행자, 없으면 내가 만든 여행(또는 로그인하지 않았을 때)의 "나"다. 참여한 사람은 고르기 전에는 없다.
+  - 지출 폼은 이 사람을 결제한 사람으로 먼저 고른다. 동행자 시트는 이 사람에게 "나" 표시를 하고 삭제 버튼을 없앤다.
+  - "나"(`isMe`)는 참여한 사람에게는 만든 사람이고, 여전히 지울 수 없다.
+  - 처음 초대 링크를 만들 때 "나"의 이름이 아직 "나"면 친구들에게 보일 이름을 묻는다(계정 이름을 채워 둠). 그리고 "나"를 만든 사람의 계정에 잇는다.
+- 화면 (`features/sharing/`)
+  - 여행 ⋯ 메뉴의 "친구 초대"(멤버에게는 "함께하는 사람")가 `/trips/:id/people`을 연다. 멤버의 메뉴에는 "여행 삭제"가 없다.
+  - 함께하는 사람 화면
+    - 사람 목록: 사진·이름, "나", "만든 사람" 표시.
+    - 만든 사람에게는 "초대 링크"(만들기, 카카오톡으로 보내기, 공유, 링크 복사, 링크 끊기)와 사람별 "내보내기"가 있다.
+    - 멤버에게는 "이 여행에서 나가기"가 있다.
+    - "가계부에서 나"로 누가 나인지 바꾼다.
+    - 로그인하지 않았으면 로그인 버튼이 나온다(돌아올 곳은 이 화면).
+  - 참여 화면 `/join/:token`
+    - 순서: 링크 미리보기(여행 표지 색, 초대한 사람) → 로그인 → "참여하기" → 동기화로 여행 받기 → "가계부에서 누가 나예요?" → 여행 화면.
+    - 로그인하고 돌아올 곳은 이 화면이다. 카카오톡 안에서는 Google 로그인이 꺼진다.
+    - 쓸 수 없는 링크면 "이 초대 링크는 쓸 수 없어요"를 보여준다.
+  - `sharingStore`: 화면에 보이는 여행의 사람·링크와 서버 호출(만들기·끊기·내보내기·나가기)을 맡는다. 아직 서버에 없는 여행에 링크를 만들면 먼저 동기화한다.
+  - "초대 링크 만들기"는 그 여행의 가계부를 읽은 뒤에 눌린다. "나"의 이름을 물을지가 가계부에 달려 있어서다(빨리 누르면 이름 묻기를 건너뛰던 문제, 전체 테스트를 돌릴 때 드러남).
+- 카카오톡 공유 (`lib/kakaoShare.ts`)
+  - 카카오 JavaScript SDK 2.8.4(`t1.kakaocdn.net`, SRI 해시)를 링크가 보일 때 미리 받는다. 컴퓨터에서는 공유가 팝업이라 누른 그 자리에서 열어야 한다(기다린 뒤에 열면 브라우저가 막음).
+  - 카드
+    - 제목은 "‘여행 이름’ 여행에 초대받았어요", 설명은 도시·기간, 버튼은 "참여하기"다.
+    - 그림은 `public/invite-card.jpg`(800×400, 파란 배경에 비행기와 travel GO)다.
+    - 템플릿 ID는 필요 없다(`sendDefault`).
+  - 키(`VITE_KAKAO_JAVASCRIPT_KEY`, 공개용)가 없으면 이 버튼이 없고 공유·링크 복사만 있다.
+  - 카카오 콘솔
+    - [앱] > [플랫폼 키] > [JavaScript 키]의 [JavaScript SDK 도메인]에 배포 주소, `http://localhost:5173`, `http://localhost:5174`를 넣는다(포트까지 맞아야 함).
+    - 카드 링크의 도메인은 [앱] > [제품 링크 관리] > [웹 도메인]에 배포 주소를 넣고 기본 도메인으로 둔다.
+    - 등록하지 않은 도메인의 링크는 기본 웹 도메인의 첫 화면(경로 없이)으로 바뀐다. 그래서 개발 서버에서 보낸 카드는 초대 화면이 아니라 배포 주소의 첫 화면을 열고, 그림도 빠진다(카카오가 localhost의 그림을 받지 못함). 개발 서버에서는 링크 복사로 시험한다.
+    - 2026-11-05에 설정했다. 키는 `.env.local`에 있고, 테스트는 키가 없는 상태로 시작한다(`test/setup.ts`가 비움).
+  - 확인 방법: 휴대폰의 SDK가 카카오톡을 열기 전에 부르는 요청을 똑같이 보낸다. 메시지는 가지 않는다.
+    - 요청은 `GET https://kapi.kakao.com/v2/api/kakaolink/talk/template/default?link_ver=4.0&template_object=<카드 JSON, snake_case>`다.
+    - 헤더는 `Authorization: KakaoAK <JavaScript 키>`와 `KA: sdk/2.8.4 os/javascript … origin/<인코딩한 주소> app_key/<키>`다.
+    - 등록한 주소면 카드 템플릿(`template_args`)이 오고, 아니면 401 `domain mismatched`다. 2026-11-05: 세 주소는 통과, example.com은 막혔다. 배포 주소의 링크는 경로까지 그대로였다.
+    - 카드 그림은 카카오가 받아서 자기 CDN(`k.kakaocdn.net`)에 옮긴다(`NONE_KAGE_IMAGE_SUPPORTED` 경고는 그 안내다). 받지 못하면 그림 없이 간다. 배포 전에는 `invite-card.jpg` 주소가 `index.html`을 줘서 빠졌다.
+  - 공유에 실패하면 SDK가 페이지를 카카오 주소로 옮길 수 있다. 홈 화면 앱에서는 돌아올 버튼이 없다. 그래서 공유·링크 복사를 늘 같이 두고, 실제 아이폰으로 확인한다.
+  - 하루 3만 건 무료다. 유료 사용을 직접 켜지 않으면 넘어도 오류만 난다.
+- 실시간 반영 (`supabaseWatch`)
+  - Realtime의 Postgres Changes로 `records`의 INSERT·UPDATE를 듣는다. 서버가 구독자마다 RLS로 거르므로 볼 수 있는 여행의 변경만 온다. 알림이 오면 0.5초 뒤에 동기화한다.
+  - 작은 열(`trip_id`, `seq`)만 받는다. 사진이 든 기록은 1MB를 넘어서, 그대로면 큰 값이 빠진 채 온다.
+  - 연결이 끊긴 동안의 변경은 다시 오지 않는다. 그래서 다시 연결되면(두 번째 `SUBSCRIBED`부터) 한 번 동기화한다. 서버가 채널을 닫으면(`CLOSED`) 5초 뒤에 다시 듣는다.
+  - 내 변경도 돌아온다(같은 계정의 다른 기기 것과 구별할 수 없음). 받을 것 없는 받기 한 번이다.
+  - 로그인한 뒤에만 듣고(채널은 그 계정의 토큰으로 들어감), 로그아웃하면 채널을 지운다.
+  - 무료 한도: 동시 연결 200, 초당 100건, 한 달 200만 건. 넘어도 청구는 없다.
+- 테스트
+  - 서버 함수: `data/sharing/sharingSql.test.ts`(PGlite, 앱의 `createSharingServer`로 부름).
+  - 두 계정의 동기화: `syncEngine.test.ts`의 "sync of shared trips".
+  - 화면 흐름: `app/sharingFlows.test.tsx`(김여행 = 카카오, Jane Doe = 구글).
+- 확인함(2026-11-05): 사용자가 개발 서버(5173)에서 평소 창(카카오, 만든 사람)과 시크릿 창(구글, 친구)으로 초대 링크 → 참여 → 같이 고치기를 해 봤다(됨). 카카오톡 카드는 배포한 뒤 휴대폰에서 본다.
 
 ### UI (모바일 우선)
 - 기준 폭 360~430px. 데스크톱은 가운데 정렬된 모바일 폭 컨테이너.
@@ -488,7 +565,7 @@ src/
 - 시간은 `vi.useFakeTimers` 대신 `Clock` 주입(`testClock()`)으로 제어한다.
 - 화면 흐름 테스트(`*.test.tsx`)는 파일 맨 위에 `/** @vitest-environment happy-dom */`를 붙인다 (기본 환경은 node).
   - `vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData())`로 앱 싱글턴(저장소, 동기화 엔진, `onLocalWrite`)을 테스트용 DB로 바꾼다. `vi.mock`은 파일마다 호이스팅되므로 각 테스트 파일에 직접 쓴다.
-  - 동기화 화면 테스트는 `createTestData(connect)`에 PGlite 서버를 준다(`app/syncFlows.test.tsx`: `vi.hoisted`로 서버를 공유, 테스트마다 `server.reset()`·`syncEngine.forget()`). 기기 둘의 동기화는 `data/sync/syncEngine.test.ts`.
+  - 동기화·공유 화면 테스트는 `createTestData(server)`에 PGlite 서버(`createSyncDatabase()`)를 준다. 동기화와 공유 호출(`connectSharing`)이 그 서버로 간다. 실시간 알림(`watchServer`)은 오지 않는다. `app/syncFlows.test.tsx`·`app/sharingFlows.test.tsx`는 `vi.hoisted`로 서버를 공유하고, 테스트마다 `server.reset()`·`syncEngine.forget()`을 부른다. 기기 둘의 동기화는 `data/sync/syncEngine.test.ts`.
   - `supabaseFake`의 사용자 id는 UUID(`USER_IDS`)이고, 세션을 `sb-test-auth-token`에 둔다(앱 시작 때 계정을 불러오는 조건).
   - `src/test/app.tsx`의 `resetApp()`(스토어와 데이터 비우기), `resetStores()`(새로고침 흉내), `renderApp(path)`를 쓴다. **새 스토어를 만들면 `resetStores()`에 추가한다.**
   - 날짜가 오늘에 따라 달라지는 화면은 URL에 `?day=`를 명시해서 테스트한다 (기본 선택이 오늘 날짜에 좌우되기 때문).
@@ -608,7 +685,7 @@ src/
 | 15 | 배포 (Vercel, https 주소) | 완료 |
 | 16 | 로그인 (구글·카카오, Supabase), 계정 화면 | 완료 |
 | 17 | 서버 저장·동기화: 여러 기기에서 같은 여행, 오프라인에서 고친 것은 연결되면 반영 | 완료 |
-| 18 | 친구 초대·참여: 초대 링크, 카카오톡 공유, 동행자 연결, 멤버 관리, 실시간 반영 | 예정 |
+| 18 | 친구 초대·참여: 초대 링크, 카카오톡 공유, 동행자 연결, 멤버 관리, 실시간 반영 | 진행 중 |
 | 19 | 다듬기: 실제 아이폰 로그인 확인, 계정 삭제, 개인정보 처리방침 | 예정 |
 
 ## 진행 방식
@@ -703,3 +780,9 @@ src/
   - 서버 SQL은 PGlite(WASM Postgres)로 테스트한다. 사용자가 SQL을 실행하기 전에 규칙을 확인할 수 있다.
   - 사용자가 Supabase에 SQL을 실행했고, 개발 서버에서 창 두 개로 동기화를 확인했다. 배포했다.
   - 사용자가 배포 주소에서 실제 아이폰과 PC로 확인했다(됨). 17단계 완료.
+- 2026-11-05: 18단계(친구 초대·참여)를 시작했다.
+  - 15단계에 정한 방식 그대로다. 링크는 7일, 여러 명, 끊을 수 있음. 참여한 사람도 고칠 수 있고, 삭제와 초대 관리는 만든 사람만 한다.
+  - 친구는 "나"를 자기로 보게 되므로, 처음 초대할 때 만든 사람의 "나"에 이름을 붙이고 계정을 잇는다. 동행자와 계정의 연결은 동행자 기록에 둔다(`accountId`). 서버 표를 따로 두지 않아 동기화 규칙을 그대로 쓴다.
+  - 참여한 여행은 그 여행의 기록을 처음부터 받는다. 나가거나 내보내지면 그 사람의 기기에서 지운다.
+  - 실시간 반영은 Postgres Changes로 "바뀌었다"는 알림만 받고 평소처럼 동기화한다. 열 명 남짓에는 충분하다(Supabase는 대규모에 Broadcast를 권함).
+  - 카카오톡 공유는 SDK의 기본 템플릿(`sendDefault`)을 쓴다. 키가 없거나 실패해도 공유·링크 복사로 보낼 수 있다.
