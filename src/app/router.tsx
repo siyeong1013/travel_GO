@@ -3,6 +3,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from '@/app/AppLayout';
 import { RouteError } from '@/app/RouteError';
 import { reloadingForChunk } from '@/lib/chunkErrors';
+import { watchOwnHistorySteps } from '@/lib/useNoForwardHistory';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { TripListPage } from '@/pages/TripListPage';
 
@@ -81,4 +82,6 @@ export const routes: RouteObject[] = [
   },
 ];
 
+// Before the router listens to popstate, so the app's own steps through history stay unseen by it.
+watchOwnHistorySteps();
 export const router = createBrowserRouter(routes);
