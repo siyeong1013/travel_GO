@@ -1,4 +1,5 @@
 import {
+  type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -23,6 +24,8 @@ interface ControlA11y {
   id: string;
   'aria-invalid'?: true;
   'aria-describedby'?: string;
+  /** The label's own id (a control named by more than the label points at it). */
+  labelId: string;
 }
 
 function FieldShell({
@@ -38,11 +41,12 @@ function FieldShell({
   const controlId = id ?? autoId;
   const errorId = `${controlId}-error`;
   const hintId = `${controlId}-hint`;
+  const labelId = `${controlId}-label`;
 
   return (
     <div className={`flex min-w-0 flex-col gap-1.5 ${className ?? ''}`}>
       <div className="flex min-h-5 items-center justify-between gap-2">
-        <label htmlFor={controlId} className="text-sm font-semibold text-gray-700">
+        <label id={labelId} htmlFor={controlId} className="text-sm font-semibold text-gray-700">
           {label}
         </label>
         {action}
@@ -51,6 +55,7 @@ function FieldShell({
         id: controlId,
         'aria-invalid': error ? true : undefined,
         'aria-describedby': error ? errorId : hint ? hintId : undefined,
+        labelId,
       })}
       {error ? (
         <p id={errorId} className="text-sm text-red-500">
@@ -72,7 +77,49 @@ type TextFieldProps = FieldProps & Omit<InputHTMLAttributes<HTMLInputElement>, '
 export function TextField({ label, error, action, hint, className, id, ...props }: TextFieldProps) {
   return (
     <FieldShell {...{ label, error, action, hint, className, id }}>
-      {(a11y) => <input {...a11y} className={`h-12 ${controlClass}`} {...props} />}
+      {({ labelId, ...a11y }) => <input {...a11y} className={`h-12 ${controlClass}`} {...props} />}
+    </FieldShell>
+  );
+}
+
+type ButtonFieldProps = FieldProps &
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'id' | 'className' | 'children' | 'value'> & {
+    /** What the field holds, or a placeholder (`placeholder`) while it holds nothing. */
+    value: string | null;
+    placeholder: string;
+  };
+
+/**
+ * A field that opens a picker (a sheet) instead of taking typing; it looks like an input. Named by
+ * its label and what it holds: "여행 기간 12.1 (화) – 12.3 (목)".
+ */
+export function ButtonField({
+  label,
+  error,
+  action,
+  hint,
+  className,
+  id,
+  value,
+  placeholder,
+  ...props
+}: ButtonFieldProps) {
+  const valueId = useId();
+  return (
+    <FieldShell {...{ label, error, action, hint, className, id }}>
+      {({ labelId, ...a11y }) => (
+        <button
+          type="button"
+          {...a11y}
+          aria-labelledby={`${labelId} ${valueId}`}
+          className={`flex h-12 items-center text-left ${controlClass}`}
+          {...props}
+        >
+          <span id={valueId} className={`truncate ${value ? '' : 'text-gray-400'}`}>
+            {value ?? placeholder}
+          </span>
+        </button>
+      )}
     </FieldShell>
   );
 }
@@ -91,7 +138,7 @@ export function TextAreaField({
 }: TextAreaFieldProps) {
   return (
     <FieldShell {...{ label, error, action, hint, className, id }}>
-      {(a11y) => <textarea {...a11y} className={`resize-none py-3 ${controlClass}`} {...props} />}
+      {({ labelId, ...a11y }) => <textarea {...a11y} className={`resize-none py-3 ${controlClass}`} {...props} />}
     </FieldShell>
   );
 }
@@ -102,7 +149,7 @@ type SelectFieldProps = FieldProps & Omit<SelectHTMLAttributes<HTMLSelectElement
 export function SelectField({ label, error, action, hint, className, id, ...props }: SelectFieldProps) {
   return (
     <FieldShell {...{ label, error, action, hint, className, id }}>
-      {(a11y) => (
+      {({ labelId, ...a11y }) => (
         <div className="relative">
           <select {...a11y} className={`h-12 appearance-none pr-10 ${controlClass}`} {...props} />
           <ChevronDownIcon
