@@ -1,6 +1,7 @@
 import type {
   Companion,
   CurrencyCode,
+  ExchangeRateSnapshot,
   ExchangeRateSource,
   ExpenseCategory,
   ExpenseWithShares,
@@ -19,6 +20,7 @@ import {
   isRate,
   parseAmount,
   parseMinorUnits,
+  roundRate,
   toDecimalString,
 } from '@/data/rules/money';
 import {
@@ -78,6 +80,11 @@ const EMPTY_RATE: RateDraft = { rate: '', source: 'manual', fetchedAt: null };
 const NO_PARTICIPANTS = '함께 낼 사람을 한 명 이상 골라 주세요.';
 const RATIO_ERROR = `비율은 1에서 ${MAX_WEIGHT.toLocaleString('en-US')} 사이의 정수로 입력해 주세요.`;
 
+/** A stored rate as the form shows it: rounded (`roundRate`) unless it was typed. */
+function shownRate({ rate, source }: Pick<ExchangeRateSnapshot, 'rate' | 'source'>): string {
+  return source === 'manual' ? rate : roundRate(rate);
+}
+
 /**
  * The rate to start from in each currency, quoted in the settlement currency: the latest one
  * used in this trip (`expenses`), else the latest one used in any trip (`elsewhere`).
@@ -93,7 +100,11 @@ export function lastRates(
   // Later entries win: this trip's after the others.
   for (const { currency, exchangeRate } of [...byCreation(elsewhere), ...byCreation(expenses)]) {
     if (currency === settlementCurrency || exchangeRate.quote !== settlementCurrency) continue;
-    rates.set(currency, { rate: exchangeRate.rate, source: 'last', fetchedAt: exchangeRate.fetchedAt });
+    rates.set(currency, {
+      rate: shownRate(exchangeRate),
+      source: 'last',
+      fetchedAt: exchangeRate.fetchedAt,
+    });
   }
   return rates;
 }
@@ -160,7 +171,7 @@ export function toFormValues(
   rates: Map<CurrencyCode, RateDraft> = new Map(),
 ): ExpenseFormValues {
   const participants = participantsFromShares(expense.splitMethod, expense.shares);
-  const { rate, quote, source, fetchedAt } = expense.exchangeRate;
+  const { quote, source, fetchedAt } = expense.exchangeRate;
   const shareAmounts: Record<ID, string> = {};
   const shareWeights: Record<ID, string> = {};
   for (const { companionId, value } of participants) {
@@ -175,7 +186,7 @@ export function toFormValues(
     // A rate quoted in another currency (from a backup) has to be entered again.
     rate:
       source !== 'same' && quote === settlementCurrency
-        ? { rate, source, fetchedAt }
+        ? { rate: shownRate(expense.exchangeRate), source, fetchedAt }
         : (rates.get(expense.currency) ?? EMPTY_RATE),
     category: expense.category,
     date: expense.date,

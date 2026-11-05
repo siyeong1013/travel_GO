@@ -37,7 +37,7 @@ describe('rateStore', () => {
       store.getState().fetchLatest('JPY'),
     ]);
     expect(first).toBe(second);
-    expect(first?.rates.KRW).toBe('8.510259');
+    expect(first?.rates.KRW).toBe('8.51');
     expect(store.getState().latest.JPY).toBe(first);
     expect(cache.get('JPY')).toBe(first);
 

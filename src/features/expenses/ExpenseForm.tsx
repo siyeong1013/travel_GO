@@ -26,7 +26,13 @@ import type {
 } from '@/data/models';
 import type { ExpenseInput } from '@/data/repositories';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules/expense';
-import { CURRENCY_CODES, currencyDigits, currencyInfo, parseAmount } from '@/data/rules/money';
+import {
+  CURRENCY_CODES,
+  currencyDigits,
+  currencyInfo,
+  parseAmount,
+  roundRate,
+} from '@/data/rules/money';
 import { itemsOn } from '@/data/rules/schedule';
 import {
   CATEGORY_LABELS,
@@ -123,10 +129,9 @@ export function ExpenseForm({
       current?.currency !== currency ? current : rate ? null : { currency, status: 'failed' },
     );
     if (!latest || !rate) return;
+    const filled: RateDraft = { rate: roundRate(rate), source: 'api', fetchedAt: latest.updatedAt };
     setValues((current) =>
-      current.currency === currency && current.rate === from
-        ? { ...current, rate: { rate, source: 'api', fetchedAt: latest.updatedAt } }
-        : current,
+      current.currency === currency && current.rate === from ? { ...current, rate: filled } : current,
     );
   }
 

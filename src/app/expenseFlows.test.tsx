@@ -181,7 +181,7 @@ describe('expense flows', () => {
 
     // Starts in yen (the last expense's currency); the API rate replaces the last one used.
     const rate = await screen.findByLabelText('환율 (1 JPY당 원)');
-    await waitFor(() => expect(rate).toHaveValue('8.510259'));
+    await waitFor(() => expect(rate).toHaveValue('8.51'));
     expect(fetch).toHaveBeenCalledWith('https://open.er-api.com/v6/latest/JPY', expect.anything());
     expect(screen.getByText(`${formatDateTime(RATES_PUBLISHED_AT)} 기준`)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Rates By Exchange Rate API' })).toHaveAttribute(
@@ -199,7 +199,7 @@ describe('expense flows', () => {
     expect(screen.getByRole('link', { name: 'Rates By Exchange Rate API' })).toBeInTheDocument();
     const saved = (await repositories.expenses.listByTrip(trip.id)).find((e) => e.category === 'transport');
     expect(saved?.exchangeRate).toEqual({
-      rate: '8.510259',
+      rate: '8.51',
       quote: 'KRW',
       source: 'api',
       fetchedAt: RATES_PUBLISHED_AT,
@@ -209,7 +209,7 @@ describe('expense flows', () => {
     cleanup();
     resetStores();
     renderApp(`/trips/${trip.id}/expenses/new`);
-    await waitFor(() => expect(screen.getByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.510259'));
+    await waitFor(() => expect(screen.getByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.51'));
     expect(fetch).toHaveBeenCalledTimes(1);
 
     // Offline with nothing kept: the rate last used, still saying when it was published.
@@ -218,7 +218,7 @@ describe('expense flows', () => {
     cleanup();
     resetStores();
     renderApp(`/trips/${trip.id}/expenses/new`);
-    expect(await screen.findByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.510259');
+    expect(await screen.findByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.51');
     expect(await screen.findByText('최신 환율을 불러오지 못했어요')).toBeInTheDocument();
     expect(screen.getByText('마지막으로 쓴 환율')).toBeInTheDocument();
     expect(screen.getByText(`${formatDateTime(RATES_PUBLISHED_AT)} 기준`)).toBeInTheDocument();
@@ -275,7 +275,7 @@ describe('expense flows', () => {
     expect(rate).toHaveValue('1400');
 
     await user.click(screen.getByRole('button', { name: '최신 환율 불러오기' }));
-    await waitFor(() => expect(rate).toHaveValue('1344.12576'));
+    await waitFor(() => expect(rate).toHaveValue('1344.13'));
     expect(fetch).toHaveBeenCalledTimes(1); // still fresh: no second request
   });
 

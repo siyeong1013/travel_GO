@@ -66,7 +66,7 @@ describe('newExpenseValues', () => {
     expect(values).toMatchObject({
       currency: 'JPY',
       paymentMethod: 'cash',
-      rate: { rate: '9.1', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' },
+      rate: { rate: '9.10', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' },
     });
   });
 
@@ -90,9 +90,9 @@ describe('rates', () => {
       'KRW',
     );
     expect([...rates]).toEqual([
-      ['JPY', { rate: '9', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' }],
+      ['JPY', { rate: '9.00', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' }],
     ]);
-    expect(withCurrency(blank(), 'JPY', rates).rate.rate).toBe('9');
+    expect(withCurrency(blank(), 'JPY', rates).rate.rate).toBe('9.00');
     expect(withCurrency(blank(), 'USD', rates).rate).toEqual({
       rate: '',
       source: 'manual',
@@ -112,8 +112,8 @@ describe('rates', () => {
       used('EUR', '0.006', 'JPY', '2026-03-01T00:00:00.000Z'), // quoted in yen: no use here
     ]);
     expect(Object.fromEntries(rates)).toEqual({
-      JPY: { rate: '9', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' },
-      USD: { rate: '1380', source: 'last', fetchedAt: null },
+      JPY: { rate: '9.00', source: 'last', fetchedAt: '2026-11-10T00:00:00.000Z' },
+      USD: { rate: '1380', source: 'last', fetchedAt: null }, // typed: as typed
     });
   });
 
@@ -295,7 +295,7 @@ describe('form ↔ input', () => {
     const values = toFormValues(expense, 'KRW', [item]);
     expect(values).toMatchObject({
       amount: '12.34',
-      rate: { rate: '1380.5', source: 'api', fetchedAt: '2026-11-10T00:00:00.000Z' },
+      rate: { rate: '1380.50', source: 'api', fetchedAt: '2026-11-10T00:00:00.000Z' },
       participantIds: [me.id, chulsoo.id],
       shareAmounts: { [me.id]: '10.00', [chulsoo.id]: '2.34' },
       scheduleItemId: item.id,

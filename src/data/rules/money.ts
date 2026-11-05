@@ -83,6 +83,31 @@ export function isRate(value: unknown): value is string {
   return match !== null && /[1-9]/.test(match[1]! + (match[2] ?? ''));
 }
 
+/** Significant digits kept in a rate under 1 (`0.05271`), where 2 decimals would say little. */
+const SMALL_RATE_DIGITS = 4;
+
+/**
+ * `rate` as people read it, rounded half up: 2 decimals from 1 up (`1379.22`, `8.50`), else
+ * 4 significant digits without trailing zeros (`0.05271`). A rate that would round to 0 stays.
+ */
+export function roundRate(rate: string): string {
+  const match = RATE_RE.exec(rate);
+  if (!match || !isRate(rate)) throw new Error(`invalid rate: ${rate}`);
+  const whole = match[1]!.replace(/^0+(?=\d)/, '');
+  const fraction = match[2] ?? '';
+  const small = whole === '0';
+  const firstDigit = fraction.search(/[1-9]/);
+  const decimals = small ? Math.min(10, firstDigit + SMALL_RATE_DIGITS) : 2;
+  // One digit past the kept ones decides the rounding.
+  const scaled = BigInt(whole + fraction.padEnd(decimals + 1, '0').slice(0, decimals + 1));
+  const rounded = (scaled + 5n) / 10n;
+  if (rounded === 0n) return rate;
+  const unit = 10n ** BigInt(decimals);
+  const text = `${rounded / unit}.${(rounded % unit).toString().padStart(decimals, '0')}`;
+  if (!small) return text;
+  return rounded >= unit ? roundRate(text) : text.replace(/0+$/, '');
+}
+
 /**
  * `amount` (minor units of `from`) × `rate` → minor units of `to`, rounded half up once.
  * Exact integer arithmetic; `rate` is how many `to` one `from` is worth.

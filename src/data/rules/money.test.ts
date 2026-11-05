@@ -4,6 +4,7 @@ import {
   isRate,
   parseAmount,
   parseMinorUnits,
+  roundRate,
   toDecimalString,
 } from '@/data/rules/money';
 
@@ -57,6 +58,32 @@ describe('isRate', () => {
     expect(isRate('0.000724')).toBe(true);
     for (const value of ['0', '0.0', '-1', '1e3', '1.12345678901', '', 9.04]) {
       expect(isRate(value), String(value)).toBe(false);
+    }
+  });
+});
+
+describe('roundRate', () => {
+  it('keeps 2 decimals from 1 up', () => {
+    expect(roundRate('1379.224531')).toBe('1379.22');
+    expect(roundRate('8.510259')).toBe('8.51');
+    expect(roundRate('8.515')).toBe('8.52'); // half up
+    expect(roundRate('8.5')).toBe('8.50');
+    expect(roundRate('1000')).toBe('1000.00');
+    expect(roundRate('9.999')).toBe('10.00');
+  });
+
+  it('keeps 4 significant digits under 1', () => {
+    expect(roundRate('0.052709')).toBe('0.05271'); // VND → KRW
+    expect(roundRate('0.117506')).toBe('0.1175');
+    expect(roundRate('0.000039')).toBe('0.000039');
+    expect(roundRate('0.3')).toBe('0.3');
+    expect(roundRate('0.99996')).toBe('1.00');
+    expect(roundRate('0.0000000001')).toBe('0.0000000001');
+  });
+
+  it('gives back what it rounded', () => {
+    for (const rate of ['1379.22', '8.50', '0.05271', '0.1175']) {
+      expect(roundRate(rate)).toBe(rate);
     }
   });
 });

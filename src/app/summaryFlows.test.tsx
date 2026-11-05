@@ -186,12 +186,12 @@ describe('budget and summary', () => {
     await user.click(within(fix).getByRole('link', { name: /자판기/ }));
 
     expect(await screen.findByRole('note')).toHaveTextContent('USD 기준이에요');
-    await waitFor(() => expect(screen.getByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.510259'));
+    await waitFor(() => expect(screen.getByLabelText('환율 (1 JPY당 원)')).toHaveValue('8.51'));
     await user.click(screen.getByRole('button', { name: '저장' }));
 
     await waitFor(async () =>
       expect((await repositories.expenses.listByTrip(merged.id))[0]?.exchangeRate).toEqual({
-        rate: '8.510259',
+        rate: '8.51',
         quote: 'KRW',
         source: 'api',
         fetchedAt: RATES_PUBLISHED_AT,

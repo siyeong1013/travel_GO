@@ -28,14 +28,14 @@ const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 describe('rateText', () => {
-  it('keeps the digits the API sends, without float noise or exponents', () => {
-    expect(rateText(8.510259)).toBe('8.510259');
-    expect(rateText(1344.12576)).toBe('1344.12576');
+  it('rounds to what the app shows, without float noise or exponents', () => {
+    expect(rateText(8.510259)).toBe('8.51');
+    expect(rateText(1344.12576)).toBe('1344.13');
     expect(rateText(0.1 + 0.2)).toBe('0.3');
+    expect(rateText(0.052709)).toBe('0.05271');
     expect(rateText(3.9e-5)).toBe('0.000039'); // JSON may spell small rates as 3.9e-05
-    expect(rateText(25743.911696)).toBe('25743.9117'); // 10 significant digits
-    expect(rateText(1)).toBe('1');
-    expect(rateText(1000)).toBe('1000');
+    expect(rateText(25743.911696)).toBe('25743.91');
+    expect(rateText(1)).toBe('1.00');
   });
 
   it('refuses what is not a positive rate', () => {
@@ -50,7 +50,7 @@ describe('parseLatestRates', () => {
     const body = latestRatesBody('JPY', { KRW: 8.510259, USD: 0.006333, AED: 0.023259, EUR: -1 });
     expect(parseLatestRates(body, 'JPY', RECEIVED)).toEqual({
       base: 'JPY',
-      rates: { KRW: '8.510259', USD: '0.006333' },
+      rates: { KRW: '8.51', USD: '0.006333' },
       updatedAt: RATES_PUBLISHED_AT,
       nextUpdateAt: '2026-11-04T00:10:21.000Z',
       receivedAt: RECEIVED,
@@ -94,7 +94,7 @@ describe('createExchangeRateApi', () => {
     const api = createExchangeRateApi({ fetch, storage: () => undefined, now: () => RECEIVED });
 
     expect(await api.fetchLatest('JPY')).toMatchObject({
-      rates: { KRW: '8.510259' },
+      rates: { KRW: '8.51' },
       receivedAt: RECEIVED,
     });
     expect(fetch).toHaveBeenCalledWith(

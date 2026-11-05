@@ -1,5 +1,5 @@
 import type { CurrencyCode, ISODateTime } from '@/data/models';
-import { CURRENCY_CODES, isCurrency, isRate } from '@/data/rules/money';
+import { CURRENCY_CODES, isCurrency, isRate, roundRate } from '@/data/rules/money';
 import { type Clock, isIsoDateTime, nowIso } from '@/lib/dates';
 import { deviceStorage } from '@/lib/deviceStorage';
 
@@ -41,15 +41,15 @@ export function isFresh(rates: LatestRates, now: ISODateTime): boolean {
 }
 
 /**
- * An API rate (a float with up to 6 decimals) as a decimal string `isRate` accepts: at most
- * 10 significant digits and 10 decimals, without trailing zeros. Null unless positive.
+ * An API rate (a float with up to 6 decimals) as the decimal string the app shows and keeps
+ * (`roundRate`: `1379.22`, or `0.05271` under 1). Null unless positive.
  */
 export function rateText(value: unknown): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
   const decimals = Math.min(10, Math.max(0, 9 - Math.floor(Math.log10(value))));
   const fixed = value.toFixed(decimals);
   const text = fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
-  return isRate(text) ? text : null;
+  return isRate(text) ? roundRate(text) : null;
 }
 
 function unixToIso(value: unknown): ISODateTime | null {
