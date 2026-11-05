@@ -73,7 +73,12 @@ describe('syncStore', () => {
     signIn();
     await settle();
     expect(engine.sync).toHaveBeenCalledWith('user-1');
-    expect(store.getState()).toMatchObject({ status: 'synced', pending: 0, roles: { 'trip-1': 'member' } });
+    expect(store.getState()).toMatchObject({
+      status: 'synced',
+      pending: 0,
+      roles: { 'trip-1': 'member' },
+      rolesOf: 'user-1',
+    });
     expect(store.getState().lastSyncedAt).not.toBe(T0);
     expect(afterChange).toHaveBeenCalledTimes(1);
   });
@@ -148,7 +153,13 @@ describe('syncStore', () => {
     signIn();
     await settle();
     account.setState({ status: 'signedOut', account: null });
-    expect(store.getState()).toMatchObject({ status: 'off', pending: 0, lastSyncedAt: null, roles: {} });
+    expect(store.getState()).toMatchObject({
+      status: 'off',
+      pending: 0,
+      lastSyncedAt: null,
+      roles: {},
+      rolesOf: null,
+    });
     await settle();
     expect(server.stopped).toBe(1);
   });

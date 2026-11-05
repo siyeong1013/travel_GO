@@ -58,16 +58,18 @@ function reopen(address: string) {
 }
 
 /**
- * The owner's trip, made on another device of theirs: "나" named 김여행 (theirs) and 민수 in the
- * ledger, on the server with an invite link.
+ * The owner's trip, made on another device of theirs: "나" named 김여행 (theirs) and `others` (민수)
+ * in the ledger, on the server with an invite link.
  */
-async function ownersTrip() {
+async function ownersTrip(others = ['민수']) {
   const laptop = createTestData(server());
   const trip = await laptop.repositories.trips.create(OSAKA);
   const [me] = await laptop.repositories.companions.listByTrip(trip.id);
   await laptop.repositories.companions.rename(me!.id, '김여행');
   await laptop.repositories.companions.claim(me!.id, OWNER);
-  await laptop.repositories.companions.create({ tripId: trip.id, name: '민수' });
+  for (const name of others) {
+    await laptop.repositories.companions.create({ tripId: trip.id, name });
+  }
   await laptop.syncEngine.sync(OWNER);
   await laptop.db.delete();
   const { token } = await server().sharingFor(OWNER).createInvite(trip.id);
@@ -75,25 +77,25 @@ async function ownersTrip() {
 }
 
 describe('sharing a trip', () => {
-  it('has the owner name themselves, then make, copy and cut the invite link', async () => {
+  it('calls the owner by name in the ledger, then makes, copies and cuts the invite link', async () => {
     const trip = await repositories.trips.create(OSAKA);
     supabaseFake.signedIn(kakaoUser());
     const { user } = renderApp(`/trips/${trip.id}/people`);
 
+    // Signed in, "나" is theirs and goes by their name: friends see the owner by it.
+    await waitFor(async () => {
+      expect((await repositories.companions.listByTrip(trip.id))[0]).toMatchObject({
+        name: '김여행',
+        accountId: OWNER,
+      });
+    }, synced);
     const make = await screen.findByRole('button', { name: '초대 링크 만들기' });
     await waitFor(() => expect(make).toBeEnabled(), synced);
     await user.click(make);
-    const sheet = await screen.findByRole('dialog', { name: '친구들에게 보일 내 이름' });
-    expect(within(sheet).getByLabelText('이름')).toHaveValue('김여행');
-    await user.click(within(sheet).getByRole('button', { name: '저장하고 초대 링크 만들기' }));
 
     const link = await screen.findByText(/\/join\/[\w-]{22}$/, {}, synced);
     expect(screen.getByText(/까지 쓸 수 있어요\.$/)).toBeInTheDocument();
-    // Friends see the owner by name; it's the owner's own.
-    expect((await repositories.companions.listByTrip(trip.id))[0]).toMatchObject({
-      name: '김여행',
-      accountId: OWNER,
-    });
+    expect(screen.queryByRole('dialog', { name: '친구들에게 보일 내 이름' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
     expect(await navigator.clipboard.readText()).toBe(link.textContent);
@@ -104,6 +106,30 @@ describe('sharing a trip', () => {
     await user.click(within(confirm).getByRole('button', { name: '끊기' }));
     expect(await screen.findByRole('button', { name: '초대 링크 만들기' })).toBeInTheDocument();
     expect(await server().sharingFor(OWNER).currentInvite(trip.id)).toBeNull();
+  });
+
+  it('asks for a name before the first invite when the login has none', async () => {
+    const trip = await repositories.trips.create(OSAKA);
+    supabaseFake.signedIn(kakaoUser(''));
+    const { user } = renderApp(`/trips/${trip.id}/people`);
+
+    // Theirs, but still "나".
+    await waitFor(async () => {
+      expect((await repositories.companions.listByTrip(trip.id))[0]).toMatchObject({
+        name: '나',
+        accountId: OWNER,
+      });
+    }, synced);
+    const make = await screen.findByRole('button', { name: '초대 링크 만들기' });
+    await waitFor(() => expect(make).toBeEnabled(), synced);
+    await user.click(make);
+    const sheet = await screen.findByRole('dialog', { name: '친구들에게 보일 내 이름' });
+    expect(within(sheet).getByLabelText('이름')).toHaveValue('');
+    await user.type(within(sheet).getByLabelText('이름'), '시영');
+    await user.click(within(sheet).getByRole('button', { name: '저장하고 초대 링크 만들기' }));
+
+    expect(await screen.findByText(/\/join\/[\w-]{22}$/, {}, synced)).toBeInTheDocument();
+    expect((await repositories.companions.listByTrip(trip.id))[0]?.name).toBe('시영');
   });
 
   it('lets a friend open the link, sign in, join, and pick who they are in the ledger', async () => {
@@ -129,6 +155,38 @@ describe('sharing a trip', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Osaka' })).toBeInTheDocument();
     const companions = await repositories.companions.listByTrip(trip.id);
     expect(companions.find((c) => c.name === '민수')?.accountId).toBe(FRIEND);
+  });
+
+  it('puts a friend in the ledger by name when nobody there might be them', async () => {
+    const { trip, token } = await ownersTrip([]);
+    supabaseFake.signedIn(googleUser());
+    const { user } = renderApp(`/join/${token}`);
+
+    // Only the owner there: she is added, no question asked.
+    await user.click(await screen.findByRole('button', { name: '참여하기' }, synced));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Osaka' }, synced)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '가계부에서 누가 나예요?' })).toBeNull();
+    const companions = await repositories.companions.listByTrip(trip.id);
+    expect(companions.find((c) => c.accountId === FRIEND)?.name).toBe('Jane Doe');
+  });
+
+  it('adds a friend under their name when they leave the question unanswered', async () => {
+    const { trip, token } = await ownersTrip();
+    supabaseFake.signedIn(googleUser());
+    const { user } = renderApp(`/join/${token}`);
+
+    await user.click(await screen.findByRole('button', { name: '참여하기' }, synced));
+    const sheet = await screen.findByRole('dialog', { name: '가계부에서 누가 나예요?' }, synced);
+    expect(within(sheet).getByText(/닫으면 Jane Doe으로\(로\) 새로 추가돼요\.$/)).toBeInTheDocument();
+    await user.click(sheet); // the backdrop
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Osaka' }, synced)).toBeInTheDocument();
+    const companions = await repositories.companions.listByTrip(trip.id);
+    expect(companions.map((c) => [c.name, c.accountId])).toEqual([
+      ['김여행', OWNER],
+      ['민수', null],
+      ['Jane Doe', FRIEND],
+    ]);
   });
 
   it('says when a link doesn’t work', async () => {

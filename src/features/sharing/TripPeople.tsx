@@ -24,6 +24,7 @@ import {
   tripSummary,
 } from '@/features/sharing/sharingDisplay';
 import { useSharingStore } from '@/features/sharing/sharingStore';
+import { ledgerAccount, useAccountInLedger } from '@/features/sharing/useMyCompanion';
 import { WhoAmISheet } from '@/features/sharing/WhoAmISheet';
 import { useSyncStore } from '@/features/sync/syncStore';
 import { kakaoJavaScriptKey, loadedKakao, loadKakao, sendKakaoCard } from '@/lib/kakaoShare';
@@ -98,6 +99,7 @@ function SharedTrip({ trip, account }: { trip: Trip; account: Account }) {
   useEffect(() => {
     void loadLedger(trip.id);
   }, [trip.id, loadLedger]);
+  useAccountInLedger(trip.id);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -494,7 +496,7 @@ function InviteSection({
         <MyNameSheet
           me={me}
           companions={companions}
-          suggested={account.name}
+          suggested={ledgerAccount(account).name}
           busy={busy}
           error={error}
           onSave={(name) => void makeLink(name)}

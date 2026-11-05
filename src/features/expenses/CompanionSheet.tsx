@@ -7,11 +7,7 @@ import { TextField } from '@/components/ui/Field';
 import { PencilIcon, TrashIcon } from '@/components/ui/icons';
 import type { Companion, ExpenseWithShares, ID } from '@/data/models';
 import type { CompanionUsage } from '@/data/repositories';
-import {
-  COMPANION_NAME_MAX_LENGTH,
-  isCompanionNameTaken,
-  ME_NAME,
-} from '@/data/rules/companion';
+import { COMPANION_NAME_MAX_LENGTH, isCompanionNameTaken } from '@/data/rules/companion';
 import {
   BLOCK_REASON_LABELS,
   blockReason,
@@ -84,13 +80,8 @@ export function CompanionSheet({
           <ul className="mt-2 divide-y divide-gray-100">
             {companions.map((companion) => (
               <li key={companion.id} className="flex min-h-14 items-center gap-1">
+                {/* Everyone by name, the person using the app too. */}
                 <span className="min-w-0 truncate text-base font-medium">{companion.name}</span>
-                {/* Marks the person using the app once named, e.g. 시영 (나). */}
-                {companion.id === me?.id && companion.name !== ME_NAME && (
-                  <span className="ml-1 shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">
-                    나
-                  </span>
-                )}
                 <span className="flex-1" />
                 <button
                   type="button"

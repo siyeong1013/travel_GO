@@ -26,6 +26,8 @@ export interface SyncState {
    * shared with it. A trip not there (not uploaded, or signed out) is the device's own.
    */
   roles: Record<ID, TripRole>;
+  /** The account `roles` are of, once read for it: until then a trip's missing role says nothing. */
+  rolesOf: string | null;
   /**
    * From now on, syncs the signed-in account's trips: on signing in, after edits, on reconnecting,
    * on coming back to the app, when the server says a trip changed, and every few minutes while
@@ -90,11 +92,12 @@ export function createSyncStore({
         return;
       }
       if (!online()) {
-        set({ status: 'offline', pending: await engine.pending(), roles: await engine.roles(userId) });
+        const [pending, roles] = await Promise.all([engine.pending(), engine.roles(userId)]);
+        set({ status: 'offline', pending, roles, rolesOf: userId });
         return;
       }
       // The roles as last synced, while this sync gets the latest.
-      set({ status: 'syncing', roles: await engine.roles(userId) });
+      set({ status: 'syncing', roles: await engine.roles(userId), rolesOf: userId });
       try {
         const outcome = await engine.sync(userId);
         const roles = await engine.roles(userId);
@@ -104,6 +107,7 @@ export function createSyncStore({
           pending: outcome.pending,
           lastSyncedAt: now(),
           roles,
+          rolesOf: userId,
         });
         if (outcome.changed) await afterChange();
       } catch (error) {
@@ -152,6 +156,7 @@ export function createSyncStore({
       pending: 0,
       lastSyncedAt: null,
       roles: {},
+      rolesOf: null,
 
       start() {
         if (started) return;
@@ -162,7 +167,7 @@ export function createSyncStore({
           user = signedIn();
           listen(user);
           if (user) void syncNow();
-          else set({ status: 'off', pending: 0, lastSyncedAt: null, roles: {} });
+          else set({ status: 'off', pending: 0, lastSyncedAt: null, roles: {}, rolesOf: null });
         });
         watchWrites(() => {
           if (!signedIn()) return;
@@ -197,7 +202,7 @@ export function createSyncStore({
       async forgetTrip(tripId) {
         await engine.forgetTrip(tripId);
         const userId = signedIn();
-        set({ roles: userId ? await engine.roles(userId) : {} });
+        set({ roles: userId ? await engine.roles(userId) : {}, rolesOf: userId });
         await afterChange();
       },
     };

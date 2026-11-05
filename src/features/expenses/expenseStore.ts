@@ -27,7 +27,7 @@ export interface ExpenseState {
   load: (tripId: ID) => Promise<void>;
   /** Reads the held trip's ledger again in place (a sync brought changes), without a loading state. */
   reload: () => Promise<void>;
-  addCompanion: (input: NewCompanion) => Promise<Companion>;
+  addCompanion: (input: NewCompanion, options?: { id?: ID }) => Promise<Companion>;
   renameCompanion: (id: ID, name: string) => Promise<Companion>;
   /** Makes them the account's companion (`CompanionRepository.claim`); its earlier pick lets go. */
   claimCompanion: (id: ID, accountId: string) => Promise<Companion>;
@@ -102,8 +102,8 @@ export function createExpenseStore(repos: LedgerRepositories) {
         if (tripId) await refresh(tripId).catch((error: unknown) => console.error(error));
       },
 
-      async addCompanion(input) {
-        const companion = await repos.companions.create(input);
+      async addCompanion(input, options) {
+        const companion = await repos.companions.create(input, options);
         if (get().tripId === input.tripId) {
           set((state) => ({ companions: [...state.companions, companion] }));
         }

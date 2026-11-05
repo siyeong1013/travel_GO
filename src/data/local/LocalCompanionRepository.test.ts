@@ -7,7 +7,7 @@ import {
   type Repositories,
   ValidationError,
 } from '@/data/repositories';
-import { meCompanionId } from '@/data/rules/companion';
+import { accountCompanionId, meCompanionId } from '@/data/rules/companion';
 import { createTestRepositories } from '@/test/fixtures';
 
 let db: TravelGoDB;
@@ -92,6 +92,20 @@ describe('LocalCompanionRepository', () => {
     expect((await repos.companions.listByTrip(trip.id)).filter((c) => c.accountId === FRIEND)).toEqual([
       minsu,
     ]);
+  });
+
+  it('adds a companion under an id made up front, once', async () => {
+    const FRIEND = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const id = accountCompanionId(trip.id, FRIEND);
+    const input = { tripId: trip.id, name: 'Jane', accountId: FRIEND };
+    const jane = await repos.companions.create(input, { id });
+    expect(jane.id).toBe(id);
+    await expect(
+      repos.companions.create({ tripId: trip.id, name: 'Jane 2' }, { id }),
+    ).rejects.toThrow();
+    await expect(
+      repos.companions.create({ tripId: trip.id, name: 'Kim' }, { id: 'NOT-A-UUID' }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it('never deletes "나"', async () => {

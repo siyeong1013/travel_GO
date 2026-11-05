@@ -7,6 +7,7 @@ import { TripExpenses } from '@/features/expenses/TripExpenses';
 import { useExpenses } from '@/features/expenses/useExpenses';
 import { usePlaceDataRefresh } from '@/features/places/placeRefresh';
 import { TripSchedule } from '@/features/schedule/TripSchedule';
+import { useAccountInLedger } from '@/features/sharing/useMyCompanion';
 import { useSchedule } from '@/features/schedule/useSchedule';
 import { TripActions } from '@/features/trips/TripActions';
 import { TripCover } from '@/features/trips/TripCover';
@@ -27,6 +28,8 @@ export function TripDetailPage() {
   // Both halves load up front: the delete confirmation counts items and expenses.
   const { items, status: itemsStatus } = useSchedule(tripId);
   const { expenses } = useExpenses(tripId);
+  // Signed in: the ledger shows them by name, and friends who joined are in it.
+  useAccountInLedger(tripId);
   const removeTrip = useTripStore((state) => state.remove);
   const [deleting, setDeleting] = useState(false);
   const [header, setHeader] = useState<HTMLElement | null>(null);

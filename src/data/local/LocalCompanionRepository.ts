@@ -11,6 +11,7 @@ import {
 } from '@/data/repositories';
 import { cleanCompanionName } from '@/data/rules/companion';
 import { participantsFromShares, type SplitParticipant, splitExpense } from '@/data/rules/split';
+import { cleanId } from '@/data/rules/validation';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
 
@@ -68,13 +69,13 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
       return ofTrip(tripId);
     },
 
-    create(input) {
+    create(input, options = {}) {
       return db.transaction('rw', db.trips, db.companions, async () => {
         if (!(await db.trips.get(input.tripId))) throw new EntityNotFoundError('trip', input.tripId);
         const others = await ofTrip(input.tripId);
         const timestamp = now();
         const companion: Companion = {
-          id: newId(),
+          id: options.id !== undefined ? cleanId(options.id) : newId(),
           tripId: input.tripId,
           name: cleanCompanionName(input.name, others),
           isMe: false,

@@ -23,8 +23,11 @@ export interface CompanionUsage {
 export interface CompanionRepository {
   /** In `order`; "나" first. */
   listByTrip(tripId: ID): Promise<Companion[]>;
-  /** Added last. Names are trimmed and must be unique within the trip. */
-  create(input: NewCompanion): Promise<Companion>;
+  /**
+   * Added last. Names are trimmed and must be unique within the trip. `options.id`: one made up
+   * front (a UUID, like `accountCompanionId`); fails when it is in use.
+   */
+  create(input: NewCompanion, options?: { id?: ID }): Promise<Companion>;
   rename(id: ID, name: string): Promise<Companion>;
   /**
    * Makes them `accountId`'s companion: the person of that account, in a trip shared with friends.

@@ -5,15 +5,17 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { connectSharing } from '@/data';
 import type { ID } from '@/data/models';
-import { myCompanion } from '@/data/rules/companion';
+import { companionNameFor, type MyCompanionStep, myCompanionStep } from '@/data/rules/companion';
 import type { InvitePreview } from '@/data/sharing/sharing';
 import { LoginChoices } from '@/features/account/LoginSheet';
 import { useAccountStore } from '@/features/account/accountStore';
 import { expenseStore, useExpenseStore } from '@/features/expenses/expenseStore';
 import { sharingErrorMessage, tripSummary } from '@/features/sharing/sharingDisplay';
+import { applyMyCompanionStep, ledgerAccount } from '@/features/sharing/useMyCompanion';
 import { WhoAmISheet } from '@/features/sharing/WhoAmISheet';
 import { syncStore } from '@/features/sync/syncStore';
 import { coverStyle } from '@/features/trips/tripCover';
+import { josa } from '@/lib/format';
 import { useOnline } from '@/lib/useOnline';
 import { supabaseConfig } from '@/lib/supabase';
 
@@ -114,12 +116,12 @@ export function JoinTrip({ token }: { token: string }) {
         throw new Error('the trip did not come down');
       }
       await expenseStore.getState().load(joined.tripId);
-      const me = myCompanion(expenseStore.getState().companions, account.id, joined.role);
-      if (joined.role === 'owner' || me) {
-        void navigate(`/trips/${joined.tripId}`, { replace: true });
-      } else {
-        setPicking(joined.tripId);
-      }
+      // In the ledger under their name: matched or added, unless others there might be them.
+      const ledger = expenseStore.getState().companions;
+      const step = myCompanionStep(ledger, ledgerAccount(account), joined.role);
+      if (step?.kind === 'ask') return setPicking(joined.tripId);
+      if (step) await settle(joined.tripId, step);
+      void navigate(`/trips/${joined.tripId}`, { replace: true });
     } catch (err) {
       console.error(err);
       setError(
@@ -131,6 +133,23 @@ export function JoinTrip({ token }: { token: string }) {
       setJoining(false);
     }
   }
+
+  /** Does `step` in the ledger; the trip opens either way (its screen tries again). */
+  async function settle(tripId: ID, step: MyCompanionStep) {
+    try {
+      await applyMyCompanionStep(tripId, account!.id, step);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  /** Closing the question without picking: they are added under their name. */
+  async function addMe(tripId: ID, name: string) {
+    await settle(tripId, { kind: 'add', name });
+    void navigate(`/trips/${tripId}`, { replace: true });
+  }
+
+  const newName = account ? companionNameFor(ledgerAccount(account).name, companions) : '';
 
   const checking = status === 'idle' || status === 'loading';
   return (
@@ -154,7 +173,8 @@ export function JoinTrip({ token }: { token: string }) {
           <p className="mt-6 text-gray-500">로그인 상태를 확인하고 있어요.</p>
         ) : account ? (
           <p className="mt-6 text-sm text-gray-500">
-            <span className="font-semibold text-gray-800">{account.name}</span>(으)로 참여해요.
+            <span className="font-semibold text-gray-800">{account.name}</span>
+            {josa(account.name, '으로/로').slice(account.name.length)} 참여해요.
           </p>
         ) : (
           <div className="mt-6">
@@ -182,9 +202,9 @@ export function JoinTrip({ token }: { token: string }) {
           tripId={picking}
           companions={companions}
           account={account}
+          closeNote={`고르지 않고 닫으면 ${josa(newName, '으로/로')} 새로 추가돼요.`}
           onDone={() => void navigate(`/trips/${picking}`, { replace: true })}
-          // Later, from the trip's people screen.
-          onClose={() => void navigate(`/trips/${picking}`, { replace: true })}
+          onClose={() => void addMe(picking, newName)}
         />
       )}
     </>

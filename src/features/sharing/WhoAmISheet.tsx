@@ -13,6 +13,8 @@ interface WhoAmISheetProps {
   tripId: ID;
   companions: Companion[];
   account: Account;
+  /** What closing it does, when it does more than close (joining adds them). */
+  closeNote?: string;
   /** After they picked (or added) themselves. */
   onDone: () => void;
   onClose: () => void;
@@ -20,9 +22,16 @@ interface WhoAmISheetProps {
 
 /**
  * "가계부에서 누가 나예요?": links a companion of the trip to the account, or adds one for it. Then
- * new expenses start with them paying, and the companion sheet marks them as "나".
+ * new expenses start with them paying.
  */
-export function WhoAmISheet({ tripId, companions, account, onDone, onClose }: WhoAmISheetProps) {
+export function WhoAmISheet({
+  tripId,
+  companions,
+  account,
+  closeNote,
+  onDone,
+  onClose,
+}: WhoAmISheetProps) {
   const claimCompanion = useExpenseStore((state) => state.claimCompanion);
   const addCompanion = useExpenseStore((state) => state.addCompanion);
   const [adding, setAdding] = useState(false);
@@ -62,6 +71,7 @@ export function WhoAmISheet({ tripId, companions, account, onDone, onClose }: Wh
       <div className="px-3 pb-2">
         <p className="-mt-1 text-sm break-keep text-gray-500">
           고르면 지출을 기록할 때 내가 낸 것으로 먼저 정해져요.
+          {closeNote && ` ${closeNote}`}
         </p>
         <ul className="mt-2 divide-y divide-gray-100">
           {choices.map((companion) => (

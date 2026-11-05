@@ -14,13 +14,16 @@ export interface Account {
 /** Why a login the page came back from didn't go through. */
 export type LoginError = 'cancelled' | 'failed';
 
+/** The name of an account whose login has none. */
+export const NO_NAME = '이름 없음';
+
 /** The account of a Supabase user, from what the login provider filled in. */
 export function toAccount(user: Pick<User, 'id' | 'user_metadata' | 'app_metadata'>): Account {
   const meta: Record<string, unknown> = user.user_metadata ?? {};
   const provider = user.app_metadata?.provider;
   return {
     id: user.id,
-    name: text(meta.full_name) ?? text(meta.name) ?? text(meta.preferred_username) ?? '이름 없음',
+    name: text(meta.full_name) ?? text(meta.name) ?? text(meta.preferred_username) ?? NO_NAME,
     avatarUrl: photo(meta.avatar_url) ?? photo(meta.picture),
     provider: provider === 'kakao' || provider === 'google' ? provider : null,
   };
