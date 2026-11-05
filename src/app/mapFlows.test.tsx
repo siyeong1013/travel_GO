@@ -18,7 +18,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: typedCity('오사카'),
+    cities: [typedCity('오사카')],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });

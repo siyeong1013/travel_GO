@@ -20,7 +20,7 @@ beforeEach(async () => {
   ({ db, repos } = createTestRepositories());
   trip = await repos.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+    cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -126,7 +126,7 @@ describe('LocalExpenseRepository', () => {
   it('remembers the latest rate per currency and quote, across trips', async () => {
     const other = await repos.trips.create({
       title: '도쿄 여행',
-      city: { name: '도쿄', placeId: null, location: null, fetchedAt: null },
+      cities: [{ name: '도쿄', placeId: null, location: null, fetchedAt: null }],
       startDate: '2026-12-01',
       endDate: '2026-12-03',
     });
@@ -152,7 +152,7 @@ describe('LocalExpenseRepository', () => {
     // A trip settled in yen quotes won in yen.
     const yenTrip = await repos.trips.create({
       title: '삿포로 여행',
-      city: { name: '삿포로', placeId: null, location: null, fetchedAt: null },
+      cities: [{ name: '삿포로', placeId: null, location: null, fetchedAt: null }],
       startDate: '2027-02-01',
       endDate: '2027-02-03',
     });

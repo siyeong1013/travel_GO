@@ -1,31 +1,54 @@
-import type { CoverPhoto, Trip, TripCity } from '@/data/models';
-import type { NewTrip, TripPatch } from '@/data/repositories';
-import { isLocalDate } from '@/lib/dates';
+import type { CoverPhoto, PlaceSnapshot, Trip, TripCity } from '@/data/models';
+import type { NewScheduleItem, NewTrip, TripPatch } from '@/data/repositories';
+import { isCountryCode } from '@/data/rules/country';
+import { MAX_TRIP_COUNTRIES } from '@/data/rules/validation';
+import { flightItem } from '@/features/schedule/flightItem';
+import type { FlightLookup } from '@/features/schedule/flightLookup';
+import { isDateInRange, isLocalDate } from '@/lib/dates';
+import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
+
+/** A flight typed into a new trip: found, it goes into the schedule on its day. */
+export interface FlightDraft {
+  /** Tells the rows apart while they come and go. */
+  key: number;
+  number: string;
+  /** `YYYY-MM-DD`, or empty. */
+  date: string;
+  /** The answer for a number on a day, once asked (null while asking). */
+  lookup: { number: string; date: string; result: FlightLookup | null } | null;
+}
 
 export interface TripFormValues {
   title: string;
-  /** Text in the city field. */
-  city: string;
-  /** City found by search (or saved with the trip); counts while `city` still reads its name. */
-  cityPlace: TripCity | null;
+  /** In the order picked. */
+  countries: string[];
+  /** In the order added. */
+  cities: TripCity[];
+  /** Text in the city box: one more city when the form is sent (as typed). */
+  cityText: string;
   startDate: string;
   endDate: string;
   /** The saved photo, a newly picked one, or none. */
   cover: CoverPhoto | null;
+  /** New trips only. */
+  flights: FlightDraft[];
 }
 
-export type TripFormErrors = Partial<Record<keyof TripFormValues, string>>;
+export type TripFormField = 'title' | 'cities' | 'dates';
+export type TripFormErrors = Partial<Record<TripFormField, string>>;
 
-/** Field order, used to focus the first invalid field. */
-export const TRIP_FORM_FIELDS = ['title', 'city', 'startDate', 'endDate'] as const;
+/** Field order (their `name`s), used to focus the first invalid field. */
+export const TRIP_FORM_FIELDS: readonly TripFormField[] = ['title', 'cities', 'dates'];
 
 export const emptyTripForm: TripFormValues = {
   title: '',
-  city: '',
-  cityPlace: null,
+  countries: [],
+  cities: [],
+  cityText: '',
   startDate: '',
   endDate: '',
   cover: null,
+  flights: [],
 };
 
 export const TITLE_MAX_LENGTH = 40;
@@ -33,49 +56,55 @@ export const TITLE_MAX_LENGTH = 40;
 export function validateTripForm(values: TripFormValues): TripFormErrors {
   const errors: TripFormErrors = {};
   if (!values.title.trim()) errors.title = '여행 이름을 입력해 주세요.';
-  if (!values.city.trim()) errors.city = '도시를 입력해 주세요.';
-  if (!isLocalDate(values.startDate)) errors.startDate = '시작일을 선택해 주세요.';
-  if (!isLocalDate(values.endDate)) errors.endDate = '종료일을 선택해 주세요.';
-  else if (isLocalDate(values.startDate) && values.endDate < values.startDate) {
-    errors.endDate = '종료일은 시작일과 같거나 그 이후여야 해요.';
+  if (formCities(values).length === 0) errors.cities = '도시를 넣어 주세요.';
+  if (!isLocalDate(values.startDate) || !isLocalDate(values.endDate)) {
+    errors.dates = '여행 기간을 골라 주세요.';
   }
   return errors;
 }
 
-/** Changing the start date pulls the end date along when it would end up empty or earlier. */
-export function withStartDate(values: TripFormValues, startDate: string): TripFormValues {
-  const endDate =
-    startDate && (!values.endDate || values.endDate < startDate) ? startDate : values.endDate;
-  return { ...values, startDate, endDate };
+/** A city typed by hand: no place to bias place search with. */
+export function typedCity(name: string): TripCity {
+  return { name, placeId: null, location: null, fetchedAt: null };
 }
 
-/** The found city, while the field still reads its name (typing anything else lets go of it). */
-export function linkedCity(values: TripFormValues): TripCity | null {
-  const { cityPlace } = values;
-  return cityPlace && cityPlace.name === values.city.trim() ? cityPlace : null;
+/** The list with one more city, unless it has it (the same place, or a name typed that is there). */
+export function withCity(cities: TripCity[], city: TripCity): TripCity[] {
+  const has = cities.some((other) =>
+    city.placeId !== null ? other.placeId === city.placeId : other.name === city.name,
+  );
+  return has ? cities : [...cities, city];
+}
+
+/** The cities as saved: those added, and what is still typed in the box. */
+export function formCities(values: Pick<TripFormValues, 'cities' | 'cityText'>): TripCity[] {
+  const typed = values.cityText.trim();
+  return typed ? withCity(values.cities, typedCity(typed)) : values.cities;
 }
 
 export function toFormValues(trip: Trip): TripFormValues {
-  const { city } = trip;
   return {
     title: trip.title,
-    city: city.name,
-    cityPlace: city.placeId !== null || city.location !== null ? city : null,
+    countries: trip.countries,
+    cities: trip.cities,
+    cityText: '',
     startDate: trip.startDate,
     endDate: trip.endDate,
     cover: trip.cover,
+    flights: [],
   };
 }
 
 /**
- * Only the fields that changed (empty when nothing did). The city keeps its place data while
- * the field reads its name. Call only with values that passed `validateTripForm`.
+ * Only the fields that changed (empty when nothing did). Call only with values that passed
+ * `validateTripForm`.
  */
 export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
   const next = toNewTrip(values);
   const patch: TripPatch = {};
   if (next.title !== trip.title) patch.title = next.title;
-  if (!sameCity(next.city, trip.city)) patch.city = next.city;
+  if (!sameCountries(values.countries, trip.countries)) patch.countries = values.countries;
+  if (!sameCities(next.cities, trip.cities)) patch.cities = next.cities;
   if (next.startDate !== trip.startDate) patch.startDate = next.startDate;
   if (next.endDate !== trip.endDate) patch.endDate = next.endDate;
   if (!sameCover(values.cover, trip.cover)) patch.cover = values.cover;
@@ -86,18 +115,81 @@ export function toTripPatch(values: TripFormValues, trip: Trip): TripPatch {
 export function toNewTrip(values: TripFormValues): NewTrip {
   return {
     title: values.title.trim(),
-    // Typed by hand (no search, or nothing picked): no place to bias place search with.
-    city: linkedCity(values) ?? {
-      name: values.city.trim(),
-      placeId: null,
-      location: null,
-      fetchedAt: null,
-    },
+    countries: values.countries,
+    cities: formCities(values),
     startDate: values.startDate,
     endDate: values.endDate,
     cover: values.cover,
   };
 }
+
+/** The flights found for the row as it reads now (an answer for other text or another day is old). */
+export function foundLegs(flight: FlightDraft): FlightLeg[] {
+  const { lookup } = flight;
+  if (lookup?.result?.status !== 'ok') return [];
+  if (lookup.number !== parseFlightNumber(flight.number) || lookup.date !== flight.date) return [];
+  return lookup.result.flights;
+}
+
+/**
+ * The countries with those that `found` (a row of `flights`, just looked up) lands in: each arrival
+ * but home, where the first flight found leaves from (the flight back lands there). Picked ones
+ * stay, in their order.
+ */
+export function withFlightCountries(
+  countries: string[],
+  flights: FlightDraft[],
+  found: FlightDraft,
+): string[] {
+  const first = flights.map(foundLegs).find((legs) => legs.length > 0) ?? foundLegs(found);
+  const home = first[0]?.departure.countryCode ?? null;
+  const next = [...countries];
+  for (const { arrival } of foundLegs(found)) {
+    const code = arrival.countryCode;
+    if (isCountryCode(code) && code !== home && !next.includes(code)) next.push(code);
+  }
+  return next.slice(0, Math.max(MAX_TRIP_COUNTRIES, countries.length));
+}
+
+const namedPlace = (name: string): PlaceSnapshot => ({
+  placeId: null,
+  name,
+  address: null,
+  location: null,
+  fetchedAt: null,
+});
+
+/**
+ * What a new trip's flights put in its schedule: each one found on the day it leaves, one not
+ * found by its number on its day; in the inbox when that day is outside the trip.
+ */
+export function flightScheduleItems(
+  flights: FlightDraft[],
+  trip: Pick<Trip, 'id' | 'startDate' | 'endDate'>,
+): NewScheduleItem[] {
+  const onTrip = (date: string | null) =>
+    date && isLocalDate(date) && isDateInRange(date, trip.startDate, trip.endDate) ? date : null;
+  return flights.flatMap((flight): NewScheduleItem[] => {
+    const number = parseFlightNumber(flight.number);
+    if (!number) return [];
+    const legs = foundLegs(flight);
+    if (legs.length === 0) {
+      const date = onTrip(flight.date);
+      return [{ tripId: trip.id, date, place: namedPlace(number), time: null, memo: '' }];
+    }
+    return legs.map((leg) => {
+      const { name, time, memo } = flightItem(leg);
+      const date = onTrip(leg.departure.date ?? flight.date);
+      return { tripId: trip.id, date, place: namedPlace(name), time, memo };
+    });
+  });
+}
+
+const sameCountries = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((code, i) => code === b[i]);
+
+const sameCities = (a: TripCity[], b: TripCity[]) =>
+  a.length === b.length && a.every((city, i) => sameCity(city, b[i]!));
 
 function sameCity(a: TripCity, b: TripCity): boolean {
   return (

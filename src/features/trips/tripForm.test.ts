@@ -1,56 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
   emptyTripForm,
-  linkedCity,
+  type FlightDraft,
+  flightScheduleItems,
+  formCities,
+  foundLegs,
   toFormValues,
   toNewTrip,
   toTripPatch,
   type TripFormValues,
   validateTripForm,
-  withStartDate,
+  withCity,
+  withFlightCountries,
 } from '@/features/trips/tripForm';
+import type { FlightLeg } from '@/lib/flights';
 import { makeCover, makeTrip, T0, typedCity } from '@/test/fixtures';
 
 const valid: TripFormValues = {
+  ...emptyTripForm,
   title: '오사카 여행',
-  city: '오사카',
-  cityPlace: null,
+  cities: [typedCity('오사카')],
   startDate: '2026-11-10',
   endDate: '2026-11-12',
-  cover: null,
 };
-
-describe('validateTripForm', () => {
-  it('requires every field', () => {
-    expect(Object.keys(validateTripForm(emptyTripForm))).toEqual([
-      'title',
-      'city',
-      'startDate',
-      'endDate',
-    ]);
-    expect(validateTripForm({ ...valid, title: '   ' })).toHaveProperty('title');
-  });
-
-  it('rejects an end date before the start date', () => {
-    expect(validateTripForm({ ...valid, endDate: '2026-11-09' })).toEqual({
-      endDate: '종료일은 시작일과 같거나 그 이후여야 해요.',
-    });
-    expect(validateTripForm(valid)).toEqual({});
-    expect(validateTripForm({ ...valid, endDate: valid.startDate })).toEqual({});
-  });
-});
-
-describe('withStartDate', () => {
-  it('pulls an empty or earlier end date along with the start date', () => {
-    expect(withStartDate(emptyTripForm, '2026-11-10').endDate).toBe('2026-11-10');
-    expect(withStartDate(valid, '2026-11-15').endDate).toBe('2026-11-15');
-  });
-
-  it('keeps a later end date, and keeps the end date when the start is cleared', () => {
-    expect(withStartDate(valid, '2026-11-11').endDate).toBe('2026-11-12');
-    expect(withStartDate(valid, '').endDate).toBe('2026-11-12');
-  });
-});
 
 const OSAKA = {
   name: '오사카',
@@ -59,29 +31,53 @@ const OSAKA = {
   fetchedAt: T0,
 };
 
+describe('validateTripForm', () => {
+  it('requires a title, a city and the dates', () => {
+    expect(Object.keys(validateTripForm(emptyTripForm))).toEqual(['title', 'cities', 'dates']);
+    expect(validateTripForm({ ...valid, title: '   ' })).toHaveProperty('title');
+    expect(validateTripForm(valid)).toEqual({});
+  });
+
+  it('takes a city still typed in the box', () => {
+    expect(validateTripForm({ ...valid, cities: [], cityText: ' 교토 ' })).toEqual({});
+    expect(validateTripForm({ ...valid, cities: [], cityText: ' ' })).toHaveProperty('cities');
+  });
+});
+
+describe('cities', () => {
+  it('are added once: the same place, or a name typed that is there', () => {
+    expect(withCity([OSAKA], { ...OSAKA, name: '오사카시' })).toEqual([OSAKA]);
+    expect(withCity([typedCity('교토')], typedCity('교토'))).toEqual([typedCity('교토')]);
+    expect(withCity([OSAKA], typedCity('오사카'))).toEqual([OSAKA]);
+    expect(withCity([OSAKA], typedCity('교토'))).toEqual([OSAKA, typedCity('교토')]);
+  });
+
+  it('take in what is still typed, as typed', () => {
+    expect(formCities({ cities: [OSAKA], cityText: ' 교토 ' })).toEqual([OSAKA, typedCity('교토')]);
+    expect(formCities({ cities: [OSAKA], cityText: '' })).toEqual([OSAKA]);
+  });
+});
+
 describe('toNewTrip', () => {
-  it('trims text; a typed city has no place', () => {
-    expect(toNewTrip({ ...valid, title: ' 오사카 여행 ', city: ' 오사카 ' })).toEqual({
-      title: '오사카 여행',
-      city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+  it('trims the title; keeps the countries and cities in their order', () => {
+    const values = { ...valid, title: ' 간사이 여행 ', countries: ['JP'], cities: [OSAKA], cityText: '교토' };
+    expect(toNewTrip(values)).toEqual({
+      title: '간사이 여행',
+      countries: ['JP'],
+      cities: [OSAKA, typedCity('교토')],
       startDate: '2026-11-10',
       endDate: '2026-11-12',
       cover: null,
     });
     expect(toNewTrip({ ...valid, cover: makeCover() }).cover).toEqual(makeCover());
   });
-
-  it('keeps the found city while the field reads its name', () => {
-    expect(toNewTrip({ ...valid, city: '오사카 ', cityPlace: OSAKA }).city).toEqual(OSAKA);
-    expect(linkedCity({ ...valid, city: '오사', cityPlace: OSAKA })).toBeNull();
-    expect(toNewTrip({ ...valid, city: '교토', cityPlace: OSAKA }).city).toEqual(typedCity('교토'));
-  });
 });
 
 describe('toTripPatch', () => {
   const trip = makeTrip({
     title: '오사카 여행',
-    city: OSAKA,
+    countries: ['JP'],
+    cities: [OSAKA],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -90,32 +86,17 @@ describe('toTripPatch', () => {
     expect(toTripPatch(toFormValues(trip), trip)).toEqual({});
   });
 
-  it('has only the changed fields, and keeps the city place data unless its name changed', () => {
+  it('has only the changed fields', () => {
     const values = toFormValues(trip);
     expect(toTripPatch({ ...values, title: ' 간사이 여행 ' }, trip)).toEqual({ title: '간사이 여행' });
-    expect(toTripPatch({ ...values, endDate: '2026-11-11' }, trip)).toEqual({
-      endDate: '2026-11-11',
+    expect(toTripPatch({ ...values, endDate: '2026-11-11' }, trip)).toEqual({ endDate: '2026-11-11' });
+    expect(toTripPatch({ ...values, countries: ['JP', 'KR'] }, trip)).toEqual({ countries: ['JP', 'KR'] });
+    expect(toTripPatch({ ...values, cityText: '교토' }, trip)).toEqual({
+      cities: [OSAKA, typedCity('교토')],
     });
-    expect(toTripPatch({ ...values, city: '교토' }, trip)).toEqual({
-      city: { name: '교토', placeId: null, location: null, fetchedAt: null },
+    expect(toTripPatch({ ...values, cities: [], cityText: '교토' }, trip)).toEqual({
+      cities: [typedCity('교토')],
     });
-    // Typed back to the same name: still the same place.
-    expect(toTripPatch({ ...values, city: '오사카' }, trip)).toEqual({});
-  });
-
-  it('saves a newly found city, or one linked to a typed city', () => {
-    const kyoto = {
-      name: '교토',
-      placeId: 'kyoto',
-      location: { lat: 35.01, lng: 135.77 },
-      fetchedAt: T0,
-    };
-    expect(toTripPatch({ ...toFormValues(trip), city: '교토', cityPlace: kyoto }, trip)).toEqual({
-      city: kyoto,
-    });
-    const typed = makeTrip({ city: { name: '오사카', placeId: null, location: null, fetchedAt: null } });
-    expect(toFormValues(typed).cityPlace).toBeNull();
-    expect(toTripPatch({ ...toFormValues(typed), cityPlace: OSAKA }, typed)).toEqual({ city: OSAKA });
   });
 
   it('saves a new cover photo, or its removal', () => {
@@ -128,8 +109,63 @@ describe('toTripPatch', () => {
       cover: makeCover('tower'),
     });
     expect(toTripPatch({ ...values, cover: null }, withCover)).toEqual({ cover: null });
-    expect(toTripPatch({ ...toFormValues(trip), cover: makeCover() }, trip)).toEqual({
-      cover: makeCover(),
+  });
+});
+
+function leg(number: string, from: [string, string], to: [string, string], date = '2026-11-10'): FlightLeg {
+  return {
+    number,
+    airline: 'Korean Air',
+    departure: { iata: from[0], name: from[0], countryCode: from[1], date, time: '09:00', terminal: null },
+    arrival: { iata: to[0], name: to[0], countryCode: to[1], date, time: '11:00', terminal: null },
+  };
+}
+
+const found = (key: number, number: string, date: string, legs: FlightLeg[]): FlightDraft => ({
+  key,
+  number,
+  date,
+  lookup: { number, date, result: { status: 'ok', flights: legs } },
+});
+
+const OUT = found(1, 'KE723', '2026-11-10', [leg('KE723', ['ICN', 'KR'], ['KIX', 'JP'])]);
+const BACK = found(2, 'KE724', '2026-11-12', [leg('KE724', ['KIX', 'JP'], ['ICN', 'KR'], '2026-11-12')]);
+
+describe('flights of a new trip', () => {
+  it('count as found for the number and day they were looked up for', () => {
+    expect(foundLegs(OUT)).toHaveLength(1);
+    expect(foundLegs({ ...OUT, number: 'ke 723' })).toHaveLength(1);
+    expect(foundLegs({ ...OUT, number: 'KE724' })).toEqual([]);
+    expect(foundLegs({ ...OUT, date: '2026-11-11' })).toEqual([]);
+    expect(foundLegs({ ...OUT, lookup: { number: 'KE723', date: '2026-11-10', result: null } })).toEqual([]);
+  });
+
+  it('add the countries they land in, not home', () => {
+    expect(withFlightCountries([], [OUT], OUT)).toEqual(['JP']);
+    expect(withFlightCountries(['JP'], [OUT, BACK], BACK)).toEqual(['JP']);
+    const via = found(3, 'CX411', '2026-11-11', [leg('CX411', ['KIX', 'JP'], ['HKG', 'HK'])]);
+    expect(withFlightCountries(['TW', 'JP'], [OUT, via, BACK], via)).toEqual(['TW', 'JP', 'HK']);
+  });
+
+  it('go into the schedule on the day they leave, or the inbox outside the trip', () => {
+    const trip = { id: 'trip', startDate: '2026-11-10', endDate: '2026-11-12' };
+    const early = found(3, 'KE721', '2026-11-09', [leg('KE721', ['ICN', 'KR'], ['NRT', 'JP'], '2026-11-09')]);
+    const typed: FlightDraft = { key: 4, number: 'oz 112', date: '2026-11-11', lookup: null };
+    const junk: FlightDraft = { key: 5, number: '여권 챙기기', date: '2026-11-11', lookup: null };
+
+    const items = flightScheduleItems([OUT, early, typed, junk], trip);
+    expect(items.map((item) => [item.date, item.place.name, item.time])).toEqual([
+      ['2026-11-10', 'KE723 인천 → 간사이', '09:00'],
+      [null, 'KE721 인천 → 나리타', '09:00'],
+      ['2026-11-11', 'OZ112', null],
+    ]);
+    expect(items[0]!.memo).toBe('Korean Air · 인천 출발 → 간사이 도착 11:00');
+    expect(items[0]!.place).toEqual({
+      placeId: null,
+      name: 'KE723 인천 → 간사이',
+      address: null,
+      location: null,
+      fetchedAt: null,
     });
   });
 });

@@ -18,9 +18,9 @@ export interface PlaceRefreshDeps {
 const CONCURRENCY = 4;
 
 /**
- * Fetches Google's data again for the trip's places and city once it is a week old (or was
+ * Fetches Google's data again for the trip's places and cities once it is a week old (or was
  * removed at 30 days), so the trip keeps working offline for weeks. A place that fails is
- * skipped (and logged). Returns how many places, city included, were refreshed.
+ * skipped (and logged). Returns how many places, cities included, were refreshed.
  */
 export async function refreshTripPlaceData(
   trip: Trip,
@@ -34,21 +34,19 @@ export async function refreshTripPlaceData(
       placeIds.add(place.placeId);
     }
   }
-  const { city } = trip;
-  const cityId =
-    city.placeId !== null && needsRefresh(city.placeId, city.fetchedAt, timestamp)
-      ? city.placeId
-      : null;
+  const cityIds = new Set<string>();
+  for (const city of trip.cities) {
+    if (city.placeId !== null && needsRefresh(city.placeId, city.fetchedAt, timestamp)) {
+      cityIds.add(city.placeId);
+    }
+  }
 
-  const fetched = await fetchEach(
-    [...new Set([...placeIds, ...(cityId === null ? [] : [cityId])])],
-    deps.fetchPlaceData,
-  );
+  const fetched = await fetchEach([...new Set([...placeIds, ...cityIds])], deps.fetchPlaceData);
   const places = [...placeIds].flatMap((placeId) => fetched.get(placeId) ?? []);
   if (places.length > 0) await deps.savePlaces(trip.id, places);
-  const cityData = cityId === null ? undefined : fetched.get(cityId);
-  if (cityData) await deps.saveCity(trip.id, cityData);
-  return places.length + (cityData ? 1 : 0);
+  const cities = [...cityIds].flatMap((placeId) => fetched.get(placeId) ?? []);
+  for (const city of cities) await deps.saveCity(trip.id, city);
+  return places.length + cities.length;
 }
 
 async function fetchEach(placeIds: string[], fetch: (placeId: string) => Promise<PlaceData>) {

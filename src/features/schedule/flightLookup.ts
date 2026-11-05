@@ -8,6 +8,17 @@ const STATUSES = ['ok', 'notFound', 'invalid', 'signedOut', 'unavailable', 'busy
 /** What looking up a flight came to; `offline` before even asking. */
 export type FlightLookup = FlightAnswer | { status: 'offline' };
 
+/** Why a lookup found no flight, as the screens say it. */
+export const FLIGHT_MESSAGES: Record<Exclude<FlightLookup['status'], 'ok'>, string> = {
+  notFound: '이 날짜에 출발하는 항공편을 찾지 못했어요. 편명과 날짜를 확인해 주세요.',
+  invalid: '편명을 확인해 주세요. 예: KE723',
+  signedOut: '로그인하면 항공편 정보를 불러올 수 있어요.',
+  unavailable: '지금은 항공편 정보를 불러올 수 없어요.',
+  busy: '이번 달 항공편 조회를 다 썼거나 잠시 붐벼요. 나중에 다시 시도해 주세요.',
+  error: '항공편 정보를 불러오지 못했어요.',
+  offline: '인터넷에 연결되면 항공편 정보를 불러올 수 있어요.',
+};
+
 /**
  * The legs of flight `number` leaving on `date` (local), from the app's server function
  * (api/flight.ts) as the signed-in account.

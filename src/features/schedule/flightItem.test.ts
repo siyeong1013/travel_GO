@@ -5,8 +5,16 @@ import type { FlightLeg } from '@/lib/flights';
 const leg = (arrival: Partial<FlightLeg['arrival']> = {}): FlightLeg => ({
   number: 'KE723',
   airline: 'Korean Air',
-  departure: { iata: 'ICN', name: 'Incheon', date: '2026-12-01', time: '09:00', terminal: '2' },
-  arrival: { iata: 'KIX', name: 'Osaka Kansai', date: '2026-12-01', time: '10:55', terminal: 'T1', ...arrival },
+  departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', date: '2026-12-01', time: '09:00', terminal: '2' },
+  arrival: {
+    iata: 'KIX',
+    name: 'Osaka Kansai',
+    countryCode: 'JP',
+    date: '2026-12-01',
+    time: '10:55',
+    terminal: 'T1',
+    ...arrival,
+  },
 });
 
 describe('flightItem', () => {

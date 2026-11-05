@@ -60,7 +60,7 @@ type Device = ReturnType<typeof device>;
 function addTrip(on: Device, title = 'Osaka', cover: Trip['cover'] = null) {
   return on.repos.trips.create({
     title,
-    city: typedCity('Osaka'),
+    cities: [typedCity('Osaka')],
     startDate: '2026-12-01',
     endDate: '2026-12-03',
     cover,

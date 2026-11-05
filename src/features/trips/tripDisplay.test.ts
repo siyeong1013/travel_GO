@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { splitTrips, tripPhaseLabel } from '@/features/trips/tripDisplay';
-import { makeTrip } from '@/test/fixtures';
+import { splitTrips, tripPhaseLabel, tripPlacesText } from '@/features/trips/tripDisplay';
+import { makeTrip, typedCity } from '@/test/fixtures';
 
 describe('tripPhaseLabel', () => {
   const trip = { startDate: '2026-11-10', endDate: '2026-11-12' };
@@ -35,5 +35,13 @@ describe('splitTrips', () => {
     expect(splitTrips([december], '2026-11-02').next).toBeNull();
     expect(splitTrips([december, october], '2026-11-02').next).toBe(december);
     expect(splitTrips([october], '2026-11-02').next).toBeNull();
+  });
+});
+
+describe('tripPlacesText', () => {
+  it("puts the countries' flags before the cities", () => {
+    const cities = [typedCity('오사카'), typedCity('교토')];
+    expect(tripPlacesText({ countries: [], cities })).toBe('오사카 · 교토');
+    expect(tripPlacesText({ countries: ['JP', 'KR'], cities })).toBe('🇯🇵🇰🇷 오사카 · 교토');
   });
 });

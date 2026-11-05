@@ -54,8 +54,8 @@ describe('flightsFromAeroDataBox', () => {
       {
         number: 'KE723',
         airline: 'Korean Air',
-        departure: { iata: 'ICN', name: 'Incheon', date: '2026-12-01', time: '09:00', terminal: '2' },
-        arrival: { iata: 'KIX', name: 'Kansai', date: '2026-12-01', time: '10:55', terminal: '1' },
+        departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', date: '2026-12-01', time: '09:00', terminal: '2' },
+        arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', date: '2026-12-01', time: '10:55', terminal: '1' },
       },
     ]);
   });
@@ -66,8 +66,8 @@ describe('flightsFromAeroDataBox', () => {
     expect(bare[0]).toEqual({
       number: 'XX1',
       airline: null,
-      departure: { iata: null, name: '?', date: null, time: null, terminal: null },
-      arrival: { iata: null, name: 'Far', date: null, time: null, terminal: null },
+      departure: { iata: null, name: '?', countryCode: null, date: null, time: null, terminal: null },
+      arrival: { iata: null, name: 'Far', countryCode: null, date: null, time: null, terminal: null },
     });
     expect(flightsFromAeroDataBox({ message: 'nope' })).toEqual([]);
   });

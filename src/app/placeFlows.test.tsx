@@ -5,7 +5,7 @@ import { repositories } from '@/data';
 import type { Trip } from '@/data/models';
 import { BIAS_RADIUS_METERS } from '@/features/places/placeSearch';
 import { SEARCH_DELAY_MS } from '@/features/places/usePlaceSearch';
-import { renderApp, resetApp, stubPlacesApi } from '@/test/app';
+import { pickTripDates, renderApp, resetApp, stubPlacesApi } from '@/test/app';
 import { DOTONBORI, OSAKA, OSAKA_CASTLE } from '@/test/places';
 
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
@@ -29,7 +29,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: OSAKA_CITY,
+    cities: [OSAKA_CITY],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -208,33 +208,34 @@ describe('place search', () => {
 });
 
 describe('trip city search', () => {
-  it('finds the city, and place search then looks around it', async () => {
+  it("finds cities in the trip's countries, and place search then looks around the city", async () => {
     const api = stubPlacesApi([OSAKA, OSAKA_CASTLE, DOTONBORI]);
     const { user, router } = renderApp('/trips/new');
     await user.type(await screen.findByLabelText('여행 이름'), '간사이 여행');
-    await user.type(screen.getByLabelText('도시'), '오사카');
+    await user.click(screen.getByRole('button', { name: '나라 고르기' }));
+    const countries = await screen.findByRole('dialog', { name: '가는 나라' });
+    await user.type(within(countries).getByLabelText('나라 이름'), '일본');
+    await user.click(within(countries).getByRole('checkbox', { name: '일본' }));
+    await user.click(within(countries).getByRole('button', { name: '1개 나라 고르기' }));
+    expect(screen.getByRole('button', { name: '일본 빼기' })).toBeInTheDocument();
 
-    // Cities, provinces and countries only.
+    // Cities, provinces and countries only, in the countries picked.
+    await user.type(screen.getByLabelText('도시'), '오사카');
     const city = await screen.findByRole('button', { name: /^오사카(?!성)/ });
     expect(api.requests[0]!.includedPrimaryTypes).toEqual(['(regions)']);
+    expect(api.requests[0]!.includedRegionCodes).toEqual(['jp']);
     expect(screen.queryByRole('button', { name: /^오사카성/ })).not.toBeInTheDocument();
     await user.click(city);
-    expect(await screen.findByText('이 도시 근처의 장소가 먼저 검색돼요.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '오사카 빼기' })).toBeInTheDocument();
+    expect(screen.getByLabelText('도시')).toHaveValue('');
     expect(screen.queryByRole('list', { name: '검색 결과' })).not.toBeInTheDocument();
 
-    // Typing lets go of the city, in a new search session; typing its name back finds it again.
-    await user.type(screen.getByLabelText('도시'), '부');
-    await waitFor(() => expect(api.requests).toHaveLength(2));
-    expect(api.requests[1]!.sessionToken).not.toBe(api.requests[0]!.sessionToken);
-    expect(screen.getByText('검색해서 고르면 그 근처의 장소가 먼저 검색돼요.')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('도시'), '{Backspace}');
-    expect(screen.getByText('이 도시 근처의 장소가 먼저 검색돼요.')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2026-11-10' } });
+    await pickTripDates(user, '2026-11-10', '2026-11-10');
     await user.click(screen.getByRole('button', { name: '만들기' }));
     await waitFor(() => expect(router.state.location.pathname).not.toBe('/trips/new'));
     const created = (await repositories.trips.list()).find((t) => t.title === '간사이 여행')!;
-    expect(created.city).toEqual(FOUND_OSAKA);
+    expect(created.countries).toEqual(['JP']);
+    expect(created.cities).toEqual([FOUND_OSAKA]);
 
     await user.click(await screen.findByRole('button', { name: 'Day 1에 장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), '도톤보리');
@@ -242,11 +243,11 @@ describe('trip city search', () => {
     expect(api.requests.at(-1)!.locationBias).toEqual(AROUND_OSAKA);
   });
 
-  it("does not search a saved trip's city until it is typed in", async () => {
+  it("does not search a saved trip's cities; one is taken off, others added", async () => {
     const api = stubPlacesApi([OSAKA]);
     const typed = await repositories.trips.create({
       title: '간사이 여행',
-      city: { name: '간사이', placeId: null, location: null, fetchedAt: null },
+      cities: [{ name: '간사이', placeId: null, location: null, fetchedAt: null }],
       startDate: '2026-11-10',
       endDate: '2026-11-12',
     });
@@ -256,12 +257,19 @@ describe('trip city search', () => {
     await new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY_MS + 100));
     expect(api.requests).toEqual([]);
 
-    await user.clear(city);
+    await user.click(screen.getByRole('button', { name: '간사이 빼기' }));
     await user.type(city, '오사카');
     await user.click(await screen.findByRole('button', { name: /^오사카/ }));
+    await user.type(city, '교토');
+    await user.click(await screen.findByRole('button', { name: /^'교토' 그대로 넣기/ }));
+    const added = within(screen.getByRole('list', { name: '넣은 도시' })).getAllByRole('listitem');
+    expect(added.map((li) => li.textContent)).toEqual(['오사카', '교토']);
     await user.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(async () =>
-      expect((await repositories.trips.get(typed.id))!.city).toEqual(FOUND_OSAKA),
+      expect((await repositories.trips.get(typed.id))!.cities).toEqual([
+        FOUND_OSAKA,
+        { name: '교토', placeId: null, location: null, fetchedAt: null },
+      ]),
     );
   });
 });

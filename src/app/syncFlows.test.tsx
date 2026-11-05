@@ -27,7 +27,7 @@ const server = () => shared.server!;
 const synced = { timeout: 3000 };
 const OSAKA: NewTrip = {
   title: 'Osaka',
-  city: typedCity('Osaka'),
+  cities: [typedCity('Osaka')],
   startDate: '2026-12-01',
   endDate: '2026-12-03',
 };

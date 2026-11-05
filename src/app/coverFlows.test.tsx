@@ -1,11 +1,12 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { CoverPhoto } from '@/data/models';
 import { prepareCoverPhoto } from '@/features/trips/coverPhoto';
 import { coverStyle } from '@/features/trips/tripCover';
-import { renderApp, resetApp, resetStores } from '@/test/app';
+import { addDays, toLocalDate } from '@/lib/dates';
+import { pickTripDates, renderApp, resetApp, resetStores } from '@/test/app';
 import { makeCover, typedCity } from '@/test/fixtures';
 
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
@@ -18,12 +19,13 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-// Far ahead, so the list puts them the same way whenever the tests run.
+// Ahead, so the list puts them the same way whenever the tests run; the calendar still reaches them.
+const ahead = (days: number) => addDays(toLocalDate(), days);
 const osaka = {
   title: '오사카 여행',
-  city: typedCity('오사카'),
-  startDate: '2099-11-10',
-  endDate: '2099-11-12',
+  cities: [typedCity('오사카')],
+  startDate: ahead(300),
+  endDate: ahead(302),
 };
 
 const photo = (name: string, type = 'image/jpeg') => new File(['photo bytes'], name, { type });
@@ -33,9 +35,8 @@ const shown = (src: string) => document.querySelectorAll(`img[src="${src}"]`);
 
 async function fillNewTrip(user: ReturnType<typeof renderApp>['user']) {
   await user.type(await screen.findByLabelText('여행 이름'), osaka.title);
-  await user.type(screen.getByLabelText('도시'), osaka.city.name);
-  fireEvent.change(screen.getByLabelText('시작일'), { target: { value: osaka.startDate } });
-  fireEvent.change(screen.getByLabelText('종료일'), { target: { value: osaka.endDate } });
+  await user.type(screen.getByLabelText('도시'), osaka.cities[0]!.name);
+  await pickTripDates(user, osaka.startDate, osaka.endDate);
 }
 
 describe('cover photos', () => {
@@ -69,9 +70,9 @@ describe('cover photos', () => {
     await repositories.trips.create({
       ...osaka,
       title: '도쿄 여행',
-      city: typedCity('도쿄'),
-      startDate: '2099-12-01',
-      endDate: '2099-12-03',
+      cities: [typedCity('도쿄')],
+      startDate: ahead(320),
+      endDate: ahead(322),
       cover: makeCover('tower'),
     });
     cleanup();

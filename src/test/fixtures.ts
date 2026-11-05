@@ -52,7 +52,8 @@ export function makeTrip(overrides: Partial<Trip> = {}): Trip {
   return {
     id: newId(),
     title: '오사카 여행',
-    city: typedCity('오사카'),
+    countries: [],
+    cities: [typedCity('오사카')],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
     settlementCurrency: 'KRW',

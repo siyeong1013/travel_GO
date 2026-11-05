@@ -6,7 +6,7 @@ import {
   coverStyle,
   photoTextShade,
 } from '@/features/trips/tripCover';
-import { tripPhase, tripPhaseLabel } from '@/features/trips/tripDisplay';
+import { tripPhase, tripPhaseLabel, tripPlacesText } from '@/features/trips/tripDisplay';
 import { TripPhaseBadge } from '@/features/trips/TripPhaseBadge';
 import { formatDateRange, formatTripLength } from '@/lib/format';
 
@@ -40,7 +40,7 @@ export function TripHeroCard({ trip, today }: TripCardProps) {
         style={trip.cover ? photoTextShade : undefined}
         className={`relative px-5 pb-5 ${trip.cover ? 'pt-16' : 'pt-10'}`}
       >
-        <p className="truncate text-sm font-semibold">{trip.city.name}</p>
+        <p className="truncate text-sm font-semibold">{tripPlacesText(trip)}</p>
         <h3 className="mt-0.5 truncate text-2xl leading-tight font-bold">{trip.title}</h3>
         <p className="mt-1.5 text-sm font-medium">{dates(trip, today)}</p>
       </div>
@@ -79,7 +79,7 @@ export function TripCard({ trip, today }: TripCardProps) {
           {/* Past trips are already grouped under "지난 여행", so they skip the badge. */}
           {!past && <TripPhaseBadge trip={trip} today={today} />}
         </div>
-        <p className="mt-0.5 truncate text-sm text-gray-500">{trip.city.name}</p>
+        <p className="mt-0.5 truncate text-sm text-gray-500">{tripPlacesText(trip)}</p>
         <p className="text-sm text-gray-500">{dates(trip, today)}</p>
       </div>
     </Link>

@@ -1,11 +1,17 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalRepositories, createTravelGoDB, type TravelGoDB } from '@/data/local';
+import type { Trip } from '@/data/models';
 import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
 import { newId } from '@/lib/id';
 import { makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
 
 let db: TravelGoDB | undefined;
+
+/** A trip as the app stored it before v8: one city, no countries. */
+function beforeV8({ cities, countries, ...trip }: Trip) {
+  return { ...trip, city: cities[0]! };
+}
 
 afterEach(async () => {
   await db?.delete();
@@ -14,7 +20,8 @@ afterEach(async () => {
 describe('schema migrations', () => {
   it('v1 → v2: existing trips get the defaults and their "나", data untouched', async () => {
     const name = `test-${newId()}`;
-    const { settlementCurrency, budget, ...v1Trip } = makeTrip();
+    const trip = makeTrip();
+    const { settlementCurrency, budget, ...v1Trip } = beforeV8(trip);
     const item = makeItem({ tripId: v1Trip.id });
 
     // A database as version 1 of the app left it.
@@ -27,11 +34,7 @@ describe('schema migrations', () => {
     db = createTravelGoDB(name);
     const repos = createLocalRepositories(db, testClock());
 
-    expect(await repos.trips.get(v1Trip.id)).toEqual({
-      ...v1Trip,
-      settlementCurrency: 'KRW',
-      budget: null,
-    });
+    expect(await repos.trips.get(v1Trip.id)).toEqual({ ...trip, settlementCurrency: 'KRW', budget: null });
     expect(await repos.companions.listByTrip(v1Trip.id)).toEqual([
       {
         id: meCompanionId(v1Trip.id),
@@ -51,7 +54,7 @@ describe('schema migrations', () => {
     const name = `test-${newId()}`;
     const withoutFetchedAt = <T extends { fetchedAt: unknown }>({ fetchedAt, ...rest }: T) => rest;
     const trip = makeTrip({
-      city: { name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 }, fetchedAt: null },
+      cities: [{ name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 }, fetchedAt: null }],
       createdAt: '2025-12-20T00:00:00.000Z',
       updatedAt: '2025-12-21T00:00:00.000Z',
     });
@@ -72,7 +75,7 @@ describe('schema migrations', () => {
       expenseShares: 'id, tripId, expenseId',
       settlements: 'id, tripId',
     });
-    await v2.table('trips').add({ ...trip, city: withoutFetchedAt(trip.city) });
+    await v2.table('trips').add({ ...beforeV8(trip), city: withoutFetchedAt(trip.cities[0]!) });
     await v2.table('scheduleItems').bulkAdd(
       [google, typed].map((item) => ({ ...item, place: withoutFetchedAt(item.place) })),
     );
@@ -83,7 +86,7 @@ describe('schema migrations', () => {
 
     expect(await repos.trips.get(trip.id)).toEqual({
       ...trip,
-      city: { ...trip.city, fetchedAt: trip.createdAt },
+      cities: [{ ...trip.cities[0]!, fetchedAt: trip.createdAt }],
     });
     expect(await repos.schedule.listByTrip(trip.id)).toEqual([
       { ...google, place: { ...google.place, fetchedAt: google.createdAt } },
@@ -93,7 +96,8 @@ describe('schema migrations', () => {
 
   it('v3 → v4: existing trips have no cover photo, updatedAt untouched', async () => {
     const name = `test-${newId()}`;
-    const { cover, ...v3Trip } = makeTrip({ updatedAt: '2025-12-21T00:00:00.000Z' });
+    const trip = makeTrip({ updatedAt: '2025-12-21T00:00:00.000Z' });
+    const { cover, ...v3Trip } = beforeV8(trip);
 
     // A database as version 3 of the app left it.
     const v3 = new Dexie(name);
@@ -111,7 +115,7 @@ describe('schema migrations', () => {
     db = createTravelGoDB(name);
     const repos = createLocalRepositories(db, testClock());
 
-    expect(await repos.trips.get(v3Trip.id)).toEqual({ ...v3Trip, cover: null });
+    expect(await repos.trips.get(v3Trip.id)).toEqual({ ...trip, cover: null });
   });
 
   it('v4 → v5: the trips stay, with nothing synced yet', async () => {
@@ -129,7 +133,7 @@ describe('schema migrations', () => {
     });
     v4.version(3).stores({});
     v4.version(4).stores({});
-    await v4.table('trips').add(trip);
+    await v4.table('trips').add(beforeV8(trip));
     v4.close();
 
     db = createTravelGoDB(name);
@@ -155,11 +159,36 @@ describe('schema migrations', () => {
     v5.version(3).stores({});
     v5.version(4).stores({});
     v5.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
-    await v5.table('trips').add(trip);
+    await v5.table('trips').add(beforeV8(trip));
     await v5.table('companions').add(v5Me);
     v5.close();
 
     db = createTravelGoDB(name);
     expect(await db.companions.toArray()).toEqual([{ ...v5Me, accountId: null }]);
+  });
+
+  it('v7 → v8: a trip has its city as its cities and no countries, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip({
+      cities: [{ name: '오사카', placeId: 'osaka', location: { lat: 34.69, lng: 135.5 }, fetchedAt: '2025-12-30T00:00:00.000Z' }],
+      updatedAt: '2025-12-21T00:00:00.000Z',
+    });
+
+    // A database as version 7 of the app left it.
+    const v7 = new Dexie(name);
+    v7.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v7.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v7.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    v7.version(7).stores({ visitedCountries: 'id' });
+    await v7.table('trips').add(beforeV8(trip));
+    v7.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.trips.toArray()).toEqual([trip]);
   });
 });

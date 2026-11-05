@@ -32,9 +32,11 @@ function flightEnd(value: unknown): FlightEnd {
   const movement = json(value);
   const airport = json(movement.airport);
   const [date, time] = localParts(movement);
+  const country = text(airport.countryCode)?.toUpperCase() ?? '';
   return {
     iata: text(airport.iata),
     name: text(airport.shortName) ?? text(airport.municipalityName) ?? text(airport.name) ?? '?',
+    countryCode: /^[A-Z]{2}$/.test(country) ? country : null,
     date,
     time,
     terminal: text(movement.terminal),

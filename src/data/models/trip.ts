@@ -21,7 +21,13 @@ export interface CoverPhoto {
 export interface Trip {
   id: ID;
   title: string;
-  city: TripCity;
+  /**
+   * The countries the trip goes to, as ISO 3166-1 alpha-2 codes (`JP`, data/rules/country), in the
+   * order picked; maybe none. Once the trip has begun they count as visited ("다녀온 나라").
+   */
+  countries: string[];
+  /** The cities it goes to, in the order picked: one at least. */
+  cities: TripCity[];
   startDate: LocalDate;
   /** Inclusive. */
   endDate: LocalDate;

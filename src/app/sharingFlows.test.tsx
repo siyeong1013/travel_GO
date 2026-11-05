@@ -32,7 +32,7 @@ const OWNER = USER_IDS.kakao;
 const FRIEND = USER_IDS.google;
 const OSAKA: NewTrip = {
   title: 'Osaka',
-  city: typedCity('Osaka'),
+  cities: [typedCity('Osaka')],
   startDate: '2026-12-01',
   endDate: '2026-12-03',
 };

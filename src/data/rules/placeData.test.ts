@@ -49,11 +49,11 @@ describe('expiry of Google place data (30 days)', () => {
   });
 
   it('applies to the trips and items of a backup', () => {
-    const trip = makeTrip({ city: googleCity(ago(31)) });
+    const trip = makeTrip({ cities: [googleCity(ago(31))] });
     const old = makeItem({ tripId: trip.id, place: makePlace('a', { fetchedAt: ago(31) }) });
     const fresh = makeItem({ tripId: trip.id, place: makePlace('b', { fetchedAt: ago(1) }) });
     const data = expireBackupData({ ...emptyData(), trips: [trip], scheduleItems: [old, fresh] }, NOW);
-    expect(data.trips[0]!.city.location).toBeNull();
+    expect(data.trips[0]!.cities[0]!.location).toBeNull();
     expect(data.scheduleItems[0]!.place.location).toBeNull();
     expect(data.scheduleItems[1]).toBe(fresh);
   });
@@ -104,10 +104,10 @@ describe('validation of Google data', () => {
     expect(cleanPlace(makePlace('오사카성', { location: null, fetchedAt: NOW })).fetchedAt).toBeNull();
 
     const trip = { title: '여행', startDate: '2026-11-10', endDate: '2026-11-12' };
-    expect(() => cleanTripFields({ ...trip, city: { ...googleCity(NOW), fetchedAt: null } })).toThrow(
+    expect(() => cleanTripFields({ ...trip, cities: [{ ...googleCity(NOW), fetchedAt: null }] })).toThrow(
       ValidationError,
     );
-    expect(cleanTripFields({ ...trip, city: googleCity(NOW) }).city.fetchedAt).toBe(NOW);
+    expect(cleanTripFields({ ...trip, cities: [googleCity(NOW)] }).cities[0]!.fetchedAt).toBe(NOW);
   });
 
   it('checks refreshed data', () => {

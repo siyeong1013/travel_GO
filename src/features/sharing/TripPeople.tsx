@@ -27,6 +27,7 @@ import { useSharingStore } from '@/features/sharing/sharingStore';
 import { ledgerAccount, useAccountInLedger } from '@/features/sharing/useMyCompanion';
 import { WhoAmISheet } from '@/features/sharing/WhoAmISheet';
 import { useSyncStore } from '@/features/sync/syncStore';
+import { tripCitiesText } from '@/features/trips/tripDisplay';
 import { kakaoJavaScriptKey, loadedKakao, loadKakao, sendKakaoCard } from '@/lib/kakaoShare';
 import { canShare, copyText, shareText } from '@/lib/share';
 import { supabaseConfig } from '@/lib/supabase';
@@ -397,7 +398,7 @@ function InviteSection({
     setError(null);
     const card = {
       title: `‘${trip.title}’ 여행에 초대받았어요`,
-      description: tripSummary({ ...trip, city: trip.city.name || null }),
+      description: tripSummary({ ...trip, city: tripCitiesText(trip) || null }),
       url,
       imageUrl: `${window.location.origin}/invite-card.jpg`,
       buttonTitle: '참여하기',

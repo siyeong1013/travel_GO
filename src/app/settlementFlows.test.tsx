@@ -17,7 +17,7 @@ beforeEach(async () => {
   await resetApp();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+    cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }],
     startDate: '2026-11-10',
     endDate: '2026-11-12',
   });
@@ -153,7 +153,7 @@ describe('settlement', () => {
   it('has nothing to settle alone or before spending', async () => {
     const solo = await repositories.trips.create({
       title: '혼자 여행',
-      city: { name: '후쿠오카', placeId: null, location: null, fetchedAt: null },
+      cities: [{ name: '후쿠오카', placeId: null, location: null, fetchedAt: null }],
       startDate: '2026-12-01',
       endDate: '2026-12-02',
     });

@@ -1,9 +1,9 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import { makePlace } from '@/test/fixtures';
-import { renderApp, resetApp, resetStores } from '@/test/app';
+import { pickTripDates, renderApp, resetApp, resetStores } from '@/test/app';
 
 // The app's singletons, backed by a throwaway database.
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
@@ -12,7 +12,7 @@ beforeEach(resetApp);
 
 const osaka = {
   title: '오사카 여행',
-  city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+  cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }],
   startDate: '2026-11-10',
   endDate: '2026-11-12',
 };
@@ -29,10 +29,8 @@ describe('trip flows', () => {
 
     await user.type(screen.getByLabelText('여행 이름'), '오사카 여행');
     await user.type(screen.getByLabelText('도시'), '오사카');
-    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2026-11-10' } });
-    expect(screen.getByLabelText('종료일')).toHaveValue('2026-11-10');
-    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-11-12' } });
-    expect(screen.getByText('2박 3일')).toBeInTheDocument();
+    await pickTripDates(user, '2026-11-10', '2026-11-12');
+    expect(screen.getByRole('button', { name: /^여행 기간 11\.10 \(화\) – 11\.12 \(목\) · 2박 3일$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '만들기' }));
     expect(await screen.findByRole('heading', { name: '오사카 여행' })).toBeInTheDocument();
@@ -94,7 +92,7 @@ describe('editing a trip', () => {
     expect(title).toHaveValue('오사카 여행');
     await user.clear(title);
     await user.type(title, '간사이 여행');
-    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-11-13' } });
+    await pickTripDates(user, '2026-11-10', '2026-11-13');
     await user.click(screen.getByRole('button', { name: '저장' }));
 
     expect(await screen.findByRole('heading', { name: '간사이 여행' })).toBeInTheDocument();
@@ -126,7 +124,7 @@ describe('editing a trip', () => {
     }
 
     async function shortenTo12th(user: ReturnType<typeof renderApp>['user']) {
-      fireEvent.change(await screen.findByLabelText('종료일'), { target: { value: '2026-11-12' } });
+      await pickTripDates(user, '2026-11-10', '2026-11-12');
       await user.click(screen.getByRole('button', { name: '저장' }));
       expect(
         await screen.findByRole('heading', { name: '여행 기간 밖 일정 2개' }),

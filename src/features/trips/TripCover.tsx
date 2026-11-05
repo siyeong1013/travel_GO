@@ -1,7 +1,7 @@
 import type { Ref } from 'react';
 import type { LocalDate, Trip } from '@/data/models';
 import { coverBadgeClass, coverStyle, photoTextShade } from '@/features/trips/tripCover';
-import { tripPhaseLabel } from '@/features/trips/tripDisplay';
+import { tripPhaseLabel, tripPlacesText } from '@/features/trips/tripDisplay';
 import { formatDateRange, formatTripLength } from '@/lib/format';
 
 interface TripCoverProps {
@@ -42,7 +42,7 @@ export function TripCover({ trip, today, startRef, endRef }: TripCoverProps) {
           >
             {tripPhaseLabel(trip, today)}
           </span>
-          <span className="truncate">{trip.city.name}</span>
+          <span className="truncate">{tripPlacesText(trip)}</span>
         </div>
         <h1 className="mt-3 text-[26px] leading-tight font-bold break-keep">{trip.title}</h1>
         <p className="mt-1.5 text-[15px] font-medium">

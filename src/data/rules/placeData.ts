@@ -43,8 +43,8 @@ export function expireItem(item: ScheduleItem, now: ISODateTime): ScheduleItem {
 
 /** Same object when nothing expired. */
 export function expireTrip(trip: Trip, now: ISODateTime): Trip {
-  const city = expireCity(trip.city, now);
-  return city === trip.city ? trip : { ...trip, city };
+  const cities = trip.cities.map((city) => expireCity(city, now));
+  return cities.every((city, i) => city === trip.cities[i]) ? trip : { ...trip, cities };
 }
 
 /** What may leave the app or come into it (backups): without expired Google data. */
@@ -75,4 +75,10 @@ export function withPlaceData(place: PlaceSnapshot, data: PlaceData): PlaceSnaps
 export function withCityData(city: TripCity, data: PlaceData): TripCity {
   if (city.placeId !== data.placeId) return city;
   return { ...city, location: data.location, fetchedAt: data.fetchedAt };
+}
+
+/** The cities, those that are that place with freshly fetched coordinates (else the same array). */
+export function withCitiesData(cities: TripCity[], data: PlaceData): TripCity[] {
+  const next = cities.map((city) => withCityData(city, data));
+  return next.every((city, i) => city === cities[i]) ? cities : next;
 }

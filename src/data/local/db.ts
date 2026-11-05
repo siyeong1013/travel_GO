@@ -7,6 +7,7 @@ import type {
   ScheduleItem,
   Settlement,
   Trip,
+  TripCity,
   VisitedCountry,
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
@@ -26,6 +27,9 @@ export type TravelGoDB = Dexie & {
 };
 
 export const DEFAULT_DB_NAME = 'travel-go';
+
+/** A trip as stored before v8: one city, no countries. (Older upgrades below are typed with it.) */
+type TripBeforeV8 = Omit<Trip, 'cities' | 'countries'> & { city: TripCity };
 
 export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
   const db = new Dexie(name) as TravelGoDB;
@@ -76,7 +80,7 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
           item.place.fetchedAt = fromGoogle ? item.createdAt : null;
         });
       await tx
-        .table<Trip, ID>('trips')
+        .table<TripBeforeV8, ID>('trips')
         .toCollection()
         .modify((trip) => {
           const { placeId, location } = trip.city;
@@ -120,6 +124,28 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
   db.version(7).stores({
     visitedCountries: 'id',
   });
+
+  // v8: a trip goes to countries, and maybe to several cities (`city` became `cities`). Existing
+  // trips keep their city and have no countries yet (`updatedAt` stays: not an edit).
+  db.version(8)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<
+          Omit<Trip, 'cities' | 'countries'> & {
+            city?: TripCity;
+            cities?: TripCity[];
+            countries?: string[];
+          },
+          ID
+        >('trips')
+        .toCollection()
+        .modify((trip) => {
+          if (trip.city) trip.cities = [trip.city];
+          trip.countries = [];
+          delete trip.city;
+        });
+    });
 
   return db;
 }

@@ -20,7 +20,7 @@ afterEach(async () => {
 
 const newTrip = (title: string, startDate: string): NewTrip => ({
   title,
-  city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+  cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }],
   startDate,
   endDate: startDate,
 });

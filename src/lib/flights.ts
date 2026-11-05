@@ -8,6 +8,8 @@ export interface FlightEnd {
   iata: string | null;
   /** As the flight data names it (`Incheon`). */
   name: string;
+  /** The airport's country, ISO 3166-1 alpha-2 (`KR`). */
+  countryCode: string | null;
   /** `YYYY-MM-DD`, local. */
   date: string | null;
   /** `HH:mm`, local. */

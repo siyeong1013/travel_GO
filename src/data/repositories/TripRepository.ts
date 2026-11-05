@@ -1,11 +1,11 @@
 import type { ID, PlaceData, Trip } from '@/data/models';
 
 /**
- * New trips start with settlement currency KRW, no budget, and a "나" companion; and without a
- * cover photo unless one is given.
+ * New trips start with settlement currency KRW, no budget, and a "나" companion; and without
+ * countries or a cover photo unless they are given.
  */
-export type NewTrip = Pick<Trip, 'title' | 'city' | 'startDate' | 'endDate'> &
-  Partial<Pick<Trip, 'cover'>>;
+export type NewTrip = Pick<Trip, 'title' | 'cities' | 'startDate' | 'endDate'> &
+  Partial<Pick<Trip, 'countries' | 'cover'>>;
 /** `cover: null` removes the photo. */
 export type TripPatch = Partial<NewTrip & Pick<Trip, 'settlementCurrency' | 'budget'>>;
 
@@ -43,7 +43,7 @@ export interface TripRepository {
   /** Also deletes everything that belongs to the trip. No-op if the trip does not exist. */
   delete(id: ID): Promise<void>;
   /**
-   * Freshly fetched coordinates of the trip's city, if it still is that place; `updatedAt` stays
+   * Freshly fetched coordinates of the trip's cities that still are that place; `updatedAt` stays
    * (not an edit). Returns the trip as stored, undefined if it does not exist.
    */
   refreshCity(id: ID, city: PlaceData): Promise<Trip | undefined>;

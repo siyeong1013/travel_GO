@@ -21,7 +21,7 @@ afterEach(() => db.delete());
 
 const osaka: NewTrip = {
   title: '  오사카 여행  ',
-  city: { name: '오사카', placeId: null, location: null, fetchedAt: null },
+  cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }],
   startDate: '2026-11-10',
   endDate: '2026-11-12',
 };
@@ -45,6 +45,30 @@ describe('LocalTripRepository', () => {
     await expect(repos.trips.create({ ...osaka, startDate: '2026/11/10' })).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+
+  it('keeps the countries and cities in the order picked; one city at least, each country once', async () => {
+    const kyoto = { name: ' 교토 ', placeId: null, location: null, fetchedAt: null };
+    const trip = await repos.trips.create({
+      ...osaka,
+      countries: ['JP', 'KR'],
+      cities: [...osaka.cities, kyoto],
+    });
+    expect(trip.countries).toEqual(['JP', 'KR']);
+    expect(trip.cities.map((city) => city.name)).toEqual(['오사카', '교토']);
+    expect((await repos.trips.create(osaka)).countries).toEqual([]);
+
+    for (const bad of [
+      { cities: [] },
+      { cities: [{ ...kyoto, name: ' ' }] },
+      { countries: ['japan'] },
+      { countries: ['JP', 'JP'] },
+      { countries: Array.from({ length: 16 }, (_, i) => `A${String.fromCharCode(65 + i)}`) },
+    ]) {
+      await expect(repos.trips.create({ ...osaka, ...bad })).rejects.toBeInstanceOf(ValidationError);
+    }
+    await expect(repos.trips.update(trip.id, { cities: [] })).rejects.toBeInstanceOf(ValidationError);
+    expect((await repos.trips.update(trip.id, { countries: ['TW'] })).countries).toEqual(['TW']);
   });
 
   it('takes an id made up front (the form shows the cover color it picks), if it is a new UUID', async () => {
@@ -188,11 +212,14 @@ describe("LocalTripRepository: a city's Google coordinates are kept for 30 days"
   });
 
   it('removes them once expired when getting or listing, keeping updatedAt', async () => {
-    const created = await repos.trips.create({ ...osaka, city: city('2025-12-30T00:00:00.000Z') });
-    const expired = { ...created, city: city('2025-12-01T00:00:00.000Z') };
+    const created = await repos.trips.create({ ...osaka, cities: [city('2025-12-30T00:00:00.000Z')] });
+    const expired = { ...created, cities: [city('2025-12-01T00:00:00.000Z')] };
     await db.trips.put(expired);
 
-    const cleared = { ...expired, city: { ...expired.city, location: null, fetchedAt: null } };
+    const cleared = {
+      ...expired,
+      cities: [{ ...expired.cities[0]!, location: null, fetchedAt: null }],
+    };
     expect(await repos.trips.get(created.id)).toEqual(cleared);
     expect(await db.trips.get(created.id)).toEqual(cleared);
 
@@ -204,13 +231,13 @@ describe("LocalTripRepository: a city's Google coordinates are kept for 30 days"
   });
 
   it('refreshes them for the same place only, keeping updatedAt', async () => {
-    const created = await repos.trips.create({ ...osaka, city: city('2025-12-30T00:00:00.000Z') });
+    const created = await repos.trips.create({ ...osaka, cities: [city('2025-12-30T00:00:00.000Z')] });
     const fresh = { placeId: 'osaka', address: null, location: { lat: 1, lng: 2 }, fetchedAt: '2026-01-01T12:00:00.000Z' };
 
     const refreshed = await repos.trips.refreshCity(created.id, fresh);
     expect(refreshed).toEqual({
       ...created,
-      city: { ...created.city, location: { lat: 1, lng: 2 }, fetchedAt: fresh.fetchedAt },
+      cities: [{ ...created.cities[0]!, location: { lat: 1, lng: 2 }, fetchedAt: fresh.fetchedAt }],
     });
     expect(await repos.trips.get(created.id)).toEqual(refreshed);
 

@@ -9,7 +9,7 @@ import {
 } from '@/data/repositories';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { DEFAULT_SETTLEMENT_CURRENCY } from '@/data/rules/money';
-import { expireTrip, withCityData } from '@/data/rules/placeData';
+import { expireTrip, withCitiesData } from '@/data/rules/placeData';
 import { findOutOfRange, normalizeSchedule } from '@/data/rules/schedule';
 import { compareTrips } from '@/data/rules/trip';
 import {
@@ -82,7 +82,8 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
             ...current,
             ...cleanTripFields({
               title: patch.title ?? current.title,
-              city: patch.city ?? current.city,
+              countries: patch.countries ?? current.countries,
+              cities: patch.cities ?? current.cities,
               startDate: patch.startDate ?? current.startDate,
               endDate: patch.endDate ?? current.endDate,
             }),
@@ -146,9 +147,9 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
       return db.transaction('rw', db.trips, async () => {
         const trip = await db.trips.get(id);
         if (!trip) return undefined;
-        const city = withCityData(trip.city, fresh);
-        if (city === trip.city) return trip;
-        const next = { ...trip, city };
+        const cities = withCitiesData(trip.cities, fresh);
+        if (cities === trip.cities) return trip;
+        const next = { ...trip, cities };
         await db.trips.put(next);
         return next;
       });

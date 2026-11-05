@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { Trip } from '@/data/models';
 import type { FlightAnswer } from '@/lib/flights';
-import { renderApp, resetApp, stubPlacesApi, stubSupabase } from '@/test/app';
+import { pickTripDates, renderApp, resetApp, stubPlacesApi, stubSupabase } from '@/test/app';
 import { typedCity } from '@/test/fixtures';
 import { kakaoUser, supabaseFake } from '@/test/supabase';
 
@@ -21,8 +21,8 @@ const KE723: FlightAnswer = {
     {
       number: 'KE723',
       airline: 'Korean Air',
-      departure: { iata: 'ICN', name: 'Incheon', date: '2026-12-01', time: '09:00', terminal: '2' },
-      arrival: { iata: 'KIX', name: 'Kansai', date: '2026-12-01', time: '10:55', terminal: '1' },
+      departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', date: '2026-12-01', time: '09:00', terminal: '2' },
+      arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', date: '2026-12-01', time: '10:55', terminal: '1' },
     },
   ],
 };
@@ -35,7 +35,7 @@ beforeEach(async () => {
   stubSupabase();
   trip = await repositories.trips.create({
     title: '오사카 여행',
-    city: typedCity('오사카'),
+    cities: [typedCity('오사카')],
     startDate: '2026-12-01',
     endDate: '2026-12-03',
   });
@@ -117,5 +117,43 @@ describe('adding a flight', () => {
     await user.click(await screen.findByRole('button', { name: '보관함에 장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), 'KE723');
     expect(screen.queryByRole('button', { name: /항공편 정보 불러오기/ })).toBeNull();
+  });
+});
+
+describe("a new trip's flights", () => {
+  it('go into its schedule once found, and the countries they land in into its own', async () => {
+    supabaseFake.signedIn(kakaoUser());
+    const fetch = stubFlightApi(KE723);
+    const { user, router } = renderApp('/trips/new');
+    await user.type(await screen.findByLabelText('여행 이름'), '간사이 여행');
+    await user.type(screen.getByLabelText('도시'), '오사카');
+    await pickTripDates(user, '2026-12-01', '2026-12-03');
+
+    await user.click(screen.getByRole('button', { name: '항공편 넣기' }));
+    const first = screen.getByRole('group', { name: '항공편 1' });
+    // The way there leaves on the first day.
+    expect(within(first).getByLabelText('출발일')).toHaveValue('2026-12-01');
+    await user.type(within(first).getByLabelText('편명'), 'ke723');
+    await user.click(within(first).getByRole('button', { name: 'KE723 항공편 정보 불러오기' }));
+    expect(await within(first).findByText('인천 09:00 → 간사이 10:55')).toBeInTheDocument();
+    expect(String(fetch.mock.calls[0]![0])).toBe('/api/flight?number=KE723&date=2026-12-01');
+    // It lands in Japan.
+    expect(screen.getByRole('button', { name: '일본 빼기' })).toBeInTheDocument();
+
+    // The way back isn't looked up: it goes in by its number on its day.
+    await user.click(screen.getByRole('button', { name: '항공편 더 넣기' }));
+    const second = screen.getByRole('group', { name: '항공편 2' });
+    expect(within(second).getByLabelText('출발일')).toHaveValue('2026-12-03');
+    await user.type(within(second).getByLabelText('편명'), 'KE724');
+
+    await user.click(screen.getByRole('button', { name: '만들기' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/trips\/[0-9a-f-]{36}$/));
+    const created = (await repositories.trips.list()).find((t) => t.title === '간사이 여행')!;
+    expect(created.countries).toEqual(['JP']);
+    const items = await repositories.schedule.listByTrip(created.id);
+    expect(items.map((item) => [item.date, item.time, item.place.name])).toEqual([
+      ['2026-12-01', '09:00', 'KE723 인천 → 간사이'],
+      ['2026-12-03', null, 'KE724'],
+    ]);
   });
 });

@@ -24,6 +24,8 @@ export interface SuggestOptions {
   kind: PlaceKind;
   /** Results around here come first (`searchBias`). */
   bias: GeoPoint | null;
+  /** Results only in these countries (codes like `JP`; Google takes up to 15). */
+  countries?: readonly string[];
 }
 
 /** One search, from the first query to the picked place: one Places session token. */
@@ -61,7 +63,7 @@ export function createPlaceSearch(
       const predictions = new Map<string, google.maps.places.PlacePrediction>();
 
       return {
-        async suggest(input, { kind, bias }) {
+        async suggest(input, { kind, bias, countries = [] }) {
           const places = await loadPlaces();
           token ??= new places.AutocompleteSessionToken();
           const request: google.maps.places.AutocompleteRequest = {
@@ -71,6 +73,9 @@ export function createPlaceSearch(
           };
           if (bias) request.locationBias = { center: bias, radius: BIAS_RADIUS_METERS };
           if (kind === 'region') request.includedPrimaryTypes = ['(regions)'];
+          if (countries.length > 0) {
+            request.includedRegionCodes = countries.slice(0, 15).map((code) => code.toLowerCase());
+          }
 
           const { suggestions } =
             await places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
@@ -132,13 +137,17 @@ export function createPlaceDataFetcher(loadPlaces: LoadPlaces = loadPlacesLibrar
 
 export const fetchPlaceData = createPlaceDataFetcher();
 
-/** Where search looks first: the trip's city, else the place with a location added last. */
+/**
+ * Where search looks first: a trip's one city; with several, the place with a location added last
+ * (where the plan got to), else the first city with a location.
+ */
 export function searchBias(trip: Trip, items: ScheduleItem[]): GeoPoint | null {
-  if (trip.city.location) return trip.city.location;
+  const cities = trip.cities.flatMap((city) => city.location ?? []);
+  if (trip.cities.length === 1 && cities[0]) return cities[0];
   let latest: ScheduleItem | undefined;
   for (const item of items) {
     if (!item.place.location) continue;
     if (!latest || compareIsoDateTime(item.createdAt, latest.createdAt) > 0) latest = item;
   }
-  return latest?.place.location ?? null;
+  return latest?.place.location ?? cities[0] ?? null;
 }

@@ -15,6 +15,7 @@ import type {
   ScheduleItem,
   Settlement,
   Trip,
+  TripCity,
   VisitedCountry,
 } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
@@ -29,6 +30,8 @@ import {
   COVER_THUMBNAIL_MAX_LENGTH,
   isGeoPoint,
   isImageDataUrl,
+  MAX_TRIP_CITIES,
+  MAX_TRIP_COUNTRIES,
 } from '@/data/rules/validation';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
 
@@ -40,15 +43,16 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v4: trips' cover photo (`cover`).
  * v5: companions' `accountId` (a trip shared with friends).
  * v6: the countries the person has been to (`visitedCountries`). Records are as in v5.
+ * v7: trips' countries, and several cities (`cities`, was `city`).
  */
-export const BACKUP_SCHEMA_VERSION = 6;
+export const BACKUP_SCHEMA_VERSION = 7;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
  * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
  * the app before it keep syncing.
  */
-export const RECORD_SCHEMA_VERSION = 5;
+export const RECORD_SCHEMA_VERSION = 7;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -150,27 +154,45 @@ function readFetchedAt(
   return version >= 3 ? timestamp(holder.fetchedAt, `${path}.fetchedAt`) : createdAt;
 }
 
+function readCity(value: unknown, path: string, version: number, createdAt: ISODateTime): TripCity {
+  const city = object(value, path);
+  const placeId = nullable(string)(city.placeId, `${path}.placeId`);
+  const location = nullable(geoPoint)(city.location, `${path}.location`);
+  return {
+    name: text(city.name, `${path}.name`),
+    placeId,
+    location,
+    fetchedAt: readFetchedAt(city, path, version, placeId !== null && location !== null, createdAt),
+  };
+}
+
 function readTrip(value: unknown, path: string, version: number): Trip {
   const t = object(value, path);
-  const city = object(t.city, `${path}.city`);
   const createdAt = timestamp(t.createdAt, `${path}.createdAt`);
-  const placeId = nullable(string)(city.placeId, `${path}.city.placeId`);
-  const location = nullable(geoPoint)(city.location, `${path}.city.location`);
+  // v7 has the countries and several cities; before, one city.
+  const cities =
+    version >= 7
+      ? array(t.cities, `${path}.cities`).map((c, i) =>
+          readCity(c, `${path}.cities[${i}]`, version, createdAt),
+        )
+      : [readCity(t.city, `${path}.city`, version, createdAt)];
+  if (cities.length === 0 || cities.length > MAX_TRIP_CITIES) {
+    invalid(`${path}.cities`, `1 to ${MAX_TRIP_CITIES} cities`);
+  }
+  const countries =
+    version >= 7
+      ? array(t.countries, `${path}.countries`).map((c, i) =>
+          isCountryCode(c) ? c : invalid(`${path}.countries[${i}]`, 'country code like JP'),
+        )
+      : [];
+  if (countries.length > MAX_TRIP_COUNTRIES || new Set(countries).size < countries.length) {
+    invalid(`${path}.countries`, `up to ${MAX_TRIP_COUNTRIES} countries, each once`);
+  }
   const trip: Trip = {
     id: text(t.id, `${path}.id`),
     title: text(t.title, `${path}.title`),
-    city: {
-      name: text(city.name, `${path}.city.name`),
-      placeId,
-      location,
-      fetchedAt: readFetchedAt(
-        city,
-        `${path}.city`,
-        version,
-        placeId !== null && location !== null,
-        createdAt,
-      ),
-    },
+    countries,
+    cities,
     startDate: localDate(t.startDate, `${path}.startDate`),
     endDate: localDate(t.endDate, `${path}.endDate`),
     // v1 had no expenses: the defaults of a new trip.

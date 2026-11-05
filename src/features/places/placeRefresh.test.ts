@@ -32,7 +32,7 @@ describe('refreshTripPlaceData', () => {
   it('fetches data a week old or removed, once per place, and saves what came back', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const trip = makeTrip({
-      city: { name: '오사카', placeId: 'osaka', location: { lat: 34, lng: 135 }, fetchedAt: ago(8) },
+      cities: [{ name: '오사카', placeId: 'osaka', location: { lat: 34, lng: 135 }, fetchedAt: ago(8) }],
     });
     const at = (name: string, placeId: string, fetchedAt: string | null) =>
       makeItem({ tripId: trip.id, place: makePlace(name, { placeId, fetchedAt }) });
@@ -51,6 +51,18 @@ describe('refreshTripPlaceData', () => {
     expect(saved.places.map((place) => place.placeId).sort()).toEqual(['p1', 'p3']);
     expect(saved.city).toEqual({ placeId: 'osaka', address: 'osaka 주소', location: { lat: 1, lng: 2 }, fetchedAt: NOW });
     expect(deps.savePlaces).toHaveBeenCalledWith(trip.id, expect.any(Array));
+  });
+
+  it("refreshes each of the trip's cities that is a week old", async () => {
+    const city = (placeId: string, fetchedAt: string) => ({
+      name: placeId, placeId, location: { lat: 1, lng: 1 }, fetchedAt,
+    });
+    const trip = makeTrip({ cities: [city('osaka', ago(8)), city('kyoto', ago(1)), city('nara', ago(9))] });
+    const { deps, fetched } = setup();
+
+    expect(await refreshTripPlaceData(trip, [], deps)).toBe(2);
+    expect(fetched.sort()).toEqual(['nara', 'osaka']);
+    expect(deps.saveCity).toHaveBeenCalledTimes(2);
   });
 
   it('does nothing while everything is fresh', async () => {

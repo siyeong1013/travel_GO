@@ -1,7 +1,4 @@
-import { WORLD_COUNTRIES } from '@/features/countries/worldMap';
-
-/** Every country on the map, by code. */
-export const COUNTRY_CODES: readonly string[] = WORLD_COUNTRIES.map(([code]) => code);
+import { COUNTRY_CODES } from '@/features/countries/countryCodes';
 
 // Shorter than the locale data's, or how people say them.
 const NAMES: Record<string, string> = {

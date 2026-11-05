@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BackupFile, Settlement } from '@/data/models';
+import type { BackupFile, Settlement, Trip } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
 import {
   BACKUP_SCHEMA_VERSION,
@@ -19,9 +19,14 @@ import {
   T0,
 } from '@/test/fixtures';
 
+/** A trip as files before v7 have it: one city, no countries. */
+function beforeV7({ cities, countries, ...trip }: Trip) {
+  return { ...trip, city: cities[0]! };
+}
+
 function sampleFile(): BackupFile {
   const trip = makeTrip({
-    city: { name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 }, fetchedAt: T0 },
+    cities: [{ name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 }, fetchedAt: T0 }],
     budget: 500_000,
     cover: makeCover('osaka'),
   });
@@ -161,7 +166,7 @@ describe('backup file format', () => {
 
   it('converts v1 files: trip defaults and the same "나" every time', () => {
     const trip = makeTrip();
-    const { settlementCurrency, budget, ...v1Trip } = trip;
+    const { settlementCurrency, budget, ...v1Trip } = beforeV7(trip);
     const v1 = {
       app: 'travel-go',
       schemaVersion: 1,
@@ -188,13 +193,13 @@ describe('backup file format', () => {
     const v2 = {
       ...file,
       schemaVersion: 2,
-      trips: [{ ...trip, city: withoutFetchedAt(trip!.city) }],
+      trips: [{ ...beforeV7(trip!), city: withoutFetchedAt(trip!.cities[0]!) }],
       scheduleItems: file.scheduleItems.map((item) => ({ ...item, place: withoutFetchedAt(item.place) })),
     };
 
     const parsed = roundTrip(v2);
 
-    expect(parsed.trips[0]!.city.fetchedAt).toBe(trip!.createdAt);
+    expect(parsed.trips[0]!.cities[0]!.fetchedAt).toBe(trip!.createdAt);
     expect(parsed.scheduleItems.find((i) => i.id === google!.id)!.place.fetchedAt).toBe(
       google!.createdAt,
     );
@@ -203,22 +208,41 @@ describe('backup file format', () => {
 
   it('converts v3 files: trips have no cover photo', () => {
     const file = sampleFile();
-    const { cover, ...v3Trip } = file.trips[0]!;
+    const { cover, ...v3Trip } = beforeV7(file.trips[0]!);
     const parsed = roundTrip({ ...file, schemaVersion: 3, trips: [v3Trip] });
-    expect(parsed.trips[0]).toEqual({ ...v3Trip, cover: null });
+    expect(parsed.trips[0]).toEqual({ ...file.trips[0]!, cover: null });
   });
 
   it('converts v4 files: companions are names only', () => {
     const file = sampleFile();
     const v4Companions = file.companions.map(({ accountId, ...companion }) => companion);
-    const parsed = roundTrip({ ...file, schemaVersion: 4, companions: v4Companions });
+    const trips = file.trips.map(beforeV7);
+    const parsed = roundTrip({ ...file, schemaVersion: 4, trips, companions: v4Companions });
     expect(parsed.companions).toEqual(v4Companions.map((c) => ({ ...c, accountId: null })));
   });
 
   it('converts v5 files: no countries yet', () => {
     const { visitedCountries, ...v5 } = sampleFile();
     expect(visitedCountries.map((c) => c.id)).toEqual(['JP', 'TW']);
-    expect(roundTrip({ ...v5, schemaVersion: 5 }).visitedCountries).toEqual([]);
+    const trips = v5.trips.map(beforeV7);
+    expect(roundTrip({ ...v5, schemaVersion: 5, trips }).visitedCountries).toEqual([]);
+  });
+
+  it('converts v6 files: a trip has its city as its cities and no countries', () => {
+    const file = sampleFile();
+    const parsed = roundTrip({ ...file, schemaVersion: 6, trips: file.trips.map(beforeV7) });
+    expect(parsed.trips).toEqual(file.trips.map((trip) => ({ ...trip, countries: [] })));
+  });
+
+  it("takes a trip's countries by code, each once, and one city at least", () => {
+    const file = sampleFile();
+    const withTrip = (trip: Record<string, unknown>) => ({ ...file, trips: [{ ...file.trips[0], ...trip }] });
+    expect(roundTrip(withTrip({ countries: ['JP', 'KR'] })).trips[0]!.countries).toEqual(['JP', 'KR']);
+    expectInvalid(withTrip({ countries: ['japan'] }), 'backup_invalid', '$.trips[0].countries[0]');
+    expectInvalid(withTrip({ countries: ['JP', 'JP'] }), 'backup_invalid', '$.trips[0].countries');
+    expectInvalid(withTrip({ cities: [] }), 'backup_invalid', '$.trips[0].cities');
+    const blank = { name: ' ', placeId: null, location: null, fetchedAt: null };
+    expectInvalid(withTrip({ cities: [blank] }), 'backup_invalid', '$.trips[0].cities[0].name');
   });
 
   it('takes countries by their codes only', () => {

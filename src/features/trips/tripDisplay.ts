@@ -1,10 +1,22 @@
 import type { LocalDate, Trip } from '@/data/models';
 import { compareTrips } from '@/data/rules/trip';
+import { flagOf } from '@/features/countries/countryNames';
 import { diffDays } from '@/lib/dates';
 
 export type TripPhase = 'upcoming' | 'ongoing' | 'past';
 
 type TripDates = Pick<Trip, 'startDate' | 'endDate'>;
+
+/** The trip's cities: `오사카 · 교토`. */
+export function tripCitiesText(trip: Pick<Trip, 'cities'>): string {
+  return trip.cities.map((city) => city.name).join(' · ');
+}
+
+/** Where the trip goes, as covers and lists put it: its countries' flags, then its cities. */
+export function tripPlacesText(trip: Pick<Trip, 'countries' | 'cities'>): string {
+  const flags = trip.countries.map(flagOf).join('');
+  return flags ? `${flags} ${tripCitiesText(trip)}` : tripCitiesText(trip);
+}
 
 export function tripPhase(trip: TripDates, today: LocalDate): TripPhase {
   if (today < trip.startDate) return 'upcoming';

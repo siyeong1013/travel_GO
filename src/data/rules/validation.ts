@@ -7,8 +7,11 @@ import type {
   LocalTime,
   PlaceData,
   PlaceSnapshot,
+  Trip,
+  TripCity,
 } from '@/data/models';
 import { type NewTrip, ValidationError } from '@/data/repositories';
+import { isCountryCode } from '@/data/rules/country';
 import { isCurrency, MAX_AMOUNT } from '@/data/rules/money';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
 
@@ -63,34 +66,56 @@ function cleanFetchedAt(
   return fetchedAt;
 }
 
+/** At most this many cities a trip (a long trip around a region still fits). */
+export const MAX_TRIP_CITIES = 20;
+/** At most this many countries a trip: as many as place search can be kept within. */
+export const MAX_TRIP_COUNTRIES = 15;
+
 /** Trims and validates trip fields. Throws `ValidationError`. */
-export function cleanTripFields(input: NewTrip): NewTrip {
+export function cleanTripFields(
+  input: NewTrip,
+): Pick<Trip, 'title' | 'countries' | 'cities' | 'startDate' | 'endDate'> {
   const title = input.title.trim();
-  const cityName = input.city.name.trim();
   if (!title) throw new ValidationError('title is required');
-  if (!cityName) throw new ValidationError('city name is required');
   if (!isLocalDate(input.startDate) || !isLocalDate(input.endDate)) {
     throw new ValidationError('dates must be YYYY-MM-DD');
   }
   if (input.endDate < input.startDate) throw new ValidationError('endDate is before startDate');
-
-  const location = cleanLocation(input.city.location, 'city.location');
+  if (input.cities.length === 0) throw new ValidationError('a city is required');
+  if (input.cities.length > MAX_TRIP_CITIES) {
+    throw new ValidationError(`at most ${MAX_TRIP_CITIES} cities`);
+  }
   return {
     title,
-    city: {
-      name: cityName,
-      placeId: input.city.placeId,
-      location,
-      fetchedAt: cleanFetchedAt(
-        input.city.placeId,
-        location !== null,
-        input.city.fetchedAt,
-        'city.fetchedAt',
-      ),
-    },
+    countries: cleanCountries(input.countries ?? []),
+    cities: input.cities.map((city, i) => cleanCity(city, `cities[${i}]`)),
     startDate: input.startDate,
     endDate: input.endDate,
   };
+}
+
+function cleanCity(city: TripCity, field: string): TripCity {
+  const name = city.name.trim();
+  if (!name) throw new ValidationError(`${field}.name is required`);
+  const location = cleanLocation(city.location, `${field}.location`);
+  return {
+    name,
+    placeId: city.placeId,
+    location,
+    fetchedAt: cleanFetchedAt(city.placeId, location !== null, city.fetchedAt, `${field}.fetchedAt`),
+  };
+}
+
+/** A trip's countries: codes like `JP`, each once. Throws `ValidationError`. */
+export function cleanCountries(countries: string[]): string[] {
+  if (countries.length > MAX_TRIP_COUNTRIES) {
+    throw new ValidationError(`at most ${MAX_TRIP_COUNTRIES} countries`);
+  }
+  if (!countries.every(isCountryCode)) throw new ValidationError('countries must be codes like JP');
+  if (new Set(countries).size < countries.length) {
+    throw new ValidationError('a country is in the list twice');
+  }
+  return [...countries];
 }
 
 export function cleanPlace(place: PlaceSnapshot): PlaceSnapshot {

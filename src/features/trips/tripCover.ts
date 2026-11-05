@@ -25,9 +25,9 @@ export function coverStyle(trip: Pick<Trip, 'id'>): CSSProperties {
   };
 }
 
-/** The mark on a small cover: `오` for 오사카, `I` for istanbul (the title's without a city). */
-export function coverInitial(trip: Pick<Trip, 'title' | 'city'>): string {
-  const name = trip.city.name.trim() || trip.title.trim();
+/** The mark on a small cover: `오` for 오사카 (its first city), `I` for istanbul (else the title's). */
+export function coverInitial(trip: Pick<Trip, 'title' | 'cities'>): string {
+  const name = trip.cities[0]?.name.trim() || trip.title.trim();
   return (Array.from(name)[0] ?? '?').toUpperCase();
 }
 

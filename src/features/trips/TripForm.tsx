@@ -1,71 +1,98 @@
 import { type FormEvent, useState } from 'react';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
-import { TextField } from '@/components/ui/Field';
+import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
+import { ButtonField, TextField } from '@/components/ui/Field';
 import type { ID } from '@/data/models';
-import type { PlaceSuggestion } from '@/features/places/placeSearch';
-import { PlaceSuggestionList } from '@/features/places/PlaceSuggestionList';
-import { usePlaceSearch } from '@/features/places/usePlaceSearch';
+import { lookUpFlight } from '@/features/schedule/flightLookup';
 import { prepareCoverPhoto } from '@/features/trips/coverPhoto';
 import { CoverPhotoField } from '@/features/trips/CoverPhotoField';
+import { TripCitiesField } from '@/features/trips/TripCitiesField';
+import { TripCountriesField } from '@/features/trips/TripCountriesField';
+import { TripFlightsField } from '@/features/trips/TripFlightsField';
 import {
-  linkedCity,
+  type FlightDraft,
   TITLE_MAX_LENGTH,
   TRIP_FORM_FIELDS,
   type TripFormValues,
   validateTripForm,
-  withStartDate,
+  withCity,
+  withFlightCountries,
 } from '@/features/trips/tripForm';
+import { isLocalDate, toLocalDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errorMessage';
-import { formatTripLength } from '@/lib/format';
+import { parseFlightNumber } from '@/lib/flights';
+import { formatDateRange, formatTripLength } from '@/lib/format';
 
 interface TripFormProps {
   /** The trip's id, or the one the new trip will get: it picks the cover's color. */
   tripId: ID;
   initialValues: TripFormValues;
   submitLabel: string;
+  /** A new trip: its flights can be typed in too. */
+  withFlights?: boolean;
   /** Errors thrown here are shown above the submit button. */
   onSubmit: (values: TripFormValues) => Promise<void>;
 }
 
-export function TripForm({ tripId, initialValues, submitLabel, onSubmit }: TripFormProps) {
+export function TripForm({
+  tripId,
+  initialValues,
+  submitLabel,
+  withFlights = false,
+  onSubmit,
+}: TripFormProps) {
   const [values, setValues] = useState(initialValues);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // City search starts once the field is typed in (not for a saved trip's city on opening).
-  const [cityTyped, setCityTyped] = useState(false);
-  const [pickingCity, setPickingCity] = useState<string | null>(null);
-  const [cityError, setCityError] = useState<string | null>(null);
   const [preparingCover, setPreparingCover] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
+  const [pickingDates, setPickingDates] = useState(false);
 
   const errors = validateTripForm(values);
   const visibleErrors = showErrors ? errors : {};
-  const update = (field: 'title' | 'city' | 'endDate', value: string) =>
-    setValues((current) => ({ ...current, [field]: value }));
-  const city = linkedCity(values);
-  const citySearch = usePlaceSearch(cityTyped && !city ? values.city : '', {
-    kind: 'region',
-    bias: null,
-  });
+  const today = toLocalDate();
+  const datesPicked = isLocalDate(values.startDate) && isLocalDate(values.endDate);
+  const setFlights = (change: (flights: FlightDraft[]) => FlightDraft[]) =>
+    setValues((current) => ({ ...current, flights: change(current.flights) }));
 
-  async function pickCity(suggestion: PlaceSuggestion) {
-    setPickingCity(suggestion.placeId);
-    setCityError(null);
-    try {
-      const { name, placeId, location, fetchedAt } = await citySearch.pick(suggestion);
-      setValues((current) => ({
-        ...current,
-        city: name,
-        cityPlace: { name, placeId, location, fetchedAt },
-      }));
-    } catch (error) {
-      console.error(error);
-      setCityError('도시 정보를 불러오지 못했어요. 다시 시도해 주세요.');
-    } finally {
-      setPickingCity(null);
-    }
+  function pickDates(startDate: string, endDate: string) {
+    setPickingDates(false);
+    setValues((current) => ({
+      ...current,
+      startDate,
+      endDate,
+      // Flights without a day yet: the first leaves on the first day, the others on the last.
+      flights: current.flights.map((flight, index) =>
+        flight.date ? flight : { ...flight, date: index === 0 ? startDate : endDate },
+      ),
+    }));
+  }
+
+  async function lookUp(key: number) {
+    const flight = values.flights.find((row) => row.key === key);
+    const number = flight && parseFlightNumber(flight.number);
+    if (!flight || !number || !isLocalDate(flight.date)) return;
+    const { date } = flight;
+    setFlights((flights) =>
+      flights.map((row) => (row.key === key ? { ...row, lookup: { number, date, result: null } } : row)),
+    );
+    const result = await lookUpFlight(number, date);
+    setValues((current) => {
+      // Unless the row was asked again meanwhile.
+      const flights = current.flights.map((row) =>
+        row.key === key && row.lookup?.number === number && row.lookup.date === date
+          ? { ...row, lookup: { number, date, result } }
+          : row,
+      );
+      const found = flights.find((row) => row.key === key);
+      const countries =
+        found && result.status === 'ok'
+          ? withFlightCountries(current.countries, flights, found)
+          : current.countries;
+      return { ...current, flights, countries };
+    });
   }
 
   async function pickCover(file: File) {
@@ -103,11 +130,9 @@ export function TripForm({ tripId, initialValues, submitLabel, onSubmit }: TripF
     }
   }
 
-  const datesValid = !errors.startDate && !errors.endDate;
-
   return (
     <form noValidate onSubmit={handleSubmit} className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-5 px-4 py-6">
+      <div className="flex flex-1 flex-col gap-6 px-4 py-6">
         <TextField
           label="여행 이름"
           name="title"
@@ -116,66 +141,60 @@ export function TripForm({ tripId, initialValues, submitLabel, onSubmit }: TripF
           autoComplete="off"
           enterKeyHint="next"
           value={values.title}
-          onChange={(e) => update('title', e.target.value)}
+          onChange={(event) => setValues((current) => ({ ...current, title: event.target.value }))}
           error={visibleErrors.title}
         />
-        <div className="flex flex-col gap-2">
-          <TextField
-            label="도시"
-            name="city"
-            placeholder="예: 오사카"
-            autoComplete="off"
-            enterKeyHint="next"
-            value={values.city}
-            onChange={(e) => {
-              setCityTyped(true);
-              update('city', e.target.value);
-            }}
-            error={visibleErrors.city}
-            hint={
-              citySearch.availability !== 'ready'
-                ? undefined
-                : city
-                  ? '이 도시 근처의 장소가 먼저 검색돼요.'
-                  : '검색해서 고르면 그 근처의 장소가 먼저 검색돼요.'
+        <TripCountriesField
+          countries={values.countries}
+          onChange={(countries) => setValues((current) => ({ ...current, countries }))}
+        />
+        <TripCitiesField
+          cities={values.cities}
+          text={values.cityText}
+          countries={values.countries}
+          error={visibleErrors.cities}
+          onTextChange={(cityText) => setValues((current) => ({ ...current, cityText }))}
+          onAdd={(city) => setValues((current) => ({ ...current, cities: withCity(current.cities, city) }))}
+          onRemove={(index) =>
+            setValues((current) => ({ ...current, cities: current.cities.filter((_, i) => i !== index) }))
+          }
+        />
+        <ButtonField
+          label="여행 기간"
+          name="dates"
+          value={
+            datesPicked
+              ? `${formatDateRange(values.startDate, values.endDate, today)} · ${formatTripLength(values.startDate, values.endDate)}`
+              : null
+          }
+          placeholder="날짜를 골라 주세요"
+          error={visibleErrors.dates}
+          onClick={() => setPickingDates(true)}
+        />
+        {withFlights && (
+          <TripFlightsField
+            flights={values.flights}
+            onAdd={() =>
+              setValues((current) => ({
+                ...current,
+                flights: [
+                  ...current.flights,
+                  {
+                    key: (current.flights.at(-1)?.key ?? 0) + 1,
+                    number: '',
+                    // Likely the way there, then the way back.
+                    date: current.flights.length === 0 ? current.startDate : current.endDate,
+                    lookup: null,
+                  },
+                ],
+              }))
             }
+            onChange={(key, change) =>
+              setFlights((flights) => flights.map((row) => (row.key === key ? { ...row, ...change } : row)))
+            }
+            onRemove={(key) => setFlights((flights) => flights.filter((row) => row.key !== key))}
+            onLookUp={(key) => void lookUp(key)}
           />
-          {citySearch.availability === 'ready' && (
-            <PlaceSuggestionList
-              search={citySearch}
-              picking={pickingCity}
-              onPick={(suggestion) => void pickCity(suggestion)}
-            />
-          )}
-          {cityError && (
-            <p role="alert" className="text-sm text-red-500">
-              {cityError}
-            </p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <TextField
-            label="시작일"
-            name="startDate"
-            type="date"
-            value={values.startDate}
-            onChange={(e) => setValues((current) => withStartDate(current, e.target.value))}
-            error={visibleErrors.startDate}
-          />
-          <TextField
-            label="종료일"
-            name="endDate"
-            type="date"
-            min={values.startDate || undefined}
-            value={values.endDate}
-            onChange={(e) => update('endDate', e.target.value)}
-            error={visibleErrors.endDate}
-          />
-        </div>
-        {datesValid && (
-          <p className="-mt-2 text-sm font-semibold text-brand-600">
-            {formatTripLength(values.startDate, values.endDate)}
-          </p>
         )}
         <CoverPhotoField
           cover={values.cover}
@@ -198,6 +217,16 @@ export function TripForm({ tripId, initialValues, submitLabel, onSubmit }: TripF
           {submitLabel}
         </Button>
       </BottomActionBar>
+
+      <DateRangeSheet
+        open={pickingDates}
+        title="여행 기간"
+        start={datesPicked ? values.startDate : null}
+        end={datesPicked ? values.endDate : null}
+        today={today}
+        onClose={() => setPickingDates(false)}
+        onDone={pickDates}
+      />
     </form>
   );
 }

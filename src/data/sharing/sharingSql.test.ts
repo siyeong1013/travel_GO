@@ -133,6 +133,13 @@ describe('invite links', () => {
       expiresAt,
     });
     expect(await visitor().preview('not-a-link')).toBeNull();
+
+    // A trip written since record format 7 has several cities.
+    const typed = (name: string) => ({ name, placeId: null, location: null, fetchedAt: null });
+    const cities = [typed('오사카'), typed('교토')];
+    const data = { id: TRIP, title: '오사카 여행', cities, startDate: '2026-12-01', endDate: '2026-12-03', updatedAt: T2 };
+    await server.serverFor(OWNER).push([{ ...tripChange(T2), format: 7, data } as unknown as SyncChange]);
+    expect((await visitor().preview(token))?.city).toBe('오사카 · 교토');
   });
 });
 

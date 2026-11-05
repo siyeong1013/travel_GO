@@ -253,4 +253,25 @@ describe('expire_place_data', () => {
     });
     expect(byId.get(NEW)?.place).toMatchObject({ address: 'Osaka', location: { lat: 1, lng: 2 } });
   });
+
+  it("drops each old city's coordinates of a trip with several cities (record format 7)", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const daysAgo = (n: number) => new Date(Date.now() - n * day).toISOString();
+    const osaka = { name: 'Osaka', placeId: 'o', location: { lat: 1, lng: 2 }, fetchedAt: daysAgo(31) };
+    const kyoto = { name: 'Kyoto', placeId: 'k', location: { lat: 3, lng: 4 }, fetchedAt: daysAgo(3) };
+    const typed = { name: 'Nara', placeId: null, location: null, fetchedAt: null };
+    const { city, ...data } = trip(TRIP, T1).data as Record<string, unknown>;
+    await push(A, [{ ...trip(TRIP, T1), format: 7, data: { ...data, cities: [osaka, kyoto, typed] } }]);
+    const before = await pull(A);
+
+    await server.db.query('select private.expire_place_data()');
+
+    const after = await pull(A);
+    expect(after.map((r) => r.seq)).toEqual(before.map((r) => r.seq));
+    expect(after[0]!.data?.cities).toEqual([
+      { ...osaka, location: null, fetchedAt: null },
+      kyoto,
+      typed,
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 // Helpers for screen-flow tests. The test file must mock '@/data' with test repositories
 // (vi.mock is hoisted per file, so it cannot live here).
-import { render } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, type RouteObject, RouterProvider } from 'react-router';
 import { vi } from 'vitest';
@@ -16,6 +16,7 @@ import { scheduleStore } from '@/features/schedule/scheduleStore';
 import { sharingStore } from '@/features/sharing/sharingStore';
 import { syncStore } from '@/features/sync/syncStore';
 import { tripStore } from '@/features/trips/tripStore';
+import { dayName } from '@/lib/calendar';
 import { emptyData, T0 } from '@/test/fixtures';
 import { fakeMapsApi } from '@/test/maps';
 import { type FakePlace, fakePlacesApi, type FakePlacesOptions } from '@/test/places';
@@ -109,4 +110,19 @@ export function renderApp(path = '/') {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(<RouterProvider router={router} />);
   return { router, user: userEvent.setup() };
+}
+
+/**
+ * Picks a trip's dates in its form as a person does: opens the calendar, taps the start and the
+ * end, and takes them. (The calendar reaches two years past today.)
+ */
+export async function pickTripDates(user: ReturnType<typeof userEvent.setup>, start: string, end: string) {
+  await user.click(await screen.findByRole('button', { name: /^여행 기간/ }));
+  const calendar = await screen.findByRole('dialog', { name: '여행 기간' });
+  for (let tries = 0; !within(calendar).queryByLabelText(dayName(start)) && tries < 10; tries++) {
+    await user.click(within(calendar).getByRole('button', { name: '이전 달 더 보기' }));
+  }
+  await user.click(within(calendar).getByLabelText(dayName(start)));
+  await user.click(within(calendar).getByLabelText(dayName(end)));
+  await user.click(within(calendar).getByRole('button', { name: '선택' }));
 }

@@ -3,7 +3,7 @@ import { coverInitial, coverStyle } from '@/features/trips/tripCover';
 import { derivedId } from '@/lib/id';
 import { makeTrip, typedCity } from '@/test/fixtures';
 
-const trip = (city: string, title = '여행') => makeTrip({ title, city: typedCity(city) });
+const trip = (city: string, title = '여행') => makeTrip({ title, cities: [typedCity(city)] });
 
 describe('trip covers', () => {
   it("are colored by the trip's id: kept whatever the trip is called, and spread across trips", () => {

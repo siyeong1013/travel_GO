@@ -40,6 +40,13 @@ describe('placeSearch', () => {
     const found = await search.startSession().suggest('오사카', { kind: 'region', bias: null });
     expect(found.map((s) => s.name)).toEqual(['오사카']);
     expect(api.requests[0]!.includedPrimaryTypes).toEqual(['(regions)']);
+    expect(api.requests[0]!.includedRegionCodes).toBeUndefined();
+  });
+
+  it("keeps a trip's city search within its countries", async () => {
+    const { api, search } = setup();
+    await search.startSession().suggest('오사카', { kind: 'region', bias: null, countries: ['JP', 'KR'] });
+    expect(api.requests[0]!.includedRegionCodes).toEqual(['jp', 'kr']);
   });
 
   it('keeps one session token until a pick, which fetches Essentials fields only', async () => {
@@ -130,15 +137,24 @@ describe('createPlaceDataFetcher', () => {
 describe('searchBias', () => {
   it("looks around the trip's city, else the place with a location added last", () => {
     const city = { name: '오사카', placeId: OSAKA.placeId, location: OSAKA.location, fetchedAt: T0 };
-    const typedCity = makeTrip({ city: { name: '오사카', placeId: null, location: null, fetchedAt: null } });
+    const typedCity = makeTrip({ cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }] });
     const items = [
       makeItem({ tripId: typedCity.id, place: makePlace('a', { location: { lat: 1, lng: 1 } }), createdAt: '2026-01-02T00:00:00.000Z' }),
       makeItem({ tripId: typedCity.id, place: makePlace('b', { location: { lat: 2, lng: 2 } }), createdAt: '2026-01-03T00:00:00.000Z' }),
       makeItem({ tripId: typedCity.id, place: makePlace('c', { placeId: null, location: null, fetchedAt: null }), createdAt: '2026-01-04T00:00:00.000Z' }),
     ];
 
-    expect(searchBias(makeTrip({ city }), items)).toEqual(OSAKA.location);
+    expect(searchBias(makeTrip({ cities: [city] }), items)).toEqual(OSAKA.location);
     expect(searchBias(typedCity, items)).toEqual({ lat: 2, lng: 2 });
     expect(searchBias(typedCity, [items[2]!])).toBeNull();
+  });
+
+  it('looks around where the plan got to when the trip has several cities, else the first city', () => {
+    const osaka = { name: '오사카', placeId: OSAKA.placeId, location: OSAKA.location, fetchedAt: T0 };
+    const kyoto = { name: '교토', placeId: null, location: null, fetchedAt: null };
+    const trip = makeTrip({ cities: [kyoto, osaka] });
+    const item = makeItem({ tripId: trip.id, place: makePlace('a', { location: { lat: 1, lng: 1 } }) });
+    expect(searchBias(trip, [item])).toEqual({ lat: 1, lng: 1 });
+    expect(searchBias(trip, [])).toEqual(OSAKA.location);
   });
 });
