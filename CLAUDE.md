@@ -259,17 +259,20 @@ src/
 - 확인함(2026-11-04)
   - HTTP: 화면 주소는 `index.html`, 없는 `/assets/` 조각은 404, 서비스워커가 받는 앱 파일 37개가 모두 있다. 빌드에 든 지도 키가 `.env.local`의 키와 같다.
   - 실제 브라우저(Chromium, 폰 크기): 설치 가능 오류가 없다. 도시·장소 검색(구글)으로 여행과 일정을 만들면 지도에 번호 마커 2개, 직선, 길찾기가 뜬다. 오프라인으로 다시 열어도 목록·여행이 열리고, 새 창에서 `/settings`를 바로 열 수 있다. 콘솔 오류는 없다.
+- 확인함(2026-11-05, 16단계)
+  - HTTP: 첫 화면 파일에 Supabase 주소와 publishable 키가 들어 있고 secret 키는 없다. 서비스워커가 받는 앱 파일 40개가 모두 있다. 파일 이름이 로컬 빌드와 같다(Vercel 환경 변수 값이 `.env.local`과 같음).
+  - 실제 브라우저(Chromium, 폰 크기): 목록 머리줄에 계정 아이콘이 있고, 계정 화면이 열린다. 두 로그인 버튼이 Supabase(PKCE, 돌아올 곳은 배포 주소의 `/account`)를 거쳐 카카오·구글 로그인 화면으로 간다. 콘솔 오류는 없다.
 - `vercel.json`
   - 화면 주소(`/trips/…`, `/settings` 등)는 `index.html`로 연다. Vercel은 파일이 있는 경로(`/`, `sw.js`, 아이콘 등)를 먼저 내주고, 나머지만 이 규칙(`rewrites`)으로 보낸다.
   - `/assets/`는 이 규칙에서 뺀다. 그래서 없는 조각은 404다. `index.html`을 내주면 업데이트 뒤의 옛 조각 요청이 HTML을 받고, 서비스워커 설치도 200이라서 그 HTML을 조각으로 저장해 버린다.
   - `/assets/`는 파일 이름에 해시가 있어서 1년 캐시(`immutable`)다. `index.html`·`sw.js`는 Vercel 기본값(`max-age=0, must-revalidate`)이라 매번 새 버전을 확인한다.
   - 규칙은 Vercel이 쓰는 변환기(`@vercel/routing-utils`)로 확인했다: 헤더 → 파일 → `rewrites` 순서.
-- 환경 변수는 Vercel 프로젝트 설정에 둔다(`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_MAP_ID`). 빌드할 때 번들에 들어가므로 값을 바꾸면 다시 배포해야 반영된다.
+- 환경 변수는 Vercel 프로젝트 설정에 둔다(`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_MAP_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`). 종류는 Config(저장한 뒤에도 값이 보임)로 둔다. 모두 브라우저에 실리는 값이라 Secret으로 숨길 이유가 없다. 빌드할 때 번들에 들어가므로 값을 바꾸면 다시 배포해야 반영된다.
 - Hobby 플랜은 계정 주인의 커밋만 배포한다(커밋 이메일이 GitHub 계정의 주소여야 함). 그래서 커밋 이메일은 GitHub가 주는 대신 쓰는 주소(`134910028+siyeong1013@users.noreply.github.com`, 이 저장소의 `.git/config`)다. 공개 저장소라서 진짜 이메일을 기록에 남기지 않으려는 것이기도 하다.
 
 ### 로그인 (Supabase Auth, 16단계)
 - 프로젝트는 `.env.local`·Vercel의 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`(`sb_publishable_…`, 공개용)다. 비어 있으면 로그인이 없다(여행 목록의 계정 버튼도 없고, `/account`는 "로그인을 쓸 수 없어요"). secret 키는 앱에 절대 넣지 않는다.
-  - 2026-11-04에 사용자가 무료 프로젝트 `szjkqiatfclsoxoluetf`(`https://szjkqiatfclsoxoluetf.supabase.co`)를 만들었다(GitHub 계정으로 가입). 두 값은 `.env.local`에 넣었고, Vercel에는 16단계를 배포할 때 넣는다.
+  - 2026-11-04에 사용자가 무료 프로젝트 `szjkqiatfclsoxoluetf`(`https://szjkqiatfclsoxoluetf.supabase.co`)를 만들었다(GitHub 계정으로 가입). 두 값은 `.env.local`과 Vercel 환경 변수에 있다.
   - 켜진 로그인 방식은 `curl https://<ref>.supabase.co/auth/v1/settings -H 'apikey: <publishable 키>'`의 `external`로 본다. 제공자가 꺼져 있으면 로그인 버튼이 Supabase의 400 페이지(`provider is not enabled`)로 간다.
   - 돌아올 주소 목록은 `GET /auth/v1/verify?token=x&type=magiclink&redirect_to=<주소>`의 `Location`으로 확인한다. 목록에 있는 주소면 그 주소로, 없으면 Site URL로 오류(`otp_expired`)와 함께 보낸다. 로그인은 일어나지 않는다.
     - 2026-11-04 확인: 5173·5174·배포 주소의 `/settings`·`/account`는 그대로 돌아오고, 목록에 없는 주소는 Site URL로 간다.
@@ -492,6 +495,7 @@ src/
 - 조사한 제약(2026-11-04)
   - 카카오톡 안의 브라우저(UA에 `KAKAOTALK`)에서는 구글이 로그인을 막는다(403 `disallowed_useragent`). 카카오 로그인은 된다. 초대 화면은 카카오 로그인을 먼저 두고, 구글은 "다른 브라우저로 열기"로 안내한다(`kakaotalk://web/openExternal?url=`은 널리 쓰이지만 공식 문서는 없음).
   - 아이폰 홈 화면 앱: 소셜 로그인 뒤 앱이 아니라 Safari로 돌아가는 문제가 오래 보고됐다(쿠키·저장소가 Safari와 따로). 최신 iOS에서 고쳐졌다는 자료는 없다. 실제 아이폰으로 확인하고, 안 되면 로그인 결과를 서버를 거쳐 앱으로 넘겨준다.
+    - 2026-11-05: 사용자의 아이폰 홈 화면 앱에서 카카오 로그인이 됐다(구글은 아직 안 해 봄).
   - Supabase 무료: DB 500MB, 파일 1GB, 월 사용자 5만 명. 일주일쯤 활동이 적으면 일시 정지된다(데이터는 남고, 미리 메일이 오고, 대시보드에서 다시 켬). 유료(월 25달러부터)는 정지되지 않는다. 기기 DB를 먼저 쓰므로 정지돼도 앱은 기기 데이터로 동작한다.
     - 오래 정지된 프로젝트는 대시보드에서 다시 켤 수 없고, 백업을 내려받아 새 프로젝트로 옮겨야 한다.
       - 그 기한이 공식 문서끼리 90일과 1년으로 엇갈렸다.
@@ -550,7 +554,7 @@ src/
 | 13 | PWA·오프라인·iOS 설치 안내 | 완료 |
 | 14 | 다듬기 (번들 분할, 옛 조각 처리) | 완료 |
 | 15 | 배포 (Vercel, https 주소) | 완료 |
-| 16 | 로그인 (구글·카카오, Supabase), 계정 화면 | 진행 중 |
+| 16 | 로그인 (구글·카카오, Supabase), 계정 화면 | 완료 |
 | 17 | 서버 저장·동기화: 여러 기기에서 같은 여행, 오프라인에서 고친 것은 연결되면 반영 | 예정 |
 | 18 | 친구 초대·참여: 초대 링크, 카카오톡 공유, 동행자 연결, 멤버 관리, 실시간 반영 | 예정 |
 | 19 | 다듬기: 실제 아이폰 로그인 확인, 계정 삭제, 개인정보 처리방침 | 예정 |
@@ -638,4 +642,6 @@ src/
   - Supabase 프로젝트를 만들고 구글 로그인을 켰다. 사용자가 실제 구글 계정으로 로그인해 봤다. 카카오는 다음 날 켰다.
 - 2026-11-05: 카카오 로그인을 켰다.
   - 카카오 앱을 개인 개발자 비즈 앱으로 바꿨다. 동의항목은 닉네임 필수, 프로필 사진·이메일 선택이다.
-  - 사용자가 개발 서버의 계정 화면에서 카카오와 구글로 로그인해 봤다(됨). 16단계를 배포한다.
+  - 사용자가 개발 서버의 계정 화면에서 카카오와 구글로 로그인해 봤다(됨).
+  - 16단계를 배포했다(Vercel 환경 변수에 Supabase 두 값을 넣고). 배포 주소에서 로그인 버튼이 카카오·구글 로그인 화면까지 가는 것을 확인했다.
+  - 사용자가 실제 아이폰의 Safari와 홈 화면 앱에서 카카오로 로그인해 봤다(됨). 16단계 완료.
