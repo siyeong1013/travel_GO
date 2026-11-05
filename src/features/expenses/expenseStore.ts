@@ -25,6 +25,8 @@ export interface ExpenseState {
   error: string | null;
   /** Switches to `tripId`. Concurrent calls for the same trip share one request. */
   load: (tripId: ID) => Promise<void>;
+  /** Reads the held trip's ledger again in place (a sync brought changes), without a loading state. */
+  reload: () => Promise<void>;
   addCompanion: (input: NewCompanion) => Promise<Companion>;
   renameCompanion: (id: ID, name: string) => Promise<Companion>;
   /** What deleting would touch; the confirmation shows it. */
@@ -91,6 +93,11 @@ export function createExpenseStore(repos: LedgerRepositories) {
           });
         inflight = { tripId, promise };
         return promise;
+      },
+
+      async reload() {
+        const { tripId } = get();
+        if (tripId) await refresh(tripId).catch((error: unknown) => console.error(error));
       },
 
       async addCompanion(input) {

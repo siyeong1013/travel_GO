@@ -6,10 +6,7 @@ import type { Companion, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
 import { renderApp, resetApp } from '@/test/app';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 let trip: Trip;
 let me: Companion;

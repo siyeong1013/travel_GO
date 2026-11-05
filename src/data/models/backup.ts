@@ -1,5 +1,11 @@
 import type { ISODateTime } from '@/data/models/common';
-import type { Companion, Expense, ExpenseShare, Settlement } from '@/data/models/expense';
+import type {
+  Companion,
+  Expense,
+  ExpenseShare,
+  ExpenseWithShares,
+  Settlement,
+} from '@/data/models/expense';
 import type { ScheduleItem } from '@/data/models/schedule';
 import type { Trip } from '@/data/models/trip';
 
@@ -12,6 +18,20 @@ export interface BackupData {
   expenseShares: ExpenseShare[];
   settlements: Settlement[];
 }
+
+/**
+ * The units records are synced in (and kept on the server): an expense goes with its shares,
+ * as in backup merges.
+ */
+export interface RecordsByKind {
+  trip: Trip;
+  scheduleItem: ScheduleItem;
+  companion: Companion;
+  expense: ExpenseWithShares;
+  settlement: Settlement;
+}
+
+export type RecordKind = keyof RecordsByKind;
 
 export interface BackupFile extends BackupData {
   app: 'travel-go';

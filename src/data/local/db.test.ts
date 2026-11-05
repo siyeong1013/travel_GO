@@ -112,4 +112,28 @@ describe('schema migrations', () => {
 
     expect(await repos.trips.get(v3Trip.id)).toEqual({ ...v3Trip, cover: null });
   });
+
+  it('v4 → v5: the trips stay, with nothing synced yet', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip();
+
+    // A database as version 4 of the app left it.
+    const v4 = new Dexie(name);
+    v4.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v4.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v4.version(3).stores({});
+    v4.version(4).stores({});
+    await v4.table('trips').add(trip);
+    v4.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.trips.toArray()).toEqual([trip]);
+    expect(await db.syncedRecords.count()).toBe(0);
+    expect(await db.syncState.get('state')).toBeUndefined();
+  });
 });

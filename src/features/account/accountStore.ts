@@ -1,6 +1,8 @@
 import { createStore, useStore } from 'zustand';
+import { syncEngine } from '@/data';
 import type { Account, LoginError, LoginProvider } from '@/features/account/account';
 import { type Auth, supabaseAuth } from '@/features/account/auth';
+import { resetDataStores } from '@/features/dataStores';
 
 /** `unavailable`: this build has no login (no Supabase project configured). */
 export type AccountStatus = 'idle' | 'loading' | 'unavailable' | 'signedOut' | 'signedIn';
@@ -12,12 +14,21 @@ export interface AccountState {
   loginError: LoginError | null;
   /** Concurrent calls share one; after that the account follows sign-ins and sign-outs. */
   load: () => Promise<void>;
-  /** Leaves the app for the provider's login page, which brings the page back to the settings. */
+  /** Leaves the app for the provider's login page, which brings the page back to the account screen. */
   signIn: (provider: LoginProvider) => Promise<void>;
+  /** Takes the account's trips off this device, then signs out here. */
   signOut: () => Promise<void>;
 }
 
-export function createAccountStore(makeAuth: () => Auth | null) {
+interface AccountStoreOptions {
+  /** Before signing out: takes the account's trips off the device. */
+  forgetTrips?: () => Promise<void>;
+}
+
+export function createAccountStore(
+  makeAuth: () => Auth | null,
+  { forgetTrips = async () => {} }: AccountStoreOptions = {},
+) {
   let auth: Auth | null = null;
   let inflight: Promise<void> | null = null;
   let stopListening = () => {};
@@ -68,14 +79,21 @@ export function createAccountStore(makeAuth: () => Auth | null) {
       },
 
       async signOut() {
-        await connected().signOut();
+        const auth = connected();
+        await forgetTrips();
+        await auth.signOut();
         show(null);
       },
     };
   });
 }
 
-export const accountStore = createAccountStore(supabaseAuth);
+export const accountStore = createAccountStore(supabaseAuth, {
+  async forgetTrips() {
+    await syncEngine.forget();
+    resetDataStores();
+  },
+});
 
 export function useAccountStore<T>(selector: (state: AccountState) => T): T {
   return useStore(accountStore, selector);

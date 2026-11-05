@@ -4,10 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reloadOnChunkError } from '@/lib/chunkErrors';
 import { renderApp, resetApp } from '@/test/app';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 // As when the app goes offline before it kept a screen's code, or an update removed it.
 vi.mock('@/pages/SettingsPage', () => {
   throw new TypeError('Failed to fetch dynamically imported module');

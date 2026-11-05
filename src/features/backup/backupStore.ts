@@ -2,9 +2,7 @@ import { createStore, useStore } from 'zustand';
 import { repositories } from '@/data';
 import type { BackupFile, ImportMode, ImportSummary, ISODateTime } from '@/data/models';
 import type { Repositories } from '@/data/repositories';
-import { expenseStore } from '@/features/expenses/expenseStore';
-import { scheduleStore } from '@/features/schedule/scheduleStore';
-import { tripStore } from '@/features/trips/tripStore';
+import { resetDataStores } from '@/features/dataStores';
 import { isIsoDateTime } from '@/lib/dates';
 import { deviceStorage } from '@/lib/deviceStorage';
 
@@ -64,13 +62,6 @@ function readLastExport(storage: () => Storage | undefined): ISODateTime | null 
   } catch {
     return null;
   }
-}
-
-/** Empties the stores holding trip data, so every screen reads it again. */
-function resetDataStores() {
-  tripStore.setState(tripStore.getInitialState(), true);
-  scheduleStore.setState(scheduleStore.getInitialState(), true);
-  expenseStore.setState(expenseStore.getInitialState(), true);
 }
 
 export const backupStore = createBackupStore(repositories, { afterImport: resetDataStores });

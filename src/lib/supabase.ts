@@ -16,6 +16,19 @@ export function supabaseConfig(): SupabaseConfig | null {
   return url && key ? { url, key } : null;
 }
 
+/**
+ * Whether this browser keeps a login session, without loading the client: Supabase keeps it under
+ * `sb-<project ref>-auth-token` (supabase-js's default storage key).
+ */
+export function hasStoredSession(config: SupabaseConfig): boolean {
+  try {
+    const ref = new URL(config.url).hostname.split('.')[0];
+    return localStorage.getItem(`sb-${ref}-auth-token`) !== null;
+  } catch {
+    return false;
+  }
+}
+
 let client: Promise<SupabaseClient> | null = null;
 
 /**

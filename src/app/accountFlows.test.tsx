@@ -1,13 +1,10 @@
 /** @vitest-environment happy-dom */
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderApp, resetApp, resetStores, stubSupabase } from '@/test/app';
 import { googleUser, kakaoUser, supabaseFake } from '@/test/supabase';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 vi.mock('@supabase/supabase-js', async () => {
   const { supabaseFake } = await import('@/test/supabase');
@@ -83,7 +80,10 @@ describe('account', () => {
     expect(screen.getByText('Google로 로그인했어요')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '로그아웃' }));
-    expect(supabaseFake.signOuts).toEqual([{ scope: 'local' }]);
+    const sheet = await screen.findByRole('dialog', { name: '로그아웃할까요?' });
+    expect(await within(sheet).findByText(/이 기기에서 여행이 지워져요/)).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: '로그아웃' }));
+    await waitFor(() => expect(supabaseFake.signOuts).toEqual([{ scope: 'local' }]));
     expect(await screen.findByText('로그인해 주세요')).toBeInTheDocument();
     expect(screen.queryByText('Jane Doe')).toBeNull();
   });

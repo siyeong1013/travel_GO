@@ -21,6 +21,8 @@ export interface ScheduleState {
   error: string | null;
   /** Switches to `tripId`. Concurrent calls for the same trip share one request. */
   load: (tripId: ID) => Promise<void>;
+  /** Reads the held trip's items again in place (a sync brought changes), without a loading state. */
+  reload: () => Promise<void>;
   add: (input: NewScheduleItem) => Promise<ScheduleItem>;
   update: (id: ID, patch: ScheduleItemPatch) => Promise<ScheduleItem>;
   remove: (id: ID) => Promise<void>;
@@ -61,6 +63,11 @@ export function createScheduleStore(repos: Pick<Repositories, 'schedule'>) {
           });
         inflight = { tripId, promise };
         return promise;
+      },
+
+      async reload() {
+        const { tripId } = get();
+        if (tripId) await refresh(tripId).catch((error: unknown) => console.error(error));
       },
 
       async add(input) {

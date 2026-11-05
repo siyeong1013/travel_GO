@@ -6,10 +6,7 @@ import { makePlace } from '@/test/fixtures';
 import { renderApp, resetApp, resetStores } from '@/test/app';
 
 // The app's singletons, backed by a throwaway database.
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 beforeEach(resetApp);
 

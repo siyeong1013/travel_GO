@@ -1,3 +1,4 @@
+import { createDataLayer } from '@/data/dataLayer';
 import { createLocalRepositories, createTravelGoDB } from '@/data/local';
 import type {
   BackupData,
@@ -12,6 +13,7 @@ import type {
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
 import type { ShareDraft } from '@/data/rules/split';
+import type { SyncServer } from '@/data/sync/syncEngine';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
 
@@ -167,7 +169,23 @@ export function latestRatesBody(base: string, rates: Record<string, number>) {
 export const RATES_PUBLISHED_AT = '2026-11-03T00:02:31.000Z';
 
 /** Fresh, isolated database. Call `db.delete()` after the test. */
-export function createTestRepositories() {
+export function createTestRepositories(clock: Clock = testClock()) {
   const db = createTravelGoDB(`test-${newId()}`);
-  return { db, repos: createLocalRepositories(db, testClock()) };
+  return { db, repos: createLocalRepositories(db, clock) };
+}
+
+const noSyncServer = (): Promise<SyncServer> =>
+  Promise.reject(new Error('this test has no sync server'));
+
+/**
+ * What `@/data` exports, on a fresh database and the test clock: screen tests swap it in with
+ * `vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData())`.
+ * `connect` is the sync server (none unless given).
+ */
+export function createTestData(
+  connect: (userId: string) => Promise<SyncServer> = noSyncServer,
+  clock: Clock = testClock(),
+) {
+  const db = createTravelGoDB(`test-${newId()}`);
+  return { db, ...createDataLayer(db, connect, clock) };
 }

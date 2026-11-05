@@ -4,9 +4,18 @@ import type { Session, User } from '@supabase/supabase-js';
 
 type AuthListener = (event: string, session: Session | null) => void;
 
+/** The accounts' ids, as the sync server knows them (`auth.users`). */
+export const USER_IDS = {
+  kakao: 'abcdef00-0000-4000-8000-00000000000a',
+  google: 'abcdef00-0000-4000-8000-00000000000b',
+} as const;
+
+/** Where supabase-js keeps the session for the tests' project (`https://test.supabase.co`). */
+const SESSION_KEY = 'sb-test-auth-token';
+
 function user(provider: 'kakao' | 'google', metadata: Record<string, string>): User {
   return {
-    id: `user-${provider}`,
+    id: USER_IDS[provider],
     aud: 'authenticated',
     created_at: '2026-11-04T00:00:00Z',
     app_metadata: { provider, providers: [provider] },
@@ -46,6 +55,11 @@ export function fakeSupabase() {
   const emit = (event: string) => {
     for (const listener of listeners) listener(event, session);
   };
+  /** The session as the real client keeps it in the browser (`lib/supabase` checks for it). */
+  const keep = () => {
+    if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(SESSION_KEY);
+  };
 
   const auth = {
     /** Like the real one: trades a returned `?code=` for a session and takes it off the address. */
@@ -53,6 +67,7 @@ export function fakeSupabase() {
       const url = new URL(window.location.href);
       if (url.searchParams.has('code') && returning) {
         session = sessionOf(returning);
+        keep();
         returning = null;
         url.searchParams.delete('code');
         window.history.replaceState(window.history.state, '', url);
@@ -75,6 +90,7 @@ export function fakeSupabase() {
     async signOut(options?: { scope?: string }) {
       signOuts.push(options ?? {});
       session = null;
+      keep();
       emit('SIGNED_OUT');
       return { error: null };
     },
@@ -88,6 +104,7 @@ export function fakeSupabase() {
     /** Signed in before the page loaded (a session on the device). */
     signedIn(person: User) {
       session = sessionOf(person);
+      keep();
     },
     /** The page comes back from a login as `person`: put `?code=` in the address, then load it. */
     returnsAs(person: User) {
@@ -96,10 +113,12 @@ export function fakeSupabase() {
     /** Someone signs in or out in another tab. */
     changeElsewhere(person: User | null) {
       session = person && sessionOf(person);
+      keep();
       emit(person ? 'SIGNED_IN' : 'SIGNED_OUT');
     },
     reset() {
       session = null;
+      keep();
       returning = null;
       listeners.clear();
       signIns.length = 0;

@@ -7,10 +7,7 @@ import { createBackupFile, parseBackupFile } from '@/data/rules/backupFormat';
 import { renderApp, resetApp } from '@/test/app';
 import { backupData, makeItem, makeTrip, namedPlace, T0, typedCity } from '@/test/fixtures';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 let osaka: Trip;
 

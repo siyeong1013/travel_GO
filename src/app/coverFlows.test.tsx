@@ -8,10 +8,7 @@ import { coverStyle } from '@/features/trips/tripCover';
 import { renderApp, resetApp, resetStores } from '@/test/app';
 import { makeCover, typedCity } from '@/test/fixtures';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 // happy-dom can't decode or draw images: making photos smaller is checked in a real browser.
 vi.mock('@/features/trips/coverPhoto', () => ({ prepareCoverPhoto: vi.fn() }));
 

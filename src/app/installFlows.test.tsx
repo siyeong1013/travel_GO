@@ -3,10 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderApp, resetApp, resetStores } from '@/test/app';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 beforeEach(resetApp);
 afterEach(() => vi.restoreAllMocks());

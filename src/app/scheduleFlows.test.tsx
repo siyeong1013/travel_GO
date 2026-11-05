@@ -5,10 +5,7 @@ import { repositories } from '@/data';
 import type { Trip } from '@/data/models';
 import { renderApp, resetApp, resetStores } from '@/test/app';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 let trip: Trip;
 

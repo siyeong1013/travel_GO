@@ -10,6 +10,8 @@ import type {
   ISODateTime,
   LocalDate,
   LocalTime,
+  RecordKind,
+  RecordsByKind,
   ScheduleItem,
   Settlement,
   Trip,
@@ -337,6 +339,41 @@ function assertConsistent(data: BackupData) {
     }
     if (settlement.fromId === settlement.toId) invalid(`$.settlements[${i}].toId`, 'someone else');
   });
+}
+
+/**
+ * One record from the server (`data/sync`), written in `version` of the format: checked like a
+ * backup's records and converted to the current schema. An expense comes with its shares, which
+ * must belong to it and add up to it. Throws `BackupFormatError`.
+ */
+export function parseRecord<K extends RecordKind>(
+  kind: K,
+  raw: unknown,
+  version: number,
+): RecordsByKind[K] {
+  const path = `$.${kind}`;
+  const readers: { [Kind in RecordKind]: () => RecordsByKind[Kind] } = {
+    trip: () => readTrip(raw, path, version),
+    scheduleItem: () => readScheduleItem(raw, path, version),
+    companion: () => readCompanion(raw, path),
+    settlement: () => readSettlement(raw, path),
+    expense: () => {
+      const expense = readExpense(raw, path);
+      const shares = array(object(raw, path).shares, `${path}.shares`).map((v, i) =>
+        readShare(v, `${path}.shares[${i}]`),
+      );
+      shares.forEach((share, i) => {
+        if (share.expenseId !== expense.id || share.tripId !== expense.tripId) {
+          invalid(`${path}.shares[${i}].expenseId`, 'this expense');
+        }
+      });
+      if (shares.reduce((sum, share) => sum + share.amount, 0) !== expense.amount) {
+        invalid(`${path}.amount`, 'the sum of its shares');
+      }
+      return { ...expense, shares };
+    },
+  };
+  return readers[kind]();
 }
 
 /**

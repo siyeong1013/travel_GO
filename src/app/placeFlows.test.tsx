@@ -8,10 +8,7 @@ import { SEARCH_DELAY_MS } from '@/features/places/usePlaceSearch';
 import { renderApp, resetApp, stubPlacesApi } from '@/test/app';
 import { DOTONBORI, OSAKA, OSAKA_CASTLE } from '@/test/places';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 type User = ReturnType<typeof renderApp>['user'];
 

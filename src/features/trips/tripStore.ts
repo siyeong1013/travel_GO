@@ -20,6 +20,11 @@ export interface TripState {
   error: string | null;
   /** Concurrent calls share one request. */
   load: () => Promise<void>;
+  /**
+   * Reads the trips again in place (a sync brought changes): the list stays shown meanwhile,
+   * without a loading state. Nothing before the first `load`.
+   */
+  reload: () => Promise<void>;
   /** Throws repository errors to the caller (forms show them). */
   create: (input: NewTrip, options?: TripCreateOptions) => Promise<Trip>;
   /** Throws `OutOfRangeItemsError` when the new dates would strand items; see `TripUpdateOptions`. */
@@ -32,7 +37,7 @@ export interface TripState {
 export function createTripStore(repos: Pick<Repositories, 'trips'>) {
   let inflight: Promise<void> | null = null;
 
-  return createStore<TripState>()((set) => ({
+  return createStore<TripState>()((set, get) => ({
     trips: [],
     status: 'idle',
     error: null,
@@ -50,6 +55,16 @@ export function createTripStore(repos: Pick<Repositories, 'trips'>) {
         }
       })();
       return inflight;
+    },
+
+    async reload() {
+      if (get().status === 'idle') return;
+      await inflight;
+      try {
+        set({ trips: await repos.trips.list(), status: 'ready', error: null });
+      } catch (error) {
+        console.error(error);
+      }
     },
 
     async create(input, options) {

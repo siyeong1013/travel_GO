@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { loginOutcome, toAccount } from '@/features/account/account';
-import { googleUser, kakaoUser } from '@/test/supabase';
+import { googleUser, kakaoUser, USER_IDS } from '@/test/supabase';
 
 describe('toAccount', () => {
   it('takes the name and photo the provider gave, asking for an https photo', () => {
     expect(toAccount(kakaoUser('김여행'))).toEqual({
-      id: 'user-kakao',
+      id: USER_IDS.kakao,
       name: '김여행',
       avatarUrl: 'https://k.kakaocdn.net/dn/profile.jpg',
       provider: 'kakao',

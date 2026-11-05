@@ -10,6 +10,7 @@ import type {
 } from '@/data/models';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { DEFAULT_SETTLEMENT_CURRENCY } from '@/data/rules/money';
+import type { SyncedRecord, SyncState } from '@/data/sync/records';
 
 export type TravelGoDB = Dexie & {
   trips: Table<Trip, ID>;
@@ -18,6 +19,8 @@ export type TravelGoDB = Dexie & {
   expenses: Table<Expense, ID>;
   expenseShares: Table<ExpenseShare, ID>;
   settlements: Table<Settlement, ID>;
+  syncedRecords: Table<SyncedRecord, ID>;
+  syncState: Table<SyncState, 'state'>;
 };
 
 export const DEFAULT_DB_NAME = 'travel-go';
@@ -90,6 +93,13 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
           trip.cover = null;
         });
     });
+
+  // v5: syncing with the account's copy on the server (data/sync). What the server has of each
+  // record, and whose trips these are. Empty until the first sync.
+  db.version(5).stores({
+    syncedRecords: 'id, tripId',
+    syncState: 'id',
+  });
 
   return db;
 }

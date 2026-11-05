@@ -6,10 +6,7 @@ import type { GeoPoint, LocalDate, Trip } from '@/data/models';
 import { renderApp, resetApp, stubMapsApi } from '@/test/app';
 import { makePlace, namedPlace, typedCity } from '@/test/fixtures';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 const CASTLE = { lat: 34.6873, lng: 135.5262 };
 const DOTONBORI = { lat: 34.6686, lng: 135.5011 };

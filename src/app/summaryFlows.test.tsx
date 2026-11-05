@@ -15,10 +15,7 @@ import {
   T0,
 } from '@/test/fixtures';
 
-vi.mock('@/data', async () => {
-  const { createTestRepositories } = await import('@/test/fixtures');
-  return { repositories: createTestRepositories().repos };
-});
+vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
 let trip: Trip;
 let me: Companion;
