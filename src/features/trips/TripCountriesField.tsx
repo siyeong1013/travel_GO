@@ -5,7 +5,14 @@ import { TextField } from '@/components/ui/Field';
 import { CloseIcon, PlusIcon } from '@/components/ui/icons';
 import { MAX_TRIP_COUNTRIES } from '@/data/rules/validation';
 import { COUNTRY_CODES } from '@/features/countries/countryCodes';
-import { byName, countryName, flagOf, searchCountries } from '@/features/countries/countryNames';
+import {
+  byName,
+  type CountryMatch,
+  countryName,
+  flagOf,
+  searchCountries,
+} from '@/features/countries/countryNames';
+import { usePlaces } from '@/features/countries/usePlaces';
 
 interface TripCountriesFieldProps {
   countries: string[];
@@ -63,14 +70,18 @@ interface CountryPickerProps extends TripCountriesFieldProps {
 }
 
 function CountryPicker({ countries, onChange, onDone }: CountryPickerProps) {
+  const places = usePlaces();
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   // Those picked on top, as the sheet opened: rows don't jump while they are ticked.
-  const [order] = useState(() => [
-    ...countries,
-    ...byName(COUNTRY_CODES.filter((code) => !countries.includes(code))),
-  ]);
-  const shown = query.trim() ? searchCountries(query) : order;
+  const [order] = useState<CountryMatch[]>(() =>
+    [...countries, ...byName(COUNTRY_CODES.filter((code) => !countries.includes(code)))].map((code) => ({
+      code,
+      places: [],
+    })),
+  );
+  // Found by name, or by a city in it (파리), shown under its name.
+  const shown = query.trim() ? searchCountries(query, places) : order;
 
   function toggle(code: string, picked: boolean) {
     if (!picked) {
@@ -88,9 +99,9 @@ function CountryPicker({ countries, onChange, onDone }: CountryPickerProps) {
     <div className="flex h-[70dvh] flex-col">
       <div className="px-2">
         <TextField
-          label="나라 이름"
+          label="나라나 도시 이름"
           type="search"
-          placeholder="예: 일본, 사이판"
+          placeholder="예: 일본, 파리"
           autoComplete="off"
           enterKeyHint="search"
           value={query}
@@ -100,13 +111,21 @@ function CountryPicker({ countries, onChange, onDone }: CountryPickerProps) {
         />
       </div>
       <ul aria-label="나라" className="mt-2 flex-1 divide-y divide-gray-100 overflow-y-auto px-2">
-        {shown.map((code) => (
+        {shown.map(({ code, places: found }) => (
           <li key={code}>
             <label className="flex min-h-12 items-center gap-3 px-1">
               <span aria-hidden="true" className="text-xl">
                 {flagOf(code)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-base">{countryName(code)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base">{countryName(code)}</span>
+                {found.length > 0 && (
+                  <>
+                    {' '}
+                    <span className="block truncate text-sm text-gray-500">{found.join(', ')}</span>
+                  </>
+                )}
+              </span>
               <input
                 type="checkbox"
                 checked={countries.includes(code)}

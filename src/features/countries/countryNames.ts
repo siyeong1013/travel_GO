@@ -1,4 +1,6 @@
 import { COUNTRY_CODES } from '@/features/countries/countryCodes';
+import { firstFound, keyOf, matchRank, searchTries, soundKey, writtenKey } from '@/features/countries/searchKey';
+import type { Places } from '@/features/countries/usePlaces';
 
 // Shorter than the locale data's, or how people say them.
 const NAMES: Record<string, string> = {
@@ -9,13 +11,12 @@ const NAMES: Record<string, string> = {
   VA: '바티칸',
 };
 
-// Places people look for that are part of a country on the map.
+// Parts of a country on the map that people look for as if they were one (cities are in places.ts).
 const ALSO_CALLED: Record<string, string[]> = {
   MP: ['사이판'],
   US: ['하와이', '알래스카'],
-  AE: ['두바이'],
   ID: ['발리'],
-  GB: ['잉글랜드', '스코틀랜드', '런던'],
+  GB: ['잉글랜드', '스코틀랜드'],
 };
 
 let korean: Intl.DisplayNames | null | undefined;
@@ -45,25 +46,74 @@ export function flagOf(code: string): string {
   return String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 }
 
-const key = (text: string) => text.replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
+/** A country a search found. */
+export interface CountryMatch {
+  code: string;
+  /** The places in it that have the query, best first, when its names don't (파리 for 프랑스). */
+  places: string[];
+}
+
+interface Hit extends CountryMatch {
+  rank: number;
+  byPlace: boolean;
+  /** Where the place is in its region's list: the better known first. */
+  at: number;
+}
+
+interface KeyedPlace {
+  country: string;
+  name: string;
+  written: string;
+  sound: string;
+  at: number;
+}
+
+const keyed = new WeakMap<Places, KeyedPlace[]>();
+
+/** Every place with its country and keys, worked out once. */
+function keyedPlaces(places: Places): KeyedPlace[] {
+  let list = keyed.get(places);
+  if (!list) {
+    list = Object.entries(places).flatMap(([code, names]) =>
+      names.map((name, at) => ({ country: code.slice(0, 2), name, written: writtenKey(name), sound: soundKey(name), at })),
+    );
+    keyed.set(places, list);
+  }
+  return list;
+}
 
 /**
- * Countries whose name (Korean or English), another name people use (사이판) or code has
- * `query` in it: names starting with it first, then by name.
+ * Countries whose name (Korean or English), another name people use (사이판), code, or one of
+ * `places` in them (파리) has `query`: those with a name that is it first, then one that starts
+ * with it; by their own names before by a place, then by the better known place, then by name.
  */
-export function searchCountries(query: string): string[] {
-  const wanted = key(query);
-  if (!wanted) return [];
-  const scored: { code: string; starts: boolean; name: string }[] = [];
-  for (const code of COUNTRY_CODES) {
-    const name = countryName(code);
-    const names = [name, englishName(code), code, ...(ALSO_CALLED[code] ?? [])].map(key);
-    if (!names.some((n) => n.includes(wanted))) continue;
-    scored.push({ code, starts: names.some((n) => n.startsWith(wanted)), name });
-  }
-  return scored
-    .sort((a, b) => Number(b.starts) - Number(a.starts) || a.name.localeCompare(b.name, 'ko'))
-    .map((entry) => entry.code);
+export function searchCountries(query: string, places: Places = {}): CountryMatch[] {
+  return firstFound(searchTries(query), ({ key, kind }) => {
+    const hits = new Map<string, Hit>();
+    for (const code of COUNTRY_CODES) {
+      const names = [countryName(code), englishName(code), code, ...(ALSO_CALLED[code] ?? [])];
+      const rank = Math.min(...names.map((name) => matchRank(keyOf[kind](name), key)));
+      if (rank < 3) hits.set(code, { code, places: [], rank, byPlace: false, at: 0 });
+    }
+    const found = keyedPlaces(places)
+      .map((place) => ({ ...place, rank: matchRank(place[kind], key) }))
+      .filter((place) => place.rank < 3 && !hits.has(place.country))
+      .sort((a, b) => a.rank - b.rank || a.at - b.at);
+    for (const { country, name, rank, at } of found) {
+      const hit = hits.get(country);
+      if (!hit) hits.set(country, { code: country, places: [name], rank, byPlace: true, at });
+      else if (hit.places.length < 3 && !hit.places.includes(name)) hit.places.push(name);
+    }
+    return [...hits.values()]
+      .sort(
+        (a, b) =>
+          a.rank - b.rank ||
+          Number(a.byPlace) - Number(b.byPlace) ||
+          a.at - b.at ||
+          countryName(a.code).localeCompare(countryName(b.code), 'ko'),
+      )
+      .map(({ code, places: found }) => ({ code, places: found }));
+  });
 }
 
 /** `codes` by their Korean names. */

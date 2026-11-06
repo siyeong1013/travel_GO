@@ -8,6 +8,7 @@ import { isCountryCode } from '@/data/rules/country';
 import { byName, countryName, flagOf, searchCountries } from '@/features/countries/countryNames';
 import { useCountryStore } from '@/features/countries/countryStore';
 import { regionCount } from '@/features/countries/regionMaps';
+import { usePlaces } from '@/features/countries/usePlaces';
 import { WorldMap } from '@/features/countries/WorldMap';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
@@ -20,13 +21,15 @@ interface Notice {
 
 /**
  * "다녀온 나라": a world map with the countries the person has been to, which a tap puts on it
- * or takes off (with an undo), and a search by name for the rest, small ones included.
+ * or takes off (with an undo), and a search for the rest, small ones included: by name, or by a
+ * city in one (파리 finds 프랑스, and its regions open on 파리).
  */
 export function VisitedCountries() {
   const countries = useCountryStore((state) => state.countries);
   const status = useCountryStore((state) => state.status);
   const load = useCountryStore((state) => state.load);
   const setVisited = useCountryStore((state) => state.setVisited);
+  const places = usePlaces();
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
   const notices = useRef(0);
@@ -43,7 +46,7 @@ export function VisitedCountries() {
   const regionsVisited = (code: string) =>
     countries.filter((mark) => mark.id.startsWith(`${code}-`)).length;
   const visitedNames = byName([...visited]);
-  const found = searchCountries(query);
+  const found = searchCountries(query, places);
 
   async function change(code: string, next: boolean, undoable: boolean) {
     try {
@@ -64,17 +67,26 @@ export function VisitedCountries() {
     }
   }
 
-  const row = (code: string) => (
+  // `matched`: places in it the search found, shown under its name.
+  const row = (code: string, matched: string[] = []) => (
     <li key={code} className="flex min-h-12 items-center gap-1 px-1">
       <label htmlFor={`country-${code}`} className="flex min-w-0 flex-1 items-center gap-3 py-3">
         <span aria-hidden="true" className="text-xl">
           {flagOf(code)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-base">{countryName(code)}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base">{countryName(code)}</span>
+          {matched.length > 0 && (
+            <>
+              {' '}
+              <span className="block truncate text-sm text-gray-500">{matched.join(', ')}</span>
+            </>
+          )}
+        </span>
       </label>
       {regionCount(code) > 0 && (
         <Link
-          to={`/countries/${code}`}
+          to={matched[0] ? `/countries/${code}?q=${encodeURIComponent(matched[0])}` : `/countries/${code}`}
           aria-label={`${countryName(code)} 지역`}
           className="flex h-11 shrink-0 items-center rounded-full pr-1 pl-2.5 text-sm text-gray-500 active:bg-gray-100"
         >
@@ -108,14 +120,14 @@ export function VisitedCountries() {
         />
       </div>
       <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-        지도에서 나라를 누르면 넣거나 빼요. 작은 나라는 아래에서 이름으로 찾아요.
+        지도에서 나라를 누르면 넣거나 빼요. 작은 나라와 도시는 아래에서 이름으로 찾아요.
       </p>
 
       <PageSection title="나라 찾기">
         <TextField
-          label="나라 이름"
+          label="나라나 도시 이름"
           type="search"
-          placeholder="예: 일본, 사이판"
+          placeholder="예: 일본, 파리"
           autoComplete="off"
           enterKeyHint="search"
           value={query}
@@ -123,7 +135,9 @@ export function VisitedCountries() {
         />
         {query.trim() &&
           (found.length > 0 ? (
-            <ul className="mt-2 divide-y divide-gray-100">{found.map(row)}</ul>
+            <ul className="mt-2 divide-y divide-gray-100">
+              {found.map((match) => row(match.code, match.places))}
+            </ul>
           ) : (
             <p className="mt-3 text-sm text-gray-500">찾는 나라가 없어요.</p>
           ))}
@@ -132,7 +146,7 @@ export function VisitedCountries() {
       {!query.trim() && (
         <PageSection title={`다녀온 나라 ${visited.size}곳`}>
           {visitedNames.length > 0 ? (
-            <ul className="divide-y divide-gray-100">{visitedNames.map(row)}</ul>
+            <ul className="divide-y divide-gray-100">{visitedNames.map((code) => row(code))}</ul>
           ) : (
             <p className="text-sm break-keep text-gray-500">
               아직 없어요. 지도에서 누르거나 이름으로 찾아 넣어 보세요.

@@ -214,7 +214,7 @@ describe('trip city search', () => {
     await user.type(await screen.findByLabelText('여행 이름'), '간사이 여행');
     await user.click(screen.getByRole('button', { name: '나라 고르기' }));
     const countries = await screen.findByRole('dialog', { name: '가는 나라' });
-    await user.type(within(countries).getByLabelText('나라 이름'), '일본');
+    await user.type(within(countries).getByLabelText('나라나 도시 이름'), '일본');
     await user.click(within(countries).getByRole('checkbox', { name: '일본' }));
     await user.click(within(countries).getByRole('button', { name: '1개 나라 고르기' }));
     expect(screen.getByRole('button', { name: '일본 빼기' })).toBeInTheDocument();

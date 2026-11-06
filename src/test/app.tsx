@@ -10,6 +10,7 @@ import { createBackupFile } from '@/data/rules/backupFormat';
 import { accountStore } from '@/features/account/accountStore';
 import { backupStore } from '@/features/backup/backupStore';
 import { countryStore } from '@/features/countries/countryStore';
+import { loadPlaces } from '@/features/countries/usePlaces';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
@@ -30,8 +31,9 @@ function screenLoaders(list: RouteObject[]): (() => Promise<unknown>)[] {
 }
 
 // Load every screen's code with the test file, so a test doesn't wait on it while finding its
-// first screen (under load that can outlast `findBy*`). A test may make one fail to load.
-await Promise.allSettled(screenLoaders(routes).map((load) => load()));
+// first screen (under load that can outlast `findBy*`). A test may make one fail to load. The
+// places searches find cities by too: screens then have them from the start.
+await Promise.allSettled([...screenLoaders(routes).map((load) => load()), loadPlaces()]);
 
 /** Simulates a fresh page load: empty stores, data only in IndexedDB (and localStorage). */
 export function resetStores() {

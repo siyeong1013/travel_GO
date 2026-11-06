@@ -6,7 +6,8 @@ import { Snackbar } from '@/components/ui/Snackbar';
 import { countryName, flagOf } from '@/features/countries/countryNames';
 import { useCountryStore } from '@/features/countries/countryStore';
 import { RegionMap } from '@/features/countries/RegionMap';
-import { loadRegionMap, type RegionMapData } from '@/features/countries/regionMaps';
+import { findRegions, loadRegionMap, type RegionMapData, shownPlaces } from '@/features/countries/regionMaps';
+import { usePlaces } from '@/features/countries/usePlaces';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
 
@@ -16,19 +17,19 @@ interface Notice {
   undo?: () => void;
 }
 
-const key = (text: string) => text.replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
-
 /**
  * Where in `country` the person has been: its regions (states, provinces, prefectures) on a map a
- * tap fills in or clears (with an undo), and by name below. A region visited puts the country on
- * the world map too.
+ * tap fills in or clears (with an undo), and by name below, with the places people go in each (a
+ * search for 나트랑 finds 카인호아성). A region visited puts the country on the world map too.
+ * `query`: what the search starts with (the city the countries' search found).
  */
-export function CountryRegions({ country }: { country: string }) {
+export function CountryRegions({ country, query: initialQuery = '' }: { country: string; query?: string }) {
   const countries = useCountryStore((state) => state.countries);
   const status = useCountryStore((state) => state.status);
   const load = useCountryStore((state) => state.load);
   const setVisited = useCountryStore((state) => state.setVisited);
-  const [query, setQuery] = useState('');
+  const places = usePlaces();
+  const [query, setQuery] = useState(initialQuery);
   const [notice, setNotice] = useState<Notice | null>(null);
   const notices = useRef(0);
 
@@ -61,7 +62,7 @@ export function CountryRegions({ country }: { country: string }) {
   const regions = map?.regions ?? [];
   const here = regions.filter(([code]) => visited.has(code));
   const away = regions.filter(([, , path]) => !path).map(([, name]) => name);
-  const found = query.trim() ? regions.filter(([, name]) => key(name).includes(key(query))) : regions;
+  const found = findRegions(regions, places, query);
   const nameOf = (code: string) => regions.find(([other]) => other === code)?.[1] ?? code;
 
   async function change(code: string, next: boolean, undoable: boolean) {
@@ -135,28 +136,39 @@ export function CountryRegions({ country }: { country: string }) {
       {map && (
         <PageSection title={`지역 ${regions.length}곳`}>
           <TextField
-            label="지역 이름"
+            label="지역이나 도시 이름"
             type="search"
-            placeholder="예: 오사카"
+            placeholder="예: 홋카이도, 삿포로"
             autoComplete="off"
             enterKeyHint="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <ul aria-label="지역" className="mt-2 divide-y divide-gray-100">
-            {found.map(([code, name]) => (
-              <li key={code}>
-                <label className="flex min-h-12 items-center gap-3 px-1">
-                  <span className="min-w-0 flex-1 truncate text-base">{name}</span>
-                  <input
-                    type="checkbox"
-                    checked={visited.has(code)}
-                    onChange={(event) => void change(code, event.target.checked, false)}
-                    className="size-5 accent-brand-600"
-                  />
-                </label>
-              </li>
-            ))}
+            {found.map(([code, name]) => {
+              const shown = shownPlaces(places[code] ?? [], name, query);
+              return (
+                <li key={code}>
+                  <label className="flex min-h-12 items-center gap-3 px-1 py-1.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base">{name}</span>
+                      {shown.length > 0 && (
+                        <>
+                          {' '}
+                          <span className="block truncate text-sm text-gray-500">{shown.join(', ')}</span>
+                        </>
+                      )}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={visited.has(code)}
+                      onChange={(event) => void change(code, event.target.checked, false)}
+                      className="size-5 accent-brand-600"
+                    />
+                  </label>
+                </li>
+              );
+            })}
             {found.length === 0 && <li className="py-3 text-sm text-gray-500">찾는 지역이 없어요.</li>}
           </ul>
         </PageSection>

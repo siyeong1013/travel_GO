@@ -1,17 +1,21 @@
 // Makes the region maps of "다녀온 나라" (a country's states, provinces, prefectures): one file a
 // country in public/regions/ (fetched when its page opens; the service worker keeps it then), and
-// src/features/countries/regionCountries.ts listing the countries that have one.
+// src/features/countries/regionCountries.ts listing the countries that have one, with Korean names
+// put right (NAMES). And src/features/countries/places.ts: the cities and sights people go to, by
+// the region (or country) they are in, to find those by (파리 → 프랑스, 일드프랑스).
 //
-// Data: Natural Earth 1:10m admin-1 states and provinces (public domain). To run it again:
+// Data: Natural Earth 1:10m admin-1 states and provinces and populated places (public domain), and
+// PLACES below. To run it again:
 //   curl -L -o admin1.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_1_states_provinces.geojson
+//   curl -L -o places.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_populated_places.geojson
 //   npm i --no-save --ignore-scripts topojson-server@3.0.1 topojson-client@3.1.0 \
 //     topojson-simplify@3.0.3 d3-geo@3.1.1
-//   node scripts/region-maps.mjs admin1.geojson [folder holding those node_modules]
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+//   node scripts/region-maps.mjs admin1.geojson places.geojson [folder holding those node_modules]
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
-const [source, modulesArg] = process.argv.slice(2);
+const [source, townsSource, modulesArg] = process.argv.slice(2);
 const require = createRequire(join(resolve(modulesArg ?? '.'), 'package.json'));
 const { topology } = require('topojson-server');
 const { feature, merge } = require('topojson-client');
@@ -26,8 +30,13 @@ const POINTS = 3500;
 const DOT_AREA = 40;
 /** Countries with more regions than this are left out: municipalities, not places to travel. */
 const MAX_REGIONS = 100;
-/** Left out too: Natural Earth's regions of it don't fit together. */
-const SKIP = new Set(['BA']);
+/**
+ * Left out too: BA (Natural Earth's regions of it don't fit together) and SG (a city: its regions
+ * are council districts, not places).
+ */
+const SKIP = new Set(['BA', 'SG']);
+/** A place this far (degrees) off every region's outline is in none: coastal towns fall just out. */
+const NEAR = 0.3;
 
 const CODE = /^[A-Z]{2}-[A-Z0-9]{1,3}$/;
 
@@ -74,6 +83,213 @@ const GROUPS = {
   }],
 };
 
+// Korean names Natural Earth has wrong (its region's name for a province: VN-39 is Đồng Nai), cut
+// short (AU-NT), the same for a city and the region around it, or out of date (KZ-AST). Its codes
+// for Moscow are the other way round from ISO's: RU-MOS is the city.
+const NAMES = {
+  'VN-39': '동나이성', 'VN-53': '박깐성', 'VN-66': '흥옌성',
+  'AU-NT': '노던 준주', 'AU-ACT': '오스트레일리아 수도 준주',
+  'CA-NT': '노스웨스트 준주', 'CA-NU': '누나부트 준주', 'CA-YT': '유콘 준주',
+  'TW-TXG': '타이중시', 'ID-JB': '서자와', 'GR-L': '남에게해', 'GR-K': '북에게해',
+  'CL-RM': '산티아고 수도주', 'KZ-AST': '아스타나',
+  'CN-SN': '산시성 (섬서)', 'CN-SX': '산시성 (산서)',
+  'AR-B': '부에노스아이레스주', 'AR-C': '부에노스아이레스시',
+  'BY-MI': '민스크주', 'BY-HM': '민스크시',
+  'HR-01': '자그레브주', 'HR-21': '자그레브시',
+  'HU-VE': '베스프렘주', 'HU-VM': '베스프렘시',
+  'RU-MOW': '모스크바주', 'RU-MOS': '모스크바시', 'RU-ALT': '알타이 지방',
+  'UA-32': '키이우주', 'UA-30': '키이우시',
+  'UZ-TO': '타슈켄트주', 'UZ-TK': '타슈켄트시',
+  'YE-SN': '사나주', 'YE-SA': '사나시',
+  'SC-13': '그랑당스마에 구', 'TT-ETO': '동토바고', 'TT-WTO': '서토바고',
+  'GY-ES': '에세퀴보제도·서데메라라',
+};
+
+// Places people go, by the region they are in (a city isn't a region: 나트랑 is in 카인호아성),
+// before Natural Earth's cities: the sights and towns it doesn't have, and names as people say them
+// (나트랑, which it writes 냐짱). [name, latitude, longitude]: the region is the one the point is
+// in. Or [name, region code] where Natural Earth's outlines miss the place (small islands) or are
+// too rough there.
+const PLACES = {
+  AR: [['이구아수 폭포', -25.6, -54.575], ['엘칼라파테', -50.338, -72.265],
+    ['페리토모레노 빙하', -50.497, -73.138], ['엘찰텐', -49.332, -72.886], ['우수아이아', -54.802, -68.303],
+    ['바릴로체', -41.134, -71.31]],
+  AT: [['비엔나', 48.208, 16.373], ['할슈타트', 47.562, 13.649], ['인스브루크', 47.269, 11.404],
+    ['그라츠', 47.071, 15.44], ['첼암제', 47.325, 12.795], ['린츠', 48.307, 14.286], ['멜크', 48.227, 15.333]],
+  AU: [['시드니', -33.869, 151.209], ['멜버른', -37.814, 144.963], ['브리즈번', -27.47, 153.025],
+    ['골드코스트', -28.017, 153.4], ['케언스', -16.919, 145.778], ['퍼스', -31.951, 115.861],
+    ['애들레이드', -34.929, 138.601], ['울루루', -25.344, 131.037], ['다윈', -12.463, 130.846],
+    ['호바트', -42.882, 147.327], ['캔버라', -35.281, 149.13], ['블루마운틴', -33.715, 150.311],
+    ['바이런베이', -28.647, 153.602], ['포트스테판', -32.719, 152.144], ['휘트선데이', -20.269, 148.718]],
+  BE: [['브뤼헤', 51.209, 3.225], ['겐트', 51.054, 3.717], ['디낭', 50.261, 4.912]],
+  BR: [['이구아수 폭포', -25.547, -54.588], ['살바도르', -12.978, -38.502], ['브라질리아', -15.794, -47.883],
+    ['마나우스', -3.119, -60.022], ['렌소이스', -2.486, -43.128]],
+  CA: [['밴쿠버', 49.283, -123.121], ['빅토리아', 48.428, -123.366], ['휘슬러', 50.116, -122.957],
+    ['토론토', 43.653, -79.383], ['나이아가라 폭포', 43.09, -79.09], ['오타와', 45.422, -75.697],
+    ['몬트리올', 45.502, -73.567], ['밴프', 51.178, -115.571], ['레이크루이스', 51.425, -116.177],
+    ['재스퍼', 52.874, -118.081], ['캘거리', 51.045, -114.072], ['옐로나이프', 62.454, -114.372],
+    ['화이트호스', 60.721, -135.057], ['핼리팩스', 44.649, -63.575]],
+  CH: [['인터라켄', 46.686, 7.863], ['융프라우', 46.605, 7.921], ['그린델발트', 46.624, 8.041],
+    ['라우터브루넨', 46.594, 7.909], ['이젤트발트', 46.711, 7.964], ['체르마트', 46.021, 7.749],
+    ['마터호른', 46.021, 7.749], ['몽트뢰', 46.431, 6.911], ['로잔', 46.52, 6.632], ['루가노', 46.004, 8.951],
+    ['생모리츠', 46.491, 9.836]],
+  CL: [['토레스델파이네', -50.942, -73.407], ['푸에르토나탈레스', -51.724, -72.488],
+    ['산페드로데아타카마', -22.909, -68.2], ['이스터섬', -27.113, -109.35]],
+  CN: [['칭다오', 36.067, 120.383], ['웨이하이', 37.513, 122.12], ['옌타이', 37.464, 121.448],
+    ['장자제', 29.117, 110.479], ['하얼빈', 45.804, 126.535], ['시안', 34.342, 108.94], ['청두', 30.573, 104.067],
+    ['주자이거우', 33.26, 103.918], ['구이린', 25.274, 110.29], ['양숴', 24.778, 110.497], ['싼야', 18.253, 109.512],
+    ['하이커우', 20.044, 110.2], ['백두산', 42.07, 128.1], ['옌지', 42.905, 129.514], ['다롄', 38.914, 121.615],
+    ['선양', 41.806, 123.432], ['단둥', 40.129, 124.395], ['항저우', 30.274, 120.155], ['쑤저우', 31.299, 120.585],
+    ['난징', 32.06, 118.797], ['광저우', 23.129, 113.264], ['선전', 22.543, 114.058], ['쿤밍', 25.039, 102.718],
+    ['리장', 26.855, 100.227], ['다리', 25.607, 100.268], ['샤먼', 24.48, 118.089], ['황산', 30.129, 118.17],
+    ['라싸', 29.65, 91.1], ['우루무치', 43.826, 87.617], ['우한', 30.593, 114.306], ['정저우', 34.747, 113.625],
+    ['뤄양', 34.62, 112.454], ['핑야오', 37.201, 112.177], ['타이위안', 37.871, 112.549], ['둔황', 40.142, 94.662],
+    ['구이양', 26.647, 106.63]],
+  CU: [['바라데로', 23.139, -81.286], ['트리니다드', 21.802, -79.985], ['비냘레스', 22.617, -83.706]],
+  CZ: [['체스키크룸로프', 48.813, 14.318], ['브르노', 49.195, 16.607], ['쿠트나호라', 49.948, 15.268]],
+  DE: [['뮌헨', 48.135, 11.582], ['노이슈반슈타인', 47.558, 10.75], ['퓌센', 47.57, 10.7],
+    ['뉘른베르크', 49.452, 11.077], ['로텐부르크', 49.378, 10.187], ['프랑크푸르트', 50.111, 8.682],
+    ['하이델베르크', 49.399, 8.672], ['슈투트가르트', 48.776, 9.183], ['프라이부르크', 47.999, 7.842],
+    ['쾰른', 50.938, 6.96], ['뒤셀도르프', 51.228, 6.774], ['드레스덴', 51.05, 13.737], ['라이프치히', 51.34, 12.373],
+    ['포츠담', 52.391, 13.065], ['하노버', 52.376, 9.732], ['뤼베크', 53.866, 10.687], ['바이마르', 50.98, 11.324]],
+  DK: [['코펜하겐', 55.676, 12.568], ['오덴세', 55.404, 10.402], ['빌룬', 55.736, 9.127], ['오르후스', 56.163, 10.204]],
+  EG: [['피라미드', 29.979, 31.134], ['아부심벨', 22.337, 31.626], ['후르가다', 27.258, 33.812],
+    ['다합', 28.5, 34.517], ['샤름엘셰이크', 27.916, 34.33], ['시와', 29.203, 25.52]],
+  ES: [['바르셀로나', 41.385, 2.173], ['몬세라트', 41.593, 1.838], ['세비야', 37.389, -5.984],
+    ['그라나다', 37.177, -3.599], ['말라가', 36.721, -4.421], ['론다', 36.742, -5.167], ['코르도바', 37.888, -4.779],
+    ['톨레도', 39.863, -4.027], ['세고비아', 40.943, -4.109], ['살라망카', 40.97, -5.664], ['빌바오', 43.263, -2.935],
+    ['산세바스티안', 43.318, -1.981], ['산티아고데콤포스텔라', 42.878, -8.545], ['마요르카', 39.695, 3.018],
+    ['이비사', 38.907, 1.421], ['테네리페', 28.292, -16.629], ['사라고사', 41.649, -0.889], ['팜플로나', 42.813, -1.646]],
+  FI: [['헬싱키', 60.17, 24.938], ['로바니에미', 66.504, 25.729], ['투르쿠', 60.452, 22.267]],
+  FJ: [['난디', -17.777, 177.436], ['수바', -18.125, 178.45]],
+  FR: [['파리', 48.857, 2.352], ['베르사유', 48.805, 2.12], ['몽생미셸', 48.625, -1.47], ['에트르타', 49.707, 0.203],
+    ['지베르니', 49.076, 1.534], ['루앙', 49.443, 1.1], ['니스', 43.71, 7.262], ['칸', 43.553, 7.017],
+    ['마르세유', 43.297, 5.37], ['아비뇽', 43.949, 4.806], ['엑상프로방스', 43.53, 5.447], ['리옹', 45.764, 4.836],
+    ['샤모니', 45.924, 6.869], ['안시', 45.899, 6.129], ['보르도', 44.838, -0.579], ['스트라스부르', 48.573, 7.752],
+    ['콜마르', 48.079, 7.358], ['랭스', 49.258, 4.032], ['툴루즈', 43.605, 1.444], ['카르카손', 43.213, 2.349],
+    ['몽펠리에', 43.611, 3.877], ['루르드', 43.095, -0.046], ['샹보르', 47.616, 1.517], ['투르', 47.394, 0.685],
+    ['낭트', 47.218, -1.554], ['릴', 50.629, 3.057], ['디종', 47.322, 5.042], ['렌', 48.117, -1.678],
+    ['생말로', 48.649, -2.026]],
+  GB: [['런던', 51.507, -0.128], ['옥스퍼드', 51.752, -1.258], ['케임브리지', 52.205, 0.122], ['바스', 51.381, -2.359],
+    ['코츠월드', 51.833, -1.8], ['스톤헨지', 51.179, -1.826], ['맨체스터', 53.481, -2.243], ['리버풀', 53.408, -2.992],
+    ['요크', 53.96, -1.087], ['레이크디스트릭트', 54.461, -3.089], ['브라이턴', 50.823, -0.137],
+    ['에든버러', 55.953, -3.188], ['글래스고', 55.864, -4.252], ['인버네스', 57.478, -4.225], ['스카이섬', 57.274, -6.216],
+    ['카디프', 51.482, -3.179], ['벨파스트', 54.597, -5.93], ['자이언트 코즈웨이', 55.241, -6.512]],
+  GE: [['바투미', 41.617, 41.637], ['카즈베기', 42.657, 44.642], ['시그나기', 41.62, 45.922], ['쿠타이시', 42.268, 42.695]],
+  GR: [['산토리니', 36.393, 25.462], ['미코노스', 37.447, 25.329], ['로도스', 36.434, 28.218], ['아테네', 37.984, 23.728],
+    ['메테오라', 39.722, 21.631], ['테살로니키', 40.64, 22.944], ['델포이', 38.482, 22.501], ['올림피아', 37.638, 21.63],
+    ['코르푸', 39.624, 19.922], ['자킨토스', 37.787, 20.9]],
+  HR: [['흐바르', 43.173, 16.441], ['트로기르', 43.517, 16.25], ['플리트비체', 'HR-09'], ['로비니', 45.081, 13.639],
+    ['풀라', 44.867, 13.85], ['크르카', 43.804, 15.972], ['리예카', 45.327, 14.442]],
+  HU: [['센텐드레', 47.669, 19.076]],
+  ID: [['우붓', -8.507, 115.263], ['꾸따', -8.718, 115.17], ['스미냑', -8.691, 115.168], ['누사두아', -8.8, 115.23],
+    ['짐바란', -8.79, 115.16], ['롬복', -8.65, 116.325], ['길리', -8.35, 116.04], ['족자카르타', -7.796, 110.37],
+    ['보로부두르', -7.608, 110.204], ['반둥', -6.918, 107.619], ['빈탄', 1.07, 104.46], ['바탐', 1.046, 104.031],
+    ['라부안바조', -8.496, 119.888], ['코모도', -8.55, 119.45], ['브로모', -7.943, 112.953], ['수라바야', -7.258, 112.752],
+    ['마나도', 1.475, 124.842], ['메단', 3.595, 98.672]],
+  IE: [['모허 절벽', 52.972, -9.431]],
+  IN: [['타지마할', 27.175, 78.042], ['아그라', 27.177, 78.008], ['바라나시', 25.318, 82.974], ['자이푸르', 26.912, 75.787],
+    ['조드푸르', 26.239, 73.024], ['우다이푸르', 24.585, 73.712], ['뭄바이', 19.076, 72.878], ['콜카타', 22.573, 88.364],
+    ['첸나이', 13.083, 80.271], ['벵갈루루', 12.972, 77.595], ['함피', 15.335, 76.46], ['다르질링', 27.041, 88.266],
+    ['리시케시', 30.087, 78.268]],
+  IS: [['블루라군', 63.88, -22.45], ['게이시르', 64.31, -20.302], ['굴포스', 64.327, -20.12], ['비크', 63.419, -19.006],
+    ['아퀴레이리', 65.689, -18.126], ['미바튼', 65.604, -16.996]],
+  IT: [['로마', 41.903, 12.496], ['밀라노', 45.464, 9.19], ['코모', 45.808, 9.085], ['베네치아', 45.441, 12.316],
+    ['베니스', 45.441, 12.316], ['베로나', 45.438, 10.992], ['코르티나담페초', 46.541, 12.136], ['돌로미티', 46.575, 11.671],
+    ['피렌체', 43.77, 11.256], ['피사', 43.723, 10.402], ['시에나', 43.319, 11.331], ['친퀘테레', 44.135, 9.684],
+    ['제노바', 44.406, 8.946], ['나폴리', 40.852, 14.268], ['아말피', 40.634, 14.603], ['포지타노', 40.628, 14.485],
+    ['소렌토', 40.626, 14.376], ['카프리', 40.553, 14.222], ['폼페이', 40.746, 14.499], ['팔레르모', 38.116, 13.362],
+    ['타오르미나', 37.852, 15.285], ['볼로냐', 44.495, 11.343], ['토리노', 45.07, 7.687], ['바리', 41.117, 16.872],
+    ['알베로벨로', 40.785, 17.238], ['마테라', 40.666, 16.604], ['아시시', 43.071, 12.62], ['오르비에토', 42.719, 12.111]],
+  JO: [['페트라', 30.329, 35.444], ['와디럼', 29.583, 35.417]],
+  JP: [['삿포로', 43.062, 141.354], ['오타루', 43.191, 140.995], ['하코다테', 41.769, 140.729], ['후라노', 43.342, 142.383],
+    ['비에이', 43.588, 142.467], ['나하', 26.212, 127.681], ['이시가키', 24.345, 124.157], ['미야코지마', 24.806, 125.281],
+    ['고베', 34.69, 135.196], ['히메지', 34.815, 134.685], ['요코하마', 35.444, 139.638], ['하코네', 35.232, 139.107],
+    ['가마쿠라', 35.319, 139.547], ['나고야', 35.182, 136.907], ['벳푸', 33.285, 131.491], ['유후인', 33.265, 131.355],
+    ['기타큐슈', 33.884, 130.875], ['다카마쓰', 34.343, 134.047], ['나오시마', 'JP-37'], ['가나자와', 36.561, 136.656],
+    ['센다이', 38.268, 140.869], ['닛코', 36.72, 139.698], ['다카야마', 36.146, 137.252], ['시라카와고', 36.258, 136.906],
+    ['마쓰야마', 33.839, 132.766], ['가와구치코', 35.499, 138.769], ['가루이자와', 36.348, 138.597],
+    ['하쿠바', 36.698, 137.862], ['마쓰모토', 36.238, 137.972], ['이세', 34.488, 136.709], ['구사쓰', 36.621, 138.596],
+    ['나리타', 35.777, 140.318], ['디즈니랜드', 35.65, 139.9], ['미야지마', 34.296, 132.32], ['구라시키', 34.585, 133.772],
+    ['시라하마', 33.678, 135.348], ['고야산', 34.213, 135.585], ['아타미', 35.096, 139.072], ['이즈모', 35.367, 132.755],
+    ['사세보', 33.18, 129.715], ['하우스텐보스', 33.085, 129.788], ['아소', 32.952, 131.121], ['이부스키', 31.253, 130.633],
+    ['야쿠시마', 30.35, 130.53]],
+  KE: [['마사이마라', -1.406, 35.012]],
+  KH: [['앙코르와트', 13.412, 103.867], ['시엠립', 13.363, 103.856]],
+  KR: [['경주', 35.856, 129.225], ['안동', 36.568, 128.729], ['포항', 36.019, 129.343], ['울릉도', 37.484, 130.906],
+    ['강릉', 37.752, 128.876], ['속초', 38.207, 128.592], ['양양', 38.075, 128.619], ['춘천', 37.881, 127.73],
+    ['평창', 37.37, 128.39], ['전주', 35.824, 127.148], ['군산', 35.968, 126.737], ['여수', 34.76, 127.662],
+    ['순천', 34.951, 127.487], ['목포', 34.812, 126.392], ['담양', 35.321, 126.988], ['통영', 34.854, 128.433],
+    ['거제', 34.881, 128.621], ['남해', 34.838, 127.892], ['창원', 35.228, 128.681], ['가평', 37.832, 127.511],
+    ['수원', 37.264, 127.029], ['파주', 37.76, 126.78], ['공주', 'KR-44'], ['부여', 36.276, 126.91],
+    ['태안', 36.746, 126.298], ['단양', 36.985, 128.366], ['서귀포', 33.254, 126.56]],
+  LA: [['방비엥', 18.923, 102.448], ['팍세', 15.12, 105.799]],
+  LK: [['캔디', 7.291, 80.634], ['시기리야', 7.957, 80.76], ['담불라', 7.874, 80.651], ['갈레', 6.054, 80.221],
+    ['엘라', 6.867, 81.047], ['미리사', 5.948, 80.472]],
+  MA: [['셰프샤우엔', 35.169, -5.264], ['메르주가', 31.08, -4.013], ['에사우이라', 31.509, -9.76],
+    ['와르자자트', 30.919, -6.893]],
+  MM: [['바간', 21.172, 94.859], ['인레 호수', 20.55, 96.917]],
+  MN: [['테를지', 47.98, 107.45], ['홉스골', 50.44, 100.16]],
+  MV: [['말레', 'MV-26']],
+  MX: [['칸쿤', 21.162, -86.852], ['툴룸', 20.211, -87.465], ['플라야델카르멘', 20.63, -87.074],
+    ['치첸이차', 20.684, -88.568], ['메리다', 20.967, -89.593], ['로스카보스', 22.891, -109.917],
+    ['과달라하라', 20.66, -103.35], ['푸에르토바야르타', 20.653, -105.225], ['테오티우아칸', 19.693, -98.844],
+    ['오악사카', 17.073, -96.726]],
+  MY: [['코타키나발루', 5.98, 116.074], ['페낭', 5.414, 100.329], ['랑카위', 6.35, 99.8], ['말라카', 2.19, 102.25],
+    ['조호르바루', 1.493, 103.741], ['쿠칭', 1.554, 110.359], ['겐팅하이랜드', 3.424, 101.793],
+    ['카메론하이랜드', 4.472, 101.377], ['이포', 4.598, 101.09]],
+  NL: [['암스테르담', 52.368, 4.904], ['잔세스칸스', 52.474, 4.817], ['헤이그', 52.071, 4.301], ['로테르담', 51.924, 4.478],
+    ['킨더다이크', 51.884, 4.639], ['히트호른', 52.74, 6.079], ['마스트리흐트', 50.851, 5.691]],
+  NO: [['트롬쇠', 69.649, 18.955], ['베르겐', 60.391, 5.322], ['플롬', 60.863, 7.114], ['게이랑에르', 62.102, 7.206],
+    ['올레순', 62.472, 6.15], ['프레이케스톨렌', 58.986, 6.19], ['스타방에르', 58.97, 5.733], ['로포텐', 68.234, 14.568]],
+  NP: [['카트만두', 27.717, 85.324], ['포카라', 28.21, 83.986], ['치트완', 27.529, 84.354], ['에베레스트', 27.807, 86.714]],
+  NZ: [['퀸스타운', -45.031, 168.663], ['와나카', -44.703, 169.132], ['더니든', -45.879, 170.503],
+    ['밀퍼드사운드', -44.641, 167.897], ['테아나우', -45.414, 167.718], ['크라이스트처치', -43.532, 172.636],
+    ['테카포', -44.005, 170.477], ['마운트쿡', -43.734, 170.096], ['로토루아', -38.137, 176.25], ['타우포', -38.686, 176.07],
+    ['호비튼', -37.872, 175.683]],
+  PE: [['마추픽추', -13.163, -72.545], ['레인보우 마운틴', -13.869, -71.303], ['와카치나', -14.088, -75.763],
+    ['나스카', -14.835, -74.93]],
+  PH: [['세부', 10.316, 123.885], ['막탄', 10.31, 123.98], ['보홀', 9.85, 124.144], ['두마게티', 9.307, 123.305],
+    ['보라카이', 11.967, 121.925], ['일로일로', 10.72, 122.562], ['팔라완', 9.739, 118.735], ['엘니도', 11.196, 119.408],
+    ['코론', 12.005, 120.204], ['클락', 15.186, 120.56], ['앙헬레스', 15.145, 120.589], ['수빅', 14.825, 120.283],
+    ['바기오', 16.402, 120.596], ['따가이따이', 14.115, 120.962], ['팍상한', 14.273, 121.455], ['레가스피', 13.139, 123.744],
+    ['시아르가오', 9.848, 126.046]],
+  PL: [['바르샤바', 52.23, 21.012], ['크라쿠프', 50.065, 19.945], ['아우슈비츠', 50.034, 19.21], ['자코파네', 49.299, 19.95],
+    ['그단스크', 54.352, 18.647], ['브로츠와프', 51.108, 17.039]],
+  PT: [['리스본', 38.722, -9.139], ['신트라', 38.803, -9.382], ['카스카이스', 38.698, -9.422], ['알가르브', 37.019, -7.93],
+    ['라구스', 37.102, -8.673], ['파티마', 39.617, -8.652], ['오비두스', 39.361, -9.157], ['나자레', 39.601, -9.07]],
+  RU: [['블라디보스토크', 43.116, 131.886], ['바이칼 호수', 51.854, 104.87], ['알혼섬', 53.15, 107.35],
+    ['카잔', 55.796, 49.106], ['소치', 43.603, 39.734], ['예카테린부르크', 56.839, 60.606]],
+  SE: [['예테보리', 57.709, 11.975], ['말뫼', 55.605, 13.004], ['키루나', 67.856, 20.225]],
+  TH: [['파타야', 12.924, 100.883], ['코사무이', 9.512, 100.014], ['코팡안', 9.738, 100.014],
+    ['후아힌', 12.568, 99.958], ['코창', 12.056, 102.325], ['코사멧', 12.569, 101.455], ['피피섬', 'TH-81'],
+    ['아오낭', 8.033, 98.823], ['코란타', 7.625, 99.079], ['카오락', 8.646, 98.25], ['빠이', 19.358, 98.44],
+    ['담넌사두억', 13.517, 99.958], ['매끌렁', 13.407, 100]],
+  TR: [['카파도키아', 38.643, 34.829], ['괴레메', 38.643, 34.829], ['파묵칼레', 37.92, 29.119], ['에페스', 37.94, 27.342],
+    ['쿠사다시', 37.858, 27.261], ['보드룸', 37.034, 27.431], ['페티예', 36.622, 29.116], ['사프란볼루', 41.245, 32.69]],
+  TW: [['지우펀', 25.109, 121.845], ['스펀', 25.044, 121.777], ['예류', 25.207, 121.69], ['단수이', 25.168, 121.446],
+    ['컨딩', 21.945, 120.798], ['일월담', 23.867, 120.917], ['아리산', 23.51, 120.805], ['타이루거', 24.158, 121.621]],
+  TZ: [['세렝게티', -2.333, 34.833]],
+  US: [['로스앤젤레스', 34.052, -118.244], ['샌프란시스코', 37.775, -122.419], ['샌디에이고', 32.716, -117.161],
+    ['요세미티', 37.865, -119.538], ['나파밸리', 38.298, -122.287], ['라스베이거스', 36.17, -115.14],
+    ['그랜드캐니언', 36.054, -112.14], ['앤털로프캐니언', 36.862, -111.374], ['세도나', 34.87, -111.761],
+    ['나이아가라 폭포', 43.096, -79.038], ['시애틀', 47.606, -122.332], ['포틀랜드', 45.515, -122.678],
+    ['시카고', 41.878, -87.63], ['보스턴', 42.36, -71.059], ['필라델피아', 39.953, -75.165], ['마이애미', 25.762, -80.192],
+    ['올랜도', 28.538, -81.379], ['키웨스트', 24.555, -81.78], ['애틀랜타', 33.749, -84.388], ['댈러스', 32.777, -96.797],
+    ['휴스턴', 29.76, -95.37], ['오스틴', 30.267, -97.743], ['뉴올리언스', 29.951, -90.072], ['내슈빌', 36.163, -86.782],
+    ['멤피스', 35.15, -90.049], ['덴버', 39.739, -104.99], ['옐로스톤', 44.428, -110.589],
+    ['솔트레이크시티', 40.761, -111.891], ['자이언 캐니언', 37.298, -113.026], ['브라이스캐니언', 37.593, -112.187],
+    ['디트로이트', 42.331, -83.046], ['앵커리지', 61.218, -149.9], ['호놀룰루', 21.307, -157.858],
+    ['와이키키', 21.279, -157.829], ['마우이', 20.798, -156.332], ['빅아일랜드', 19.543, -155.666],
+    ['카우아이', 22.096, -159.526]],
+  UZ: [['히바', 41.378, 60.364]],
+  VN: [['나트랑', 12.239, 109.197], ['호이안', 15.88, 108.338], ['푸꾸옥', 10.227, 103.964], ['하롱베이', 20.952, 107.08],
+    ['사파', 22.336, 103.844], ['달랏', 11.94, 108.458], ['무이네', 10.945, 108.286], ['후에', 16.464, 107.591],
+    ['퀴논', 13.782, 109.219], ['깟바', 'VN-HP'], ['짱안', 20.256, 105.896]],
+  ZA: [['케이프타운', -33.925, 18.424], ['희망봉', -34.357, 18.474], ['요하네스버그', -26.204, 28.047],
+    ['프리토리아', -25.748, 28.229], ['크루거 국립공원', -24.996, 31.592], ['더반', -29.859, 31.022]],
+};
+
 const warnings = [];
 const all = JSON.parse(readFileSync(resolve(source), 'utf8')).features;
 
@@ -87,8 +303,10 @@ function regionsOf(country, features) {
       warnings.push(`${country}: no code for ${f.properties.name} (${code})`);
       continue;
     }
-    const name = names?.[code] ?? f.properties.name_ko?.trim() ?? f.properties.name;
-    if (!names && !f.properties.name_ko) warnings.push(`${country}: no Korean name for ${code} ${name}`);
+    const name = NAMES[code] ?? names?.[code] ?? f.properties.name_ko?.trim() ?? f.properties.name;
+    if (!NAMES[code] && !names && !f.properties.name_ko) {
+      warnings.push(`${country}: no Korean name for ${code} ${name}`);
+    }
     const group = byCode.get(code) ?? { code, name, parts: [] };
     group.parts.push(f);
     byCode.set(code, group);
@@ -103,6 +321,54 @@ function regionsOf(country, features) {
 
 const polygonsOf = (geometry) =>
   geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+
+/** Whether a region's outline holds [lon, lat]: crossings of its rings, on the plane. */
+function covers(geometry, [x, y]) {
+  let inside = false;
+  for (const ring of polygonsOf(geometry).flat()) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** The region a place is in, else the nearest within NEAR (its point fell in the sea). */
+function regionOfPlace(regions, point) {
+  const inside = regions.find((region) => covers(region.geometry, point));
+  if (inside) return inside;
+  const across = Math.cos((point[1] * Math.PI) / 180);
+  let nearest = null;
+  let distance = NEAR;
+  for (const region of regions) {
+    for (const [x, y] of polygonsOf(region.geometry).flat(2)) {
+      const d = Math.hypot((x - point[0]) * across, y - point[1]);
+      if (d < distance) [nearest, distance] = [region, d];
+    }
+  }
+  return nearest;
+}
+
+// Natural Earth's places in countries the map has as part of another (France's overseas regions,
+// Svalbard), or without an ISO code of their own (by Natural Earth's codes for those).
+const TOWN_COUNTRY = { GF: 'FR', GP: 'FR', MQ: 'FR', RE: 'FR', YT: 'FR', SJ: 'NO', SOL: 'SO', CYN: 'CY', KOS: 'XK' };
+
+// The word for a city or district that Korean writes after a name in these countries (삿포로시,
+// 서울특별시, 타오위안 시), left off as people say them; elsewhere only one set apart (쿠웨이트 시).
+// Kept where it would leave one letter: 쓰시 is Tsu, 진시 Jinxi.
+const CITY_WORD = {
+  JP: /(시|도)$/, KR: /(특별자치시|특별시|광역시|시|군)$/, KP: /(특별시|직할시|시|군)$/,
+  CN: /\s?(지구|시|현|구)$/, TW: /\s?(시|구)$/, VN: /(시|성|현)$/,
+};
+
+function townName(country, name) {
+  const short = name.replace(CITY_WORD[country] ?? /\s시$/, '').trim();
+  return [...short.replace(/\s/g, '')].length >= 2 ? short : name;
+}
+
+const nameKey = (name) => name.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 
 // Far parts left off a map, so the rest isn't shrunk to fit them: overseas regions (listed under
 // the map only), and remote islands of a region drawn on the mainland. The US has its own
@@ -162,16 +428,22 @@ for (const f of all) {
   byCountry.set(country, [...(byCountry.get(country) ?? []), f]);
 }
 
+// The files are replaced, not the folder: after the folder was deleted and made again, a running
+// dev server answered index.html for its maps until it restarted.
 const outDir = resolve('public/regions');
-rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 const counts = {};
+const seen = new Set();
+/** The regions of each country with a map, as Natural Earth draws them: for where places are. */
+const mapped = new Map();
 let bytes = 0;
 
 for (const [country, features] of [...byCountry].sort(([a], [b]) => a.localeCompare(b))) {
   if (SKIP.has(country)) continue;
   const regions = regionsOf(country, features);
   if (regions.length < 2 || regions.length > MAX_REGIONS) continue;
+  for (const region of regions) seen.add(region.properties.code);
+  mapped.set(country, regions);
 
   const { centerLon, drawn, away } = mapParts(country, regions);
   // Simplified together, so neighbours keep sharing their border.
@@ -205,6 +477,10 @@ for (const [country, features] of [...byCountry].sort(([a], [b]) => a.localeComp
   counts[country] = rows.length;
   bytes += out.length;
 }
+// Countries that no longer have a map.
+for (const name of readdirSync(outDir)) {
+  if (name.endsWith('.json') && !(name.slice(0, -5) in counts)) rmSync(join(outDir, name));
+}
 
 writeFileSync(
   resolve('src/features/countries/regionCountries.ts'),
@@ -214,5 +490,76 @@ writeFileSync(
 export const REGION_COUNTS: Readonly<Record<string, number>> = ${JSON.stringify(counts)};
 `,
 );
+for (const code of Object.keys(NAMES)) if (!seen.has(code)) warnings.push(`NAMES: no region ${code}`);
 console.log(`${Object.keys(counts).length} countries, ${(bytes / 1024).toFixed(0)} KB in all`);
+
+// Places, by the code of where they are: the region of the country's map, else the country.
+const countries = new Set(
+  readFileSync(resolve('src/features/countries/countryCodes.ts'), 'utf8')
+    .match(/"[A-Z]{2}"/g)
+    .map((code) => code.slice(1, -1)),
+);
+const regionName = new Map([...mapped.values()].flat().map((r) => [r.properties.code, r.properties.name]));
+const places = {};
+/** Puts a place in a region's (or country's) list, unless one there has its name. */
+function addPlace(code, name) {
+  const list = (places[code] ??= []);
+  if (!list.some((other) => nameKey(other) === nameKey(name))) list.push(name);
+}
+function whereIs(country, point) {
+  const regions = mapped.get(country);
+  return (regions && regionOfPlace(regions, point)?.properties.code) ?? country;
+}
+
+for (const [country, list] of Object.entries(PLACES)) {
+  if (!countries.has(country)) warnings.push(`PLACES: no country ${country}`);
+  const shown = [];
+  for (const [name, ...where] of list) {
+    let code = typeof where[0] === 'string' ? where[0] : whereIs(country, [where[1], where[0]]);
+    if (code !== country && !regionName.has(code)) {
+      warnings.push(`PLACES: no region ${code} for ${name}`);
+      code = country;
+    }
+    if (code === country && mapped.has(country)) warnings.push(`PLACES: ${name} is in no region of ${country}`);
+    shown.push(`${name}→${regionName.get(code) ?? code}`);
+    addPlace(code, name);
+  }
+  console.log(`${country}: ${shown.join(', ')}`);
+}
+
+// Natural Earth's cities, the biggest first.
+const towns = JSON.parse(readFileSync(resolve(townsSource), 'utf8'))
+  .features.map((f) => f.properties)
+  .sort((a, b) => b.POP_MAX - a.POP_MAX);
+const unplaced = [];
+const away = {};
+for (const town of towns) {
+  const country = TOWN_COUNTRY[town.ISO_A2] ?? TOWN_COUNTRY[town.ADM0_A3] ?? town.ISO_A2;
+  if (!countries.has(country)) {
+    away[country] = (away[country] ?? 0) + 1;
+    continue;
+  }
+  const code = whereIs(country, [town.LONGITUDE, town.LATITUDE]);
+  if (code === country && mapped.has(country)) unplaced.push(`${town.NAME_KO}(${country})`);
+  addPlace(code, townName(country, town.NAME_KO));
+}
+if (unplaced.length) console.log(`towns in no region, so in their country: ${unplaced.join(', ')}`);
+// Antarctica's stations, and the few places the map has no country for (Gibraltar, Tuvalu).
+console.log(`towns left out: ${JSON.stringify(away)}`);
+
+const index = JSON.stringify(Object.fromEntries(Object.entries(places).sort(([a], [b]) => a.localeCompare(b))));
+writeFileSync(
+  resolve('src/features/countries/places.ts'),
+  `// Generated by scripts/region-maps.mjs. Don't edit.
+
+/**
+ * Places people go, to find where they are by (파리 → 프랑스, 일드프랑스): the script's PLACES (sights
+ * too), then Natural Earth's cities by size. By the code of where each is: the region of its
+ * country's map (\`FR-IDF\`), or the country (\`SG\`) without a map or a region for the place.
+ */
+export const PLACES: Readonly<Record<string, readonly string[]>> = ${index};
+`,
+);
+const count = Object.values(places).reduce((sum, list) => sum + list.length, 0);
+console.log(`${count} places, ${(Buffer.byteLength(index) / 1024).toFixed(0)} KB`);
 if (warnings.length) console.log(`warnings:\n  ${warnings.join('\n  ')}`);

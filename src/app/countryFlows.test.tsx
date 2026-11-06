@@ -40,7 +40,7 @@ describe('visited countries', () => {
 
   it('finds small countries by name, and places by what people call them', async () => {
     const { user } = renderApp('/countries');
-    const search = await screen.findByLabelText('나라 이름');
+    const search = await screen.findByLabelText('나라나 도시 이름');
 
     await user.type(search, '사이판');
     await user.click(screen.getByRole('checkbox', { name: '북마리아나 제도' }));
@@ -64,9 +64,32 @@ describe('visited countries', () => {
     expect(document.querySelector('svg circle[data-code="SG"]')).toBeNull();
   });
 
+  it('finds countries by a city in them, and opens their regions on it', async () => {
+    const FRANCE = {
+      width: 100,
+      height: 100,
+      regions: [
+        ['FR-IDF', '일드프랑스', 'M0 0L10 0L10 10Z'],
+        ['FR-PAC', '프로방스알프코트다쥐르', 'M20 20L30 20L30 30Z'],
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(FRANCE)));
+    const { user } = renderApp('/countries');
+    await user.type(await screen.findByLabelText('나라나 도시 이름'), '파리');
+    await user.click(screen.getByRole('checkbox', { name: '프랑스 파리' }));
+    await waitFor(async () => expect(await visited()).toEqual(['FR']));
+
+    await user.click(screen.getByRole('link', { name: '프랑스 지역' }));
+    expect(await screen.findByLabelText('지역이나 도시 이름')).toHaveValue('파리');
+    const list = await screen.findByRole('list', { name: '지역' });
+    await waitFor(() => expect(within(list).getAllByRole('checkbox')).toHaveLength(1));
+    await user.click(within(list).getByRole('checkbox', { name: /^일드프랑스 파리/ }));
+    await waitFor(async () => expect(await visited()).toEqual(['FR', 'FR-IDF']));
+  });
+
   it('says when no country has the name', async () => {
     const { user } = renderApp('/countries');
-    await user.type(await screen.findByLabelText('나라 이름'), '아틀란티스');
+    await user.type(await screen.findByLabelText('나라나 도시 이름'), '아틀란티스');
     expect(screen.getByText('찾는 나라가 없어요.')).toBeInTheDocument();
   });
 });
@@ -119,7 +142,7 @@ describe('regions of a country', () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(JAPAN));
     vi.stubGlobal('fetch', fetch);
     const { user } = renderApp('/countries');
-    await user.type(await screen.findByLabelText('나라 이름'), '일본');
+    await user.type(await screen.findByLabelText('나라나 도시 이름'), '일본');
     await user.click(screen.getByRole('link', { name: '일본 지역' }));
 
     expect(await screen.findByRole('heading', { level: 1, name: '일본' })).toBeInTheDocument();
@@ -136,11 +159,11 @@ describe('regions of a country', () => {
       expect((await repositories.countries.list()).map((mark) => mark.id)).toEqual(['JP']),
     );
 
-    // Too small to tap on the map: by name.
-    await user.type(screen.getByLabelText('지역 이름'), '오키');
+    // Too small to tap on the map: by name, or by a place in it (that one first under the name).
+    await user.type(screen.getByLabelText('지역이나 도시 이름'), '이시가키');
     const list = screen.getByRole('list', { name: '지역' });
     expect(within(list).getAllByRole('checkbox')).toHaveLength(1);
-    await user.click(within(list).getByRole('checkbox', { name: '오키나와현' }));
+    await user.click(within(list).getByRole('checkbox', { name: /^오키나와현 이시가키, 나하/ }));
     await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47"]')).not.toBeNull());
   });
 
