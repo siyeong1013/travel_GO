@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   airportPlaceName,
-  arrivalText,
-  flightItem,
+  flightItems,
   flightNumberItem,
   flightNumberOf,
   flightRoute,
-  flightStop,
   withFlightMemo,
 } from '@/features/schedule/flightItem';
 import type { FlightEnd, FlightLeg } from '@/lib/flights';
@@ -37,38 +35,52 @@ const leg = (arrival: Partial<FlightEnd> = {}, departure: Partial<FlightEnd> = {
   arrival: { ...KANSAI, ...arrival },
 });
 
-const OSAKA_TRIP = { countries: ['JP'], startDate: '2026-12-01', endDate: '2026-12-03' };
-
-describe('flightItem', () => {
-  it('goes in at its departure time, at its airport, with the airports in Korean', () => {
-    expect(flightItem(leg(), OSAKA_TRIP)).toEqual({
-      place: {
-        placeId: null,
-        name: 'KE723 인천 → 간사이',
-        address: '간사이 공항 (KIX)',
-        location: { lat: 34.43, lng: 135.24 },
-        fetchedAt: null,
+describe('flightItems', () => {
+  it('are the airport it leaves from, the flight in its memo, then the one it lands at', () => {
+    expect(flightItems(leg())).toEqual([
+      {
+        place: {
+          placeId: null,
+          name: '인천 공항 (ICN)',
+          address: null,
+          location: { lat: 37.46, lng: 126.44 },
+          fetchedAt: null,
+        },
+        time: '09:00',
+        memo: 'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55',
       },
-      time: '09:00',
-      memo: 'Korean Air · 인천 T2 출발 → 간사이 T1 도착 10:55',
-    });
+      {
+        place: {
+          placeId: null,
+          name: '간사이 공항 (KIX)',
+          address: null,
+          location: { lat: 34.43, lng: 135.24 },
+          fetchedAt: null,
+        },
+        time: '10:55',
+        memo: '',
+      },
+    ]);
   });
 
-  it('names airports it doesn’t know as the flight data does', () => {
-    const { place } = flightItem(leg({ iata: 'XYZ', name: 'Somewhere', terminal: null }), OSAKA_TRIP);
-    expect(place.name).toBe('KE723 인천 → Somewhere');
-    expect(place.address).toBe('Somewhere 공항 (XYZ)');
+  it('name airports they don’t know as the flight data does', () => {
+    const [departure, arrival] = flightItems(leg({ iata: 'XYZ', name: 'Somewhere', terminal: null }));
+    expect(arrival.place.name).toBe('Somewhere 공항 (XYZ)');
+    expect(departure.memo).toBe('KE723 인천 → Somewhere · Korean Air\n인천 T2 출발 → Somewhere 도착 10:55');
   });
 
-  it('is at its airport without a point, or a code, when the data has none', () => {
-    expect(flightItem(leg({ location: null }), OSAKA_TRIP).place.location).toBeNull();
+  it('are at their airports without a point, or a code, when the data has none', () => {
+    expect(flightItems(leg({ location: null }))[1].place.location).toBeNull();
     expect(airportPlaceName({ ...KANSAI, iata: null })).toBe('Osaka Kansai 공항');
   });
 
-  it('says when it lands on another day', () => {
-    expect(arrivalText(leg({ date: '2026-12-02', time: '06:30' }))).toBe('다음 날 06:30');
-    expect(arrivalText(leg({ date: '2026-12-03', time: '06:30' }))).toMatch(/^12\.3 .* 06:30$/);
-    expect(arrivalText(leg({ time: null }))).toBe('');
+  it('say when it lands on another day as the route does', () => {
+    const route = (arrival: Partial<FlightEnd>) => flightItems(leg(arrival))[0].memo.split('\n')[1];
+    expect(route({ date: '2026-12-02', time: '06:30' })).toBe('인천 T2 출발 → 간사이 T1 도착 06:30(+1일)');
+    expect(route({ date: '2026-12-03', time: '06:30' })).toMatch(/ 도착 06:30\(\+2일\)$/);
+    expect(route({ time: null })).toBe('인천 T2 출발 → 간사이 T1 도착');
+    // No airline: the flight alone.
+    expect(flightItems({ ...leg(), airline: null })[0].memo).toMatch(/^KE723 인천 → 간사이\n/);
   });
 });
 
@@ -86,29 +98,6 @@ describe('flightRoute', () => {
     const somewhere = leg({ iata: null, name: 'Somewhere', time: null });
     expect(flightRoute(somewhere)).toEqual(['인천(ICN) 09:00', 'Somewhere']);
     expect(flightRoute(leg({}, { time: null }))[0]).toBe('인천(ICN)');
-  });
-});
-
-describe('flightStop', () => {
-  const back = (date: string, trip = OSAKA_TRIP): string | null =>
-    flightStop(leg({ ...INCHEON, date }, { ...KANSAI, date }), trip).iata;
-
-  it('is where the flight lands', () => {
-    expect(flightStop(leg(), OSAKA_TRIP).iata).toBe('KIX');
-    // A trip from before trips had countries.
-    expect(flightStop(leg(), { ...OSAKA_TRIP, countries: [] }).iata).toBe('KIX');
-    // From one of its countries to another.
-    const via = leg({ iata: 'HKG', countryCode: 'HK' }, KANSAI);
-    expect(flightStop(via, { ...OSAKA_TRIP, countries: ['JP', 'HK'] }).iata).toBe('HKG');
-  });
-
-  it('is where it leaves from on the way home: out of the trip’s countries, or on its last day', () => {
-    expect(back('2026-12-02')).toBe('KIX');
-    expect(back('2026-12-02', { ...OSAKA_TRIP, countries: [] })).toBe('ICN');
-    expect(back('2026-12-03', { ...OSAKA_TRIP, countries: [] })).toBe('KIX');
-    expect(back('2026-12-04', { ...OSAKA_TRIP, countries: [] })).toBe('KIX');
-    // A day trip's last day is its first too.
-    expect(back('2026-12-01', { countries: [], startDate: '2026-12-01', endDate: '2026-12-01' })).toBe('ICN');
   });
 });
 
@@ -138,15 +127,32 @@ describe('flightNumberOf', () => {
 });
 
 describe('withFlightMemo', () => {
-  const flight = 'Korean Air · 인천 T2 출발 → 간사이 T1 도착 10:55';
+  const flight = 'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55';
 
   it('puts the flight on top of what the memo says', () => {
-    expect(withFlightMemo('', flight)).toBe(flight);
-    expect(withFlightMemo('  ', flight)).toBe(flight);
-    expect(withFlightMemo('좌석 32A', flight)).toBe(`${flight}\n좌석 32A`);
+    expect(withFlightMemo('', leg())).toBe(flight);
+    expect(withFlightMemo('  ', leg())).toBe(flight);
+    expect(withFlightMemo('좌석 32A', leg())).toBe(`${flight}\n좌석 32A`);
   });
 
   it('doesn’t put it in twice', () => {
-    expect(withFlightMemo(`${flight}\n좌석 32A`, flight)).toBe(`${flight}\n좌석 32A`);
+    expect(withFlightMemo(`${flight}\n좌석 32A`, leg())).toBe(`${flight}\n좌석 32A`);
+  });
+
+  it('takes the place of the same flight’s memo from before', () => {
+    // The one line it was, the next day's time written out.
+    const before = 'Korean Air · 인천 T2 출발 → 간사이 T1 도착 다음 날 00:20';
+    expect(withFlightMemo(`${before}\n좌석 32A`, leg({ date: '2026-12-02', time: '00:20' }))).toBe(
+      'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 00:20(+1일)\n좌석 32A',
+    );
+    // Landing at another time now.
+    expect(withFlightMemo(`${flight}\n좌석 32A`, leg({ time: '11:10' }))).toBe(
+      'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 11:10\n좌석 32A',
+    );
+    // Another flight's stays.
+    const jin = { ...leg(), number: 'LJ201', airline: 'Jin Air' };
+    expect(withFlightMemo(flight, jin)).toBe(
+      `LJ201 인천 → 간사이 · Jin Air\n인천 T2 출발 → 간사이 T1 도착 10:55\n${flight}`,
+    );
   });
 });

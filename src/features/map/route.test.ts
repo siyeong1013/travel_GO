@@ -44,6 +44,21 @@ describe('route stops', () => {
     ]);
     expect(routeLegs(stops.slice(0, 1))).toEqual([]);
   });
+
+  it('makes no leg of a flight, from one airport of the flight data to another', () => {
+    const airport = (name: string, location: { lat: number; lng: number }) =>
+      makeItem({
+        tripId: 'trip',
+        place: { placeId: null, name, address: null, location, fetchedAt: null },
+      });
+    const stops = routeStops([
+      airport('인천 공항 (ICN)', { lat: 37.4691, lng: 126.451 }),
+      airport('간사이 공항 (KIX)', { lat: 34.4347, lng: 135.244 }),
+      item('도톤보리', DOTONBORI),
+    ]);
+    // From the airport landed at, the way is there.
+    expect(routeLegs(stops).map(({ from, to }) => [from.number, to.number])).toEqual([[2, 3]]);
+  });
 });
 
 describe('legs in the list', () => {

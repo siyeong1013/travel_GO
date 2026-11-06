@@ -29,11 +29,16 @@ export function unplacedNumbers(items: ScheduleItem[]): number[] {
   return items.flatMap((item, index) => (item.place.location ? [] : [index + 1]));
 }
 
-/** Each stop to the next, except to the same spot (e.g. checking out of the hotel checked into). */
+/**
+ * Each stop to the next, except to the same spot (e.g. checking out of the hotel checked into),
+ * and a flight: from one airport of the flight data to another (the only places with a point and
+ * no place ID), no way to look up.
+ */
 export function routeLegs(stops: RouteStop[]): RouteLeg[] {
   return stops.slice(1).flatMap((to, index) => {
     const from = stops[index]!;
-    return samePoint(from.location, to.location) ? [] : [{ from, to }];
+    const flight = from.placeId === null && to.placeId === null;
+    return flight || samePoint(from.location, to.location) ? [] : [{ from, to }];
   });
 }
 

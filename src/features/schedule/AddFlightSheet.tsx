@@ -33,8 +33,9 @@ interface AddFlightSheetProps {
 /**
  * Flights by number and day, as a multi-city booking lists them: two to begin with, on the trip's
  * first and last days (there and back), more for connections. Each is looked up as it is typed
- * (`useFlightLookups`) and goes into the schedule on the day it leaves, at its departure time and
- * airport; one not found by its number on its day (`flightScheduleItems`).
+ * (`useFlightLookups`) and goes into the schedule on the day it leaves: the airport it leaves from,
+ * the flight in its memo, then the one it lands at; one not found by its number on its day
+ * (`flightScheduleItems`).
  */
 export function AddFlightSheet({ trip, typed, onAdded, onClose }: AddFlightSheetProps) {
   const add = useScheduleStore((state) => state.add);

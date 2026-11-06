@@ -1,6 +1,6 @@
 import type { Trip } from '@/data/models';
 import type { NewScheduleItem } from '@/data/repositories';
-import { flightItem, flightNumberItem } from '@/features/schedule/flightItem';
+import { flightItems, flightNumberItem } from '@/features/schedule/flightItem';
 import type { FlightLookup } from '@/features/schedule/flightLookup';
 import { isDateInRange, isLocalDate } from '@/lib/dates';
 import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
@@ -78,13 +78,14 @@ export function answered(
 }
 
 /**
- * What flights put in a trip's schedule: each one found on the day it leaves, at its airport
- * (`flightItem`; the leg picked, of several); one not found by its number on its day; in the
- * inbox when that day is outside the trip. Rows without a flight number are left out.
+ * What flights put in a trip's schedule, in order: each one found, on the day it leaves, as the
+ * airport it leaves from (the flight in its memo) and the one it lands at (`flightItems`; the leg
+ * picked, of several); one not found by its number on its day; in the inbox when that day is
+ * outside the trip. Rows without a flight number are left out.
  */
 export function flightScheduleItems(
   flights: FlightDraft[],
-  trip: Pick<Trip, 'id' | 'countries' | 'startDate' | 'endDate'>,
+  trip: Pick<Trip, 'id' | 'startDate' | 'endDate'>,
 ): NewScheduleItem[] {
   const onTrip = (date: string | null) =>
     date && isLocalDate(date) && isDateInRange(date, trip.startDate, trip.endDate) ? date : null;
@@ -94,6 +95,6 @@ export function flightScheduleItems(
     const leg = chosenLeg(flight);
     if (!leg) return [{ tripId: trip.id, date: onTrip(flight.date), ...flightNumberItem(number) }];
     const date = onTrip(leg.departure.date ?? flight.date);
-    return [{ tripId: trip.id, date, ...flightItem(leg, trip) }];
+    return flightItems(leg).map((item) => ({ tripId: trip.id, date, ...item }));
   });
 }

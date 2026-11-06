@@ -51,26 +51,30 @@ describe('flights', () => {
   });
 
   it('go into the schedule on the day they leave, or the inbox outside the trip', () => {
-    const trip = { id: 'trip', countries: ['JP'], startDate: '2026-11-10', endDate: '2026-11-12' };
+    const trip = { id: 'trip', startDate: '2026-11-10', endDate: '2026-11-12' };
     const early = found(3, 'KE721', '2026-11-09', [leg('KE721', ['ICN', 'KR'], ['NRT', 'JP'], '2026-11-09')]);
     const typed: FlightDraft = { key: 4, number: 'oz 112', date: '2026-11-11', lookup: null, leg: 0 };
     const junk: FlightDraft = { key: 5, number: '여권 챙기기', date: '2026-11-11', lookup: null, leg: 0 };
 
     const items = flightScheduleItems([OUT, early, typed, junk], trip);
+    // Each found: the airport it leaves from, then the one it lands at.
     expect(items.map((item) => [item.date, item.place.name, item.time])).toEqual([
-      ['2026-11-10', 'KE723 인천 → 간사이', '09:00'],
-      [null, 'KE721 인천 → 나리타', '09:00'],
+      ['2026-11-10', '인천 공항 (ICN)', '09:00'],
+      ['2026-11-10', '간사이 공항 (KIX)', '11:00'],
+      [null, '인천 공항 (ICN)', '09:00'],
+      [null, '나리타 공항 (NRT)', '11:00'],
       ['2026-11-11', 'OZ112', null],
     ]);
-    expect(items[0]!.memo).toBe('Korean Air · 인천 출발 → 간사이 도착 11:00');
-    expect(items[0]!.place).toEqual({
+    expect(items[0]!.memo).toBe('KE723 인천 → 간사이 · Korean Air\n인천 출발 → 간사이 도착 11:00');
+    expect(items[1]!.place).toEqual({
       placeId: null,
-      name: 'KE723 인천 → 간사이',
-      address: '간사이 공항 (KIX)',
+      name: '간사이 공항 (KIX)',
+      address: null,
       location: POINTS.KIX,
       fetchedAt: null,
     });
-    expect(items[2]!.place).toEqual({
+    expect(items[1]!.memo).toBe('');
+    expect(items[4]!.place).toEqual({
       placeId: null,
       name: 'OZ112',
       address: null,
@@ -79,12 +83,14 @@ describe('flights', () => {
     });
   });
 
-  it('are at the airport they land at, but the way home at the one it leaves from', () => {
-    const trip = { id: 'trip', countries: ['JP'], startDate: '2026-11-10', endDate: '2026-11-12' };
+  it('are both airports there and back, on the days they leave', () => {
+    const trip = { id: 'trip', startDate: '2026-11-10', endDate: '2026-11-12' };
     const items = flightScheduleItems([OUT, BACK], trip);
-    expect(items.map((item) => [item.date, item.place.address, item.place.location])).toEqual([
+    expect(items.map((item) => [item.date, item.place.name, item.place.location])).toEqual([
+      ['2026-11-10', '인천 공항 (ICN)', POINTS.ICN],
       ['2026-11-10', '간사이 공항 (KIX)', POINTS.KIX],
       ['2026-11-12', '간사이 공항 (KIX)', POINTS.KIX],
+      ['2026-11-12', '인천 공항 (ICN)', POINTS.ICN],
     ]);
   });
 });
@@ -95,13 +101,14 @@ describe('a flight of several legs', () => {
     leg('KE001', ['ICN', 'KR'], ['NRT', 'JP']),
     leg('KE001', ['NRT', 'JP'], ['HNL', 'US']),
   ]);
-  const trip = { id: 'trip', countries: ['JP', 'US'], startDate: '2026-11-10', endDate: '2026-11-15' };
+  const trip = { id: 'trip', startDate: '2026-11-10', endDate: '2026-11-15' };
 
   it('goes in as the leg picked, the first to begin with', () => {
     expect(chosenLeg(through)?.arrival.iata).toBe('NRT');
     expect(chosenLeg({ ...through, leg: 1 })?.arrival.iata).toBe('HNL');
     expect(flightScheduleItems([{ ...through, leg: 1 }], trip).map((item) => item.place.name)).toEqual([
-      'KE001 나리타 → 호놀룰루',
+      '나리타 공항 (NRT)',
+      '호놀룰루 공항 (HNL)',
     ]);
     // A pick from an answer since replaced.
     expect(chosenLeg({ ...through, leg: 5 })?.arrival.iata).toBe('NRT');
