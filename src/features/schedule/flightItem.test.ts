@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrivalText, flightItem } from '@/features/schedule/flightItem';
+import { arrivalText, flightItem, withFlightMemo } from '@/features/schedule/flightItem';
 import type { FlightLeg } from '@/lib/flights';
 
 const leg = (arrival: Partial<FlightLeg['arrival']> = {}): FlightLeg => ({
@@ -36,5 +36,19 @@ describe('flightItem', () => {
     expect(arrivalText(leg({ date: '2026-12-02', time: '06:30' }))).toBe('다음 날 06:30');
     expect(arrivalText(leg({ date: '2026-12-03', time: '06:30' }))).toMatch(/^12\.3 .* 06:30$/);
     expect(arrivalText(leg({ time: null }))).toBe('');
+  });
+});
+
+describe('withFlightMemo', () => {
+  const flight = 'Korean Air · 인천 T2 출발 → 간사이 T1 도착 10:55';
+
+  it('puts the flight on top of what the memo says', () => {
+    expect(withFlightMemo('', flight)).toBe(flight);
+    expect(withFlightMemo('  ', flight)).toBe(flight);
+    expect(withFlightMemo('좌석 32A', flight)).toBe(`${flight}\n좌석 32A`);
+  });
+
+  it('doesn’t put it in twice', () => {
+    expect(withFlightMemo(`${flight}\n좌석 32A`, flight)).toBe(`${flight}\n좌석 32A`);
   });
 });

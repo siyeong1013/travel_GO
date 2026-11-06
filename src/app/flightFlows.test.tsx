@@ -5,7 +5,7 @@ import { repositories } from '@/data';
 import type { Trip } from '@/data/models';
 import type { FlightAnswer } from '@/lib/flights';
 import { pickTripDates, renderApp, resetApp, stubPlacesApi, stubSupabase } from '@/test/app';
-import { typedCity } from '@/test/fixtures';
+import { namedPlace, typedCity } from '@/test/fixtures';
 import { kakaoUser, supabaseFake } from '@/test/supabase';
 
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
@@ -117,6 +117,67 @@ describe('adding a flight', () => {
     await user.click(await screen.findByRole('button', { name: '보관함에 장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), 'KE723');
     expect(screen.queryByRole('button', { name: /항공편 정보 불러오기/ })).toBeNull();
+  });
+});
+
+describe('a flight number only in the schedule', () => {
+  /** Opens the item as a trip's flight not found goes in: by its number. */
+  async function openItem(user: ReturnType<typeof renderApp>['user'], number: string) {
+    await user.click(await screen.findByRole('button', { name: new RegExp(`^${number}(?! 순서 바꾸기)`) }));
+    return screen.getByRole('dialog', { name: '일정 편집' });
+  }
+
+  it('is filled in from the flight leaving that day, where it is', async () => {
+    supabaseFake.signedIn(kakaoUser());
+    const fetch = stubFlightApi(KE723);
+    const item = { tripId: trip.id, date: '2026-12-01' } as const;
+    await repositories.schedule.create({ ...item, place: namedPlace('KE723'), memo: '좌석 32A' });
+    await repositories.schedule.create({ ...item, place: namedPlace('호텔 체크인') });
+    const { user } = renderApp(`/trips/${trip.id}?day=2026-12-01`);
+    const sheet = await openItem(user, 'KE723');
+
+    // In place of finding it as a place.
+    expect(within(sheet).queryByText('주소와 위치가 없어요.')).toBeNull();
+    await user.click(within(sheet).getByRole('button', { name: /^KE723 항공편 정보 불러오기/ }));
+    expect(String(fetch.mock.calls[0]![0])).toBe('/api/flight?number=KE723&date=2026-12-01');
+    await user.click(await within(sheet).findByRole('button', { name: /이 항공편으로 채우기$/ }));
+    expect(within(sheet).getByLabelText('장소 이름')).toHaveValue('KE723 인천 → 간사이');
+    expect(within(sheet).getByLabelText('시간')).toHaveValue('09:00');
+    // What was written stays, under the flight.
+    expect(within(sheet).getByLabelText('메모')).toHaveValue(
+      'Korean Air · 인천 T2 출발 → 간사이 T1 도착 10:55\n좌석 32A',
+    );
+    expect(within(sheet).getByText('주소와 위치가 없어요.')).toBeInTheDocument();
+    // Saved with the rest only.
+    expect((await repositories.schedule.listByTrip(trip.id))[0]!.place.name).toBe('KE723');
+
+    await user.click(within(sheet).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '일정 편집' })).toBeNull());
+    const items = await repositories.schedule.listByTrip(trip.id);
+    expect(items.map(({ order, time, place, memo }) => [order, time, place.name, memo])).toEqual([
+      [0, '09:00', 'KE723 인천 → 간사이', 'Korean Air · 인천 T2 출발 → 간사이 T1 도착 10:55\n좌석 32A'],
+      [1, null, '호텔 체크인', ''],
+    ]);
+  });
+
+  it('is looked up on the day picked for it, which the inbox has not', async () => {
+    supabaseFake.signedIn(kakaoUser());
+    const fetch = stubFlightApi({ status: 'notFound' });
+    await repositories.schedule.create({ tripId: trip.id, date: null, place: namedPlace('KE724') });
+    const { user } = renderApp(`/trips/${trip.id}?day=inbox`);
+    const sheet = await openItem(user, 'KE724');
+
+    expect(within(sheet).getByText('날짜를 고르면 KE724 항공편 정보를 불러올 수 있어요.')).toBeInTheDocument();
+    expect(within(sheet).queryByRole('button', { name: /항공편 정보 불러오기/ })).toBeNull();
+
+    await user.selectOptions(within(sheet).getByLabelText('날짜'), '2026-12-03');
+    await user.click(within(sheet).getByRole('button', { name: /^KE724 항공편 정보 불러오기 Day 3/ }));
+    expect(String(fetch.mock.calls[0]![0])).toBe('/api/flight?number=KE724&date=2026-12-03');
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent('이 날짜에 출발하는 항공편을 찾지 못했어요.');
+
+    // Another day, another lookup.
+    await user.selectOptions(within(sheet).getByLabelText('날짜'), '2026-12-02');
+    expect(within(sheet).getByRole('button', { name: /^KE724 항공편 정보 불러오기 Day 2/ })).toBeInTheDocument();
   });
 });
 

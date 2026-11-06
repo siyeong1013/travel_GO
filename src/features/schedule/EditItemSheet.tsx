@@ -4,15 +4,19 @@ import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/Button';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
-import { MapPinIcon, TrashIcon } from '@/components/ui/icons';
+import { MapPinIcon, PlaneIcon, TrashIcon } from '@/components/ui/icons';
 import type { GeoPoint, LocalDate, PlaceSnapshot, ScheduleItem, Trip } from '@/data/models';
 import { ItemExpenses } from '@/features/expenses/ItemExpenses';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { PlaceSearchSheet } from '@/features/places/PlaceSearchSheet';
 import { useSearchAvailability } from '@/features/places/usePlaceSearch';
 import { type DayTab, dateOf, type GroupKey, keyOf, tabLabel } from '@/features/schedule/dayTabs';
+import { flightItem, withFlightMemo } from '@/features/schedule/flightItem';
+import { lookUpFlight } from '@/features/schedule/flightLookup';
+import { type FlightSearch, FlightResults } from '@/features/schedule/FlightResults';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
+import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
 
 interface EditItemSheetProps {
   trip: Trip;
@@ -28,7 +32,9 @@ interface EditItemSheetProps {
 
 /**
  * Name, place (found by search: address and location), day (moves to the end of another day or
- * the inbox), time, memo, the expenses spent there, delete.
+ * the inbox), time, memo, the expenses spent there, delete. An item that is a flight number only
+ * (one not found when the trip was made) is filled in from the flight leaving on its day instead
+ * of a place.
  */
 export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditItemSheetProps) {
   const update = useScheduleStore((state) => state.update);
@@ -48,6 +54,13 @@ export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditI
   const [busy, setBusy] = useState(false);
   const [findingPlace, setFindingPlace] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [flight, setFlight] = useState<(FlightSearch & { date: LocalDate }) | null>(null);
+
+  // A flight number isn't a place to search for (each search is billed).
+  const flightNumber = !place.placeId && !place.location ? parseFlightNumber(name) : null;
+  const selectedDate = dateOf(groupKey);
+  const shownFlight =
+    flight && flight.number === flightNumber && flight.date === selectedDate ? flight : null;
 
   async function run(action: () => Promise<void>, after?: () => void) {
     setBusy(true);
@@ -69,6 +82,24 @@ export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditI
     setNameBeforePick((before) => before ?? name);
     setName(picked.name);
     setNameError(undefined);
+  }
+
+  function findFlight(number: string, date: LocalDate) {
+    setFlight({ number, date, result: null });
+    void lookUpFlight(number, date).then((result) =>
+      setFlight((current) =>
+        current?.number === number && current.date === date ? { number, date, result } : current,
+      ),
+    );
+  }
+
+  /** Name, departure time and memo from a found flight; saved with the rest. */
+  function fillFlight(leg: FlightLeg) {
+    const filled = flightItem(leg);
+    setName(filled.name);
+    setNameError(undefined);
+    if (filled.time) setTime(filled.time);
+    setMemo((current) => withFlightMemo(current, filled.memo));
   }
 
   /** Saves the edits and closes, then does `after`. */
@@ -132,10 +163,21 @@ export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditI
                 ) : undefined
               }
             />
-            <PlaceRow
-              place={place}
-              onFind={searchAvailability === 'ready' ? () => setFindingPlace(true) : undefined}
-            />
+            {flightNumber ? (
+              <FlightRow
+                number={flightNumber}
+                day={tabs.find((tab) => tab.key === groupKey) ?? null}
+                search={shownFlight}
+                disabled={busy}
+                onFind={(date) => findFlight(flightNumber, date)}
+                onPick={fillFlight}
+              />
+            ) : (
+              <PlaceRow
+                place={place}
+                onFind={searchAvailability === 'ready' ? () => setFindingPlace(true) : undefined}
+              />
+            )}
           </div>
           <SelectField
             label="날짜"
@@ -230,6 +272,59 @@ const samePlace = (a: PlaceSnapshot, b: PlaceSnapshot) =>
   a.location?.lat === b.location?.lat &&
   a.location?.lng === b.location?.lng &&
   a.fetchedAt === b.fetchedAt;
+
+interface FlightRowProps {
+  number: string;
+  /** The day picked in the sheet, which the flight leaves on. */
+  day: DayTab | null;
+  search: FlightSearch | null;
+  disabled: boolean;
+  onFind: (date: LocalDate) => void;
+  onPick: (leg: FlightLeg) => void;
+}
+
+/** Looks the item's flight up on its day (the inbox has none), to fill the item in with it. */
+function FlightRow({ number, day, search, disabled, onFind, onPick }: FlightRowProps) {
+  if (!day?.date) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3">
+        <PlaneIcon width={18} height={18} className="shrink-0 text-gray-300" />
+        <p className="text-sm break-keep text-gray-600">
+          날짜를 고르면 {number} 항공편 정보를 불러올 수 있어요.
+        </p>
+      </div>
+    );
+  }
+  const date = day.date;
+  if (search) {
+    return (
+      <FlightResults
+        search={search}
+        adding={null}
+        disabled={disabled}
+        pickLabel="이 항공편으로 채우기"
+        onPick={onPick}
+        onRetry={() => onFind(date)}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onFind(date)}
+      className="flex min-h-14 w-full items-center gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-left active:bg-gray-100 disabled:text-gray-400"
+    >
+      <PlaneIcon width={18} height={18} className="shrink-0 text-brand-600" />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">{number} 항공편 정보 불러오기</span>
+        <span className="block text-sm break-keep text-gray-500">
+          {tabLabel(day)}에 출발하는 편을 찾아 시간과 메모를 채워요
+        </span>
+      </span>
+    </button>
+  );
+}
 
 /** The item's address (or that it has none), and a way to find its place when search works. */
 function PlaceRow({ place, onFind }: { place: PlaceSnapshot; onFind?: () => void }) {

@@ -65,3 +65,9 @@ export function flightMemo(leg: FlightLeg): string {
 export function flightItem(leg: FlightLeg): { name: string; time: LocalTime | null; memo: string } {
   return { name: flightTitle(leg), time: leg.departure.time, memo: flightMemo(leg) };
 }
+
+/** An item's memo with a found flight's memo on top: what was written stays under it. */
+export function withFlightMemo(memo: string, flight: string): string {
+  if (!memo.trim()) return flight;
+  return memo.includes(flight) ? memo : `${flight}\n${memo}`;
+}

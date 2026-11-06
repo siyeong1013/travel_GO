@@ -143,7 +143,7 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
               search={shownFlight}
               adding={saving}
               disabled={saving !== null}
-              onAdd={addFlight}
+              onPick={addFlight}
               onRetry={() => findFlight(flightNumber, target.date!)}
             />
           ) : (

@@ -14,15 +14,24 @@ interface FlightResultsProps {
   /** Number of the leg being added. */
   adding: string | null;
   disabled: boolean;
-  onAdd: (leg: FlightLeg) => void;
+  /** What tapping a leg does. */
+  pickLabel?: string;
+  onPick: (leg: FlightLeg) => void;
   onRetry: () => void;
 }
 
 /**
- * A flight number's legs on the day (usually one), each added with a tap; or why there are none.
- * AeroDataBox's free plan asks for its name, linked, wherever its data shows.
+ * A flight number's legs on the day (usually one), each picked with a tap (added, by default); or
+ * why there are none. AeroDataBox's free plan asks for its name, linked, wherever its data shows.
  */
-export function FlightResults({ search, adding, disabled, onAdd, onRetry }: FlightResultsProps) {
+export function FlightResults({
+  search,
+  adding,
+  disabled,
+  pickLabel = '이 항공편 추가',
+  onPick,
+  onRetry,
+}: FlightResultsProps) {
   const { result } = search;
   if (!result) {
     return <p className="px-3 py-2 text-sm text-gray-500">{search.number} 항공편을 찾고 있어요.</p>;
@@ -51,7 +60,7 @@ export function FlightResults({ search, adding, disabled, onAdd, onRetry }: Flig
               <button
                 type="button"
                 disabled={disabled}
-                onClick={() => onAdd(leg)}
+                onClick={() => onPick(leg)}
                 className="flex min-h-14 w-full flex-col items-start rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:opacity-50"
               >
                 <span className="font-semibold">
@@ -63,7 +72,7 @@ export function FlightResults({ search, adding, disabled, onAdd, onRetry }: Flig
                   {arrival}
                 </span>
                 <span className="text-sm font-semibold text-brand-600">
-                  {adding === leg.number ? '추가하고 있어요' : '이 항공편 추가'}
+                  {adding === leg.number ? '추가하고 있어요' : pickLabel}
                 </span>
               </button>
             </li>
