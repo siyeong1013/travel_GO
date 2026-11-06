@@ -84,6 +84,8 @@ describe('expense flows', () => {
 
     await user.type(screen.getByLabelText('금액'), '10000');
     expect(screen.getByText('10,000원')).toBeInTheDocument(); // read back under the input
+    // In the settlement currency already: nothing to convert.
+    expect(screen.queryByText(/^≈/)).toBeNull();
     await user.click(screen.getByRole('radio', { name: '식비' }));
     setDate('2026-11-11');
     await user.type(screen.getByLabelText('메모'), '타코야키');

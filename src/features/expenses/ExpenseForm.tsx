@@ -226,7 +226,7 @@ export function ExpenseForm({
               amount !== null && (
                 <>
                   <span>{formatMoney(amount, values.currency)}</span>
-                  {converted !== null && (
+                  {converted !== null && values.currency !== settlement && (
                     <>
                       {' · '}
                       <span>≈ {formatMoney(converted, settlement)}</span>
