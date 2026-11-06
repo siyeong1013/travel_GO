@@ -242,6 +242,15 @@ describe('backup file format', () => {
     expect(roundTrip({ ...file, visitedCountries: regions }).visitedCountries).toEqual(regions);
   });
 
+  it('takes cities among visited places, in v7 files too', () => {
+    const file = sampleFile();
+    const cities = [{ id: 'JP-01:삿포로', visited: true, updatedAt: file.exportedAt }];
+    expect(roundTrip({ ...file, visitedCountries: cities }).visitedCountries).toEqual(cities);
+    expect(roundTrip({ ...file, schemaVersion: 7, visitedCountries: cities }).visitedCountries).toEqual(cities);
+    const broken = [{ id: 'JP-01:', visited: true, updatedAt: file.exportedAt }];
+    expectInvalid({ ...file, visitedCountries: broken }, 'backup_invalid', '$.visitedCountries[0].id');
+  });
+
   it("takes a trip's countries by code, each once, and one city at least", () => {
     const file = sampleFile();
     const withTrip = (trip: Record<string, unknown>) => ({ ...file, trips: [{ ...file.trips[0], ...trip }] });

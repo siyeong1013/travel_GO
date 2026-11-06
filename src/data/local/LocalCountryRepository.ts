@@ -16,7 +16,7 @@ export function createLocalCountryRepository(db: TravelGoDB, now: Clock): Countr
     },
 
     async set(code, visited) {
-      if (!isPlaceCode(code)) throw new ValidationError(`not a country or region code: ${code}`);
+      if (!isPlaceCode(code)) throw new ValidationError(`not a country, region or city code: ${code}`);
       return db.transaction('rw', db.visitedCountries, async () => {
         const current = await db.visitedCountries.get(code);
         const country: VisitedCountry = {

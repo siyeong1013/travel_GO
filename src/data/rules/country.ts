@@ -11,9 +11,22 @@ export function isRegionCode(code: unknown): code is string {
   return typeof code === 'string' && /^[A-Z]{2}-[A-Z0-9]{1,3}$/.test(code);
 }
 
-/** What "다녀온 나라" keeps a mark for: a country, or a region of one. */
+/**
+ * A city (or sight) of a country's map: where it is listed, the region (or the country, when in
+ * none), and its name there (`JP-01:삿포로`).
+ */
+export function isCityCode(code: unknown): code is string {
+  return typeof code === 'string' && code.length <= 80 && /^[A-Z]{2}(-[A-Z0-9]{1,3})?:[^:\n]+$/.test(code);
+}
+
+/** A city's code from where its map lists it and its name. */
+export function cityCode(where: string, name: string): string {
+  return `${where}:${name}`;
+}
+
+/** What "다녀온 나라" keeps a mark for: a country, a region of one, or a city. */
 export function isPlaceCode(code: unknown): code is string {
-  return isCountryCode(code) || isRegionCode(code);
+  return isCountryCode(code) || isRegionCode(code) || isCityCode(code);
 }
 
 /**
@@ -27,8 +40,9 @@ export function countryStamp(now: ISODateTime, current: ISODateTime | undefined)
 
 /**
  * The countries of trips begun by `today` to put on the map ("다녀온 나라"): each one not on it,
- * unless it was taken off since the latest of those trips began (the person's word stands).
- * `dateOf` is the device's day of a moment.
+ * unless it was taken off since the latest of those trips began (the person's word stands). A
+ * trip's `countries` may hold its cities too (`JP-27:오사카`), which go the same way. `dateOf` is
+ * the device's day of a moment.
  */
 export function tripCountriesToMark(
   trips: Pick<Trip, 'countries' | 'startDate'>[],

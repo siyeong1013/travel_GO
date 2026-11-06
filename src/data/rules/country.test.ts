@@ -1,11 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { countryStamp, isCountryCode, tripCountriesToMark } from '@/data/rules/country';
+import {
+  cityCode,
+  countryStamp,
+  isCityCode,
+  isCountryCode,
+  isPlaceCode,
+  tripCountriesToMark,
+} from '@/data/rules/country';
 
 describe('isCountryCode', () => {
   it('takes two capital letters', () => {
     expect(isCountryCode('JP')).toBe(true);
     expect(isCountryCode('XK')).toBe(true);
     for (const code of ['jp', 'JPN', 'J', '', 1, null]) expect(isCountryCode(code)).toBe(false);
+  });
+});
+
+describe('isCityCode', () => {
+  it('takes where a city is listed and its name', () => {
+    expect(isCityCode(cityCode('JP-01', '삿포로'))).toBe(true);
+    expect(isCityCode('SG:싱가포르')).toBe(true);
+    expect(isCityCode('US-NY:뉴욕')).toBe(true);
+    for (const code of ['JP-01', 'JP-01:', ':삿포로', 'jp:삿포로', 'JP-01:a:b', `JP:${'가'.repeat(80)}`, 1]) {
+      expect(isCityCode(code)).toBe(false);
+    }
+  });
+
+  it('is a place "다녀온 나라" keeps, as countries and regions are', () => {
+    expect(['JP', 'JP-27', 'JP-27:오사카'].every(isPlaceCode)).toBe(true);
+    expect(isPlaceCode('Japan')).toBe(false);
   });
 });
 

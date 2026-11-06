@@ -54,9 +54,13 @@ describe('visited countries on the server', () => {
     await expect(save(null, 'JP')).rejects.toThrow();
     await expect(save(A, 'japan')).rejects.toThrow();
     await expect(save(A, 'JP-1234')).rejects.toThrow();
-    // A region of a country is kept too.
+    // A region of a country is kept too, and a city of its map.
     await save(A, 'JP-27');
-    expect((await server.serverFor(A).countries()).map((c) => c.id)).toContain('JP-27');
+    await save(A, 'JP-01:삿포로');
+    expect((await server.serverFor(A).countries()).map((c) => c.id).sort()).toEqual(['JP-01:삿포로', 'JP-27']);
+    await expect(save(A, 'JP-01:')).rejects.toThrow();
+    await expect(save(A, 'JP-01:a:b')).rejects.toThrow();
+    await expect(save(A, `JP:${'가'.repeat(80)}`)).rejects.toThrow();
     // No writing around the function.
     await expect(
       server.as(A, (tx) =>

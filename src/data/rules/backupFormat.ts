@@ -45,8 +45,9 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v6: the countries the person has been to (`visitedCountries`). Records are as in v5.
  * v7: trips' countries, and several cities (`cities`, was `city`). Visited places can be regions
  *     of a country too (`JP-27`).
+ * v8: visited places can be cities too (`JP-01:삿포로`). Records are as in v7.
  */
-export const BACKUP_SCHEMA_VERSION = 7;
+export const BACKUP_SCHEMA_VERSION = 8;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
@@ -313,10 +314,11 @@ function readSettlement(value: unknown, path: string): Settlement {
 
 function readCountry(value: unknown, path: string, version: number): VisitedCountry {
   const c = object(value, path);
-  // Regions came with v7.
+  // Regions came with v7, cities with v8: a v7 file can have them too, from a device on the app
+  // before v8 that took them from the server.
   const known: (code: unknown) => code is string = version >= 7 ? isPlaceCode : isCountryCode;
   return {
-    id: known(c.id) ? c.id : invalid(`${path}.id`, 'country code like JP, or region like JP-27'),
+    id: known(c.id) ? c.id : invalid(`${path}.id`, 'country code like JP, region like JP-27, or city like JP-01:삿포로'),
     visited: boolean(c.visited, `${path}.visited`),
     updatedAt: timestamp(c.updatedAt, `${path}.updatedAt`),
   };
