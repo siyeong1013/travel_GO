@@ -9,12 +9,9 @@ import { PlaceSuggestionList } from '@/features/places/PlaceSuggestionList';
 import { SearchUnavailableNote } from '@/features/places/SearchUnavailableNote';
 import { usePlaceSearch } from '@/features/places/usePlaceSearch';
 import { type DayTab, tabLabel } from '@/features/schedule/dayTabs';
-import { flightItem } from '@/features/schedule/flightItem';
-import { lookUpFlight } from '@/features/schedule/flightLookup';
-import { type FlightSearch, FlightResults } from '@/features/schedule/FlightResults';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
-import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
+import { parseFlightNumber } from '@/lib/flights';
 
 interface AddPlaceSheetProps {
   tripId: ID;
@@ -22,6 +19,8 @@ interface AddPlaceSheetProps {
   target: DayTab;
   /** Where search looks first (`searchBias`). */
   bias: GeoPoint | null;
+  /** Opens the flight sheet for a flight number typed here. */
+  onFlight?: (number: string) => void;
   onClose: () => void;
 }
 
@@ -30,10 +29,10 @@ const BY_NAME = 'by-name';
 
 /**
  * Adds a place found by search (saved with its address and location), or by its name alone:
- * typed as is, or whenever search is unavailable (no API key, offline). A flight number typed on
- * a day (`KE723`) can be looked up instead: the flight goes in at its departure time.
+ * typed as is, or whenever search is unavailable (no API key, offline). Flights have a sheet of
+ * their own: a flight number typed here (`KE723`) points to it, and isn't searched for.
  */
-export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetProps) {
+export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPlaceSheetProps) {
   const add = useScheduleStore((state) => state.add);
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string>();
@@ -41,18 +40,12 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
   /** The suggestion's placeId, or `BY_NAME`. */
   const [saving, setSaving] = useState<string | null>(null);
   const typed = name.trim();
-  const flightNumber = target.date ? parseFlightNumber(typed) : null;
+  const flightNumber = onFlight ? parseFlightNumber(typed) : null;
   // A flight number isn't a place to search for (each search is billed).
   const search = usePlaceSearch(flightNumber ? '' : name, { kind: 'place', bias });
   const searchable = search.availability === 'ready';
-  const [flight, setFlight] = useState<FlightSearch | null>(null);
-  const shownFlight = flight && flight.number === flightNumber ? flight : null;
 
-  async function save(
-    key: string,
-    getPlace: () => Promise<PlaceSnapshot>,
-    extra: { time?: string | null; memo?: string } = {},
-  ) {
+  async function save(key: string, getPlace: () => Promise<PlaceSnapshot>) {
     setSaving(key);
     setError(null);
     let place: PlaceSnapshot;
@@ -65,7 +58,7 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
       return;
     }
     try {
-      await add({ tripId, date: target.date, place, ...extra });
+      await add({ tripId, date: target.date, place });
       onClose();
     } catch (err) {
       console.error(err);
@@ -90,24 +83,6 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
       location: null,
       fetchedAt: null,
     }));
-  }
-
-  function findFlight(number: string, date: string) {
-    setFlight({ number, result: null });
-    void lookUpFlight(number, date).then((result) =>
-      setFlight((current) => (current?.number === number ? { number, result } : current)),
-    );
-  }
-
-  function addFlight(leg: FlightLeg) {
-    const { name: title, time, memo } = flightItem(leg);
-    void save(leg.number, async () => ({
-      placeId: null,
-      name: title,
-      address: null,
-      location: null,
-      fetchedAt: null,
-    }), { time, memo });
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -137,31 +112,22 @@ export function AddPlaceSheet({ tripId, target, bias, onClose }: AddPlaceSheetPr
           error={nameError}
           hint={searchable && !typed ? '검색해서 고르면 주소와 위치도 함께 저장돼요.' : undefined}
         />
-        {flightNumber &&
-          (shownFlight ? (
-            <FlightResults
-              search={shownFlight}
-              adding={saving}
-              disabled={saving !== null}
-              onPick={addFlight}
-              onRetry={() => findFlight(flightNumber, target.date!)}
-            />
-          ) : (
-            <button
-              type="button"
-              disabled={saving !== null}
-              onClick={() => findFlight(flightNumber, target.date!)}
-              className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:text-gray-400"
-            >
-              <PlaneIcon width={20} height={20} className="shrink-0 text-brand-600" />
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{flightNumber} 항공편 정보 불러오기</span>
-                <span className="block text-sm break-keep text-gray-500">
-                  {tabLabel(target)}에 출발하는 편을 찾아 시간과 함께 넣어요
-                </span>
+        {flightNumber && onFlight && (
+          <button
+            type="button"
+            disabled={saving !== null}
+            onClick={() => onFlight(flightNumber)}
+            className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:text-gray-400"
+          >
+            <PlaneIcon width={20} height={20} className="shrink-0 text-brand-600" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">항공편 추가에서 {flightNumber} 찾기</span>
+              <span className="block text-sm break-keep text-gray-500">
+                출발 시간과 공항, 편 정보를 함께 넣어요
               </span>
-            </button>
-          ))}
+            </span>
+          </button>
+        )}
         {searchable ? (
           <PlaceSuggestionList
             search={search}

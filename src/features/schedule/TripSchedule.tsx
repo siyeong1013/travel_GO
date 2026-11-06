@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PlusIcon } from '@/components/ui/icons';
+import { PlaneIcon, PlusIcon } from '@/components/ui/icons';
 import { Snackbar } from '@/components/ui/Snackbar';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
 import { DayMap } from '@/features/map/DayMap';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { searchBias } from '@/features/places/placeSearch';
+import { type AddedFlight, AddFlightSheet } from '@/features/schedule/AddFlightSheet';
 import { AddPlaceSheet } from '@/features/schedule/AddPlaceSheet';
 import { DayTabs } from '@/features/schedule/DayTabs';
 import {
@@ -31,12 +32,18 @@ interface Notice {
   undo?: () => Promise<void>;
 }
 
-/** Day tabs + the selected day's (or inbox's) items + "add place". */
+/** Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". */
 export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) {
   const { items, status, error, reload } = useSchedule(trip.id);
   const move = useScheduleStore((state) => state.move);
   const [params, setParams] = useSearchParams();
-  const [adding, setAdding] = useState(false);
+  /**
+   * The sheet open: a place for the selected day, or flights for their own days (`typed`: a flight
+   * number typed as a place, and the day).
+   */
+  const [adding, setAdding] = useState<
+    { flight: false } | { flight: true; typed?: { number: string; date: LocalDate | null } } | null
+  >(null);
   const [editingId, setEditingId] = useState<ID | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeCount = useRef(0);
@@ -46,7 +53,8 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const selected = resolveDayKey(params.get('day'), trip, today);
   const tabs = buildDayTabs(trip, items);
   const selectedTab = tabs.find((tab) => tab.key === selected)!;
-  const groupItems = itemsOn(items, dateOf(selected));
+  const selectedDate = dateOf(selected);
+  const groupItems = itemsOn(items, selectedDate);
   const editing = items.find((item) => item.id === editingId);
   const bias = searchBias(trip, items);
 
@@ -98,6 +106,15 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       console.error(err);
       notify('되돌리지 못했어요.');
     });
+  }
+
+  /** Which days the flights went to, in the trip's order: `KE955를 Day 1에, …`. */
+  function flightsAdded(flights: AddedFlight[]) {
+    const tabOf = (date: LocalDate | null) => tabs.findIndex((tab) => tab.date === date);
+    const where = [...flights]
+      .sort((a, b) => tabOf(a.date) - tabOf(b.date))
+      .map(({ number, date }) => `${josa(number, '을/를')} ${tabs[tabOf(date)]!.title}에`);
+    if (where.length > 0) notify(`${where.join(', ')} 넣었어요.`);
   }
 
   let content;
@@ -164,18 +181,38 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       </section>
 
       <BottomActionBar>
-        <Button block onClick={() => setAdding(true)}>
-          <PlusIcon width={20} height={20} />
-          {selectedTab.title}에 장소 추가
-        </Button>
+        <div className="flex gap-2">
+          <Button block className="min-w-0" onClick={() => setAdding({ flight: false })}>
+            <PlusIcon width={20} height={20} className="shrink-0" />
+            <span className="truncate">{selectedTab.title}에 장소 추가</span>
+          </Button>
+          <Button
+            variant="secondary"
+            aria-label="항공편 추가"
+            className="shrink-0 px-4"
+            onClick={() => setAdding({ flight: true })}
+          >
+            <PlaneIcon width={20} height={20} />
+            항공편
+          </Button>
+        </div>
       </BottomActionBar>
 
-      {adding && (
+      {adding?.flight === false && (
         <AddPlaceSheet
           tripId={trip.id}
           target={selectedTab}
           bias={bias}
-          onClose={() => setAdding(false)}
+          onFlight={(number) => setAdding({ flight: true, typed: { number, date: selectedDate } })}
+          onClose={() => setAdding(null)}
+        />
+      )}
+      {adding?.flight && (
+        <AddFlightSheet
+          trip={trip}
+          typed={adding.typed}
+          onAdded={flightsAdded}
+          onClose={() => setAdding(null)}
         />
       )}
       {editing && (

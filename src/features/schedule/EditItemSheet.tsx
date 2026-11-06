@@ -11,12 +11,12 @@ import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { PlaceSearchSheet } from '@/features/places/PlaceSearchSheet';
 import { useSearchAvailability } from '@/features/places/usePlaceSearch';
 import { type DayTab, dateOf, type GroupKey, keyOf, tabLabel } from '@/features/schedule/dayTabs';
-import { flightItem, withFlightMemo } from '@/features/schedule/flightItem';
+import { flightItem, flightNumberOf, withFlightMemo } from '@/features/schedule/flightItem';
 import { lookUpFlight } from '@/features/schedule/flightLookup';
 import { type FlightSearch, FlightResults } from '@/features/schedule/FlightResults';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
-import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
+import type { FlightLeg } from '@/lib/flights';
 
 interface EditItemSheetProps {
   trip: Trip;
@@ -32,9 +32,9 @@ interface EditItemSheetProps {
 
 /**
  * Name, place (found by search: address and location), day (moves to the end of another day or
- * the inbox), time, memo, the expenses spent there, delete. An item that is a flight number only
- * (one not found when the trip was made) is filled in from the flight leaving on its day instead
- * of a place.
+ * the inbox), time, memo, the expenses spent there, delete. A flight without its airport (its
+ * number only, as one not found goes in, or one filled in before airports came along) is filled
+ * in from the flight leaving on its day instead of a place: its airport too (`flightItem`).
  */
 export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditItemSheetProps) {
   const update = useScheduleStore((state) => state.update);
@@ -56,8 +56,9 @@ export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditI
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [flight, setFlight] = useState<(FlightSearch & { date: LocalDate }) | null>(null);
 
-  // A flight number isn't a place to search for (each search is billed).
-  const flightNumber = !place.placeId && !place.location ? parseFlightNumber(name) : null;
+  // A flight (named by its number, or filled in before its airport came along) isn't a place to
+  // search for (each search is billed): it is looked up instead.
+  const flightNumber = !place.placeId && !place.location ? flightNumberOf(name) : null;
   const selectedDate = dateOf(groupKey);
   const shownFlight =
     flight && flight.number === flightNumber && flight.date === selectedDate ? flight : null;
@@ -93,10 +94,11 @@ export function EditItemSheet({ trip, item, tabs, bias, onMove, onClose }: EditI
     );
   }
 
-  /** Name, departure time and memo from a found flight; saved with the rest. */
+  /** Name, airport, departure time and memo from a found flight; saved with the rest. */
   function fillFlight(leg: FlightLeg) {
-    const filled = flightItem(leg);
-    setName(filled.name);
+    const filled = flightItem(leg, trip);
+    setName(filled.place.name);
+    setPlace(filled.place);
     setNameError(undefined);
     if (filled.time) setTime(filled.time);
     setMemo((current) => withFlightMemo(current, filled.memo));
@@ -319,7 +321,7 @@ function FlightRow({ number, day, search, disabled, onFind, onPick }: FlightRowP
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{number} 항공편 정보 불러오기</span>
         <span className="block text-sm break-keep text-gray-500">
-          {tabLabel(day)}에 출발하는 편을 찾아 시간과 메모를 채워요
+          {tabLabel(day)}에 출발하는 편을 찾아 공항과 시간, 메모를 채워요
         </span>
       </span>
     </button>

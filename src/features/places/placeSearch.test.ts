@@ -157,4 +157,19 @@ describe('searchBias', () => {
     expect(searchBias(trip, [item])).toEqual({ lat: 1, lng: 1 });
     expect(searchBias(trip, [])).toEqual(OSAKA.location);
   });
+
+  it("leaves out a flight's airport, added after: the plan goes on into the city", () => {
+    const trip = makeTrip({ cities: [{ name: '오사카', placeId: null, location: null, fetchedAt: null }] });
+    const castle = makeItem({ tripId: trip.id, place: makePlace('a', { location: { lat: 1, lng: 1 } }), createdAt: '2026-01-02T00:00:00.000Z' });
+    const airport = {
+      placeId: null,
+      name: 'KE723 인천 → 간사이',
+      address: '간사이 공항 (KIX)',
+      location: { lat: 34.43, lng: 135.24 },
+      fetchedAt: null,
+    };
+    const flight = makeItem({ tripId: trip.id, place: airport, createdAt: '2026-01-03T00:00:00.000Z' });
+    expect(searchBias(trip, [castle, flight])).toEqual({ lat: 1, lng: 1 });
+    expect(searchBias(trip, [flight])).toBeNull();
+  });
 });

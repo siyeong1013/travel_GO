@@ -1,7 +1,7 @@
-import type { LocalDate, LocalTime } from '@/data/models';
+import type { LocalDate, LocalTime, PlaceSnapshot, Trip } from '@/data/models';
 import { diffDays } from '@/lib/dates';
 import { formatDate } from '@/lib/format';
-import type { FlightEnd, FlightLeg } from '@/lib/flights';
+import { type FlightEnd, type FlightLeg, parseFlightNumber } from '@/lib/flights';
 
 // Korean names of airports people from Korea often fly through. Others go by the flight data's
 // (English) short name.
@@ -51,6 +51,30 @@ export function arrivalText(leg: FlightLeg): string {
     : `${formatDate(date as LocalDate)} ${time}`;
 }
 
+/** The day it lands against the day it leaves, to put after the time: `(+1일)`, '' the same day. */
+function dayShift(leg: FlightLeg): string {
+  const from = leg.departure.date;
+  const to = leg.arrival.date;
+  if (!from || !to || from === to) return '';
+  const days = diffDays(from as LocalDate, to as LocalDate);
+  // Over the date line eastward, it lands the day before.
+  return `(${days > 0 ? '+' : ''}${days}일)`;
+}
+
+/**
+ * Where a flight leaves from and lands, with the local times, as airlines write it:
+ * `이스탄불(IST) 21:55`, `인천(ICN) 13:55(+1일)`.
+ */
+export function flightRoute(leg: FlightLeg): [departure: string, arrival: string] {
+  const airport = (end: FlightEnd) => (end.iata ? `${airportName(end)}(${end.iata})` : airportName(end));
+  const { departure, arrival } = leg;
+  const landing = arrival.time && `${arrival.time}${dayShift(leg)}`;
+  return [
+    [airport(departure), departure.time].filter(Boolean).join(' '),
+    [airport(arrival), landing].filter(Boolean).join(' '),
+  ];
+}
+
 const at = (end: FlightEnd) =>
   end.terminal ? `${airportName(end)} T${end.terminal.replace(/^T/i, '')}` : airportName(end);
 
@@ -61,9 +85,73 @@ export function flightMemo(leg: FlightLeg): string {
   return leg.airline ? `${leg.airline} · ${route}` : route;
 }
 
-/** The item a flight adds: on its day, at its departure time. */
-export function flightItem(leg: FlightLeg): { name: string; time: LocalTime | null; memo: string } {
-  return { name: flightTitle(leg), time: leg.departure.time, memo: flightMemo(leg) };
+/** The airport as its item's place shows it: `간사이 공항 (KIX)`. */
+export function airportPlaceName(end: FlightEnd): string {
+  const name = `${airportName(end)} 공항`;
+  return end.iata ? `${name} (${end.iata})` : name;
+}
+
+/** What of a trip decides which airport its flights' items are at. */
+type FlightTrip = Pick<Trip, 'countries' | 'startDate' | 'endDate'>;
+
+/**
+ * The airport a flight's item is at: where it lands, but where it leaves from on the way home
+ * (from one of the trip's countries to elsewhere, or on the trip's last day or after), so a day's
+ * places stay around the trip.
+ */
+export function flightStop(leg: FlightLeg, trip: FlightTrip): FlightEnd {
+  const inTrip = ({ countryCode }: FlightEnd) =>
+    countryCode !== null && trip.countries.includes(countryCode);
+  const date = leg.departure.date;
+  const homeward =
+    (inTrip(leg.departure) && !inTrip(leg.arrival)) ||
+    (date !== null && trip.startDate < trip.endDate && date >= trip.endDate);
+  return homeward ? leg.departure : leg.arrival;
+}
+
+/** What goes in the schedule for a flight. */
+export interface FlightItem {
+  place: PlaceSnapshot;
+  time: LocalTime | null;
+  memo: string;
+}
+
+/**
+ * The item a flight adds: on its day, at its departure time, named for the flight, at its airport
+ * (`flightStop`). The airport is the flight data's, not Google's: no place ID, its name where an
+ * address goes, and its point, which don't expire.
+ */
+export function flightItem(leg: FlightLeg, trip: FlightTrip): FlightItem {
+  const airport = flightStop(leg, trip);
+  return {
+    place: {
+      placeId: null,
+      name: flightTitle(leg),
+      address: airportPlaceName(airport),
+      location: airport.location,
+      fetchedAt: null,
+    },
+    time: leg.departure.time,
+    memo: flightMemo(leg),
+  };
+}
+
+/** The item of a flight not looked up: its number alone, to fill in later from its edit sheet. */
+export function flightNumberItem(number: string): FlightItem {
+  return {
+    place: { placeId: null, name: number, address: null, location: null, fetchedAt: null },
+    time: null,
+    memo: '',
+  };
+}
+
+/**
+ * The flight an item is named for: by its number alone (`KE723`, as typed), or as a found flight
+ * names it (`KE723 인천 → 간사이`); null for other names.
+ */
+export function flightNumberOf(name: string): string | null {
+  const title = /^(\S+) .+ → .+$/.exec(name.trim());
+  return parseFlightNumber(title ? title[1]! : name);
 }
 
 /** An item's memo with a found flight's memo on top: what was written stays under it. */

@@ -1,22 +1,9 @@
-import type { CoverPhoto, PlaceSnapshot, Trip, TripCity } from '@/data/models';
-import type { NewScheduleItem, NewTrip, TripPatch } from '@/data/repositories';
+import type { CoverPhoto, Trip, TripCity } from '@/data/models';
+import type { NewTrip, TripPatch } from '@/data/repositories';
 import { isCountryCode } from '@/data/rules/country';
 import { MAX_TRIP_COUNTRIES } from '@/data/rules/validation';
-import { flightItem } from '@/features/schedule/flightItem';
-import type { FlightLookup } from '@/features/schedule/flightLookup';
-import { isDateInRange, isLocalDate } from '@/lib/dates';
-import { type FlightLeg, parseFlightNumber } from '@/lib/flights';
-
-/** A flight typed into a new trip: found, it goes into the schedule on its day. */
-export interface FlightDraft {
-  /** Tells the rows apart while they come and go. */
-  key: number;
-  number: string;
-  /** `YYYY-MM-DD`, or empty. */
-  date: string;
-  /** The answer for a number on a day, once asked (null while asking). */
-  lookup: { number: string; date: string; result: FlightLookup | null } | null;
-}
+import { type FlightDraft, foundLegs } from '@/features/schedule/flightDrafts';
+import { isLocalDate } from '@/lib/dates';
 
 export interface TripFormValues {
   title: string;
@@ -123,14 +110,6 @@ export function toNewTrip(values: TripFormValues): NewTrip {
   };
 }
 
-/** The flights found for the row as it reads now (an answer for other text or another day is old). */
-export function foundLegs(flight: FlightDraft): FlightLeg[] {
-  const { lookup } = flight;
-  if (lookup?.result?.status !== 'ok') return [];
-  if (lookup.number !== parseFlightNumber(flight.number) || lookup.date !== flight.date) return [];
-  return lookup.result.flights;
-}
-
 /**
  * The countries with those that `found` (a row of `flights`, just looked up) lands in: each arrival
  * but home, where the first flight found leaves from (the flight back lands there). Picked ones
@@ -149,40 +128,6 @@ export function withFlightCountries(
     if (isCountryCode(code) && code !== home && !next.includes(code)) next.push(code);
   }
   return next.slice(0, Math.max(MAX_TRIP_COUNTRIES, countries.length));
-}
-
-const namedPlace = (name: string): PlaceSnapshot => ({
-  placeId: null,
-  name,
-  address: null,
-  location: null,
-  fetchedAt: null,
-});
-
-/**
- * What a new trip's flights put in its schedule: each one found on the day it leaves, one not
- * found by its number on its day; in the inbox when that day is outside the trip.
- */
-export function flightScheduleItems(
-  flights: FlightDraft[],
-  trip: Pick<Trip, 'id' | 'startDate' | 'endDate'>,
-): NewScheduleItem[] {
-  const onTrip = (date: string | null) =>
-    date && isLocalDate(date) && isDateInRange(date, trip.startDate, trip.endDate) ? date : null;
-  return flights.flatMap((flight): NewScheduleItem[] => {
-    const number = parseFlightNumber(flight.number);
-    if (!number) return [];
-    const legs = foundLegs(flight);
-    if (legs.length === 0) {
-      const date = onTrip(flight.date);
-      return [{ tripId: trip.id, date, place: namedPlace(number), time: null, memo: '' }];
-    }
-    return legs.map((leg) => {
-      const { name, time, memo } = flightItem(leg);
-      const date = onTrip(leg.departure.date ?? flight.date);
-      return { tripId: trip.id, date, place: namedPlace(name), time, memo };
-    });
-  });
 }
 
 const sameCountries = (a: string[], b: string[]) =>

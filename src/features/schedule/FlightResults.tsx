@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import { FLIGHT_MESSAGES, type FlightLookup } from '@/features/schedule/flightLookup';
-import { airportName, arrivalText } from '@/features/schedule/flightItem';
+import { flightRoute } from '@/features/schedule/flightItem';
 import type { FlightLeg } from '@/lib/flights';
 
 /** Where a flight lookup stands: asked for `number`, and its answer once it came. */
@@ -53,34 +53,42 @@ export function FlightResults({
   return (
     <div>
       <ul className="flex flex-col">
-        {result.flights.map((leg) => {
-          const arrival = arrivalText(leg);
-          return (
-            <li key={`${leg.number} ${leg.departure.iata} ${leg.departure.time}`}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onPick(leg)}
-                className="flex min-h-14 w-full flex-col items-start rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:opacity-50"
-              >
-                <span className="font-semibold">
-                  {leg.number}
-                  {leg.airline && <span className="font-normal text-gray-500"> · {leg.airline}</span>}
-                </span>
-                <span className="text-sm text-gray-600">
-                  {airportName(leg.departure)} {leg.departure.time ?? ''} → {airportName(leg.arrival)}{' '}
-                  {arrival}
-                </span>
-                <span className="text-sm font-semibold text-brand-600">
-                  {adding === leg.number ? '추가하고 있어요' : pickLabel}
-                </span>
-              </button>
-            </li>
-          );
-        })}
+        {result.flights.map((leg) => (
+          <li key={`${leg.number} ${leg.departure.iata} ${leg.departure.time}`}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onPick(leg)}
+              className="flex min-h-14 w-full flex-col items-start rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:opacity-50"
+            >
+              <span className="font-semibold">
+                {leg.number}
+                {leg.airline && <span className="font-normal text-gray-500"> · {leg.airline}</span>}
+              </span>
+              <FlightRoute leg={leg} className="text-sm text-gray-600" />
+              <span className="text-sm font-semibold text-brand-600">
+                {adding === leg.number ? '추가하고 있어요' : pickLabel}
+              </span>
+            </button>
+          </li>
+        ))}
       </ul>
       <FlightDataCredit className="px-3 pt-1" />
     </div>
+  );
+}
+
+/**
+ * `이스탄불(IST) 21:55 → 인천(ICN) 13:55(+1일)` (`flightRoute`), broken between the two ends when it
+ * doesn't fit on a line.
+ */
+export function FlightRoute({ leg, className }: { leg: FlightLeg; className?: string }) {
+  const [departure, arrival] = flightRoute(leg);
+  return (
+    <span className={className}>
+      <span className="whitespace-nowrap">{departure} →</span>{' '}
+      <span className="whitespace-nowrap">{arrival}</span>
+    </span>
   );
 }
 

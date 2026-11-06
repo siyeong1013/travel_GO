@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { flightScheduleItems } from '@/features/schedule/flightDrafts';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
-import { emptyTripForm, flightScheduleItems, toNewTrip } from '@/features/trips/tripForm';
+import { emptyTripForm, toNewTrip } from '@/features/trips/tripForm';
 import { TripForm } from '@/features/trips/TripForm';
 import { useTripStore } from '@/features/trips/tripStore';
 import { newId } from '@/lib/id';

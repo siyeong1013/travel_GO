@@ -139,14 +139,15 @@ export const fetchPlaceData = createPlaceDataFetcher();
 
 /**
  * Where search looks first: a trip's one city; with several, the place with a location added last
- * (where the plan got to), else the first city with a location.
+ * (where the plan got to), else the first city with a location. Flights' airports (places not
+ * Google's) don't count: the plan goes on into the city.
  */
 export function searchBias(trip: Trip, items: ScheduleItem[]): GeoPoint | null {
   const cities = trip.cities.flatMap((city) => city.location ?? []);
   if (trip.cities.length === 1 && cities[0]) return cities[0];
   let latest: ScheduleItem | undefined;
   for (const item of items) {
-    if (!item.place.location) continue;
+    if (!item.place.location || !item.place.placeId) continue;
     if (!latest || compareIsoDateTime(item.createdAt, latest.createdAt) > 0) latest = item;
   }
   return latest?.place.location ?? cities[0] ?? null;

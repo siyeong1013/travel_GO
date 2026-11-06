@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/Button';
 import { DateRangeSheet } from '@/components/ui/DateRangeSheet';
 import { ButtonField, TextField } from '@/components/ui/Field';
 import type { ID } from '@/data/models';
-import { lookUpFlight } from '@/features/schedule/flightLookup';
+import { awaitingLookup, type FlightDraft } from '@/features/schedule/flightDrafts';
+import { useFlightLookups } from '@/features/schedule/useFlightLookups';
 import { prepareCoverPhoto } from '@/features/trips/coverPhoto';
 import { CoverPhotoField } from '@/features/trips/CoverPhotoField';
 import { TripCitiesField } from '@/features/trips/TripCitiesField';
 import { TripCountriesField } from '@/features/trips/TripCountriesField';
 import { TripFlightsField } from '@/features/trips/TripFlightsField';
 import {
-  type FlightDraft,
   TITLE_MAX_LENGTH,
   TRIP_FORM_FIELDS,
   type TripFormValues,
@@ -21,7 +21,6 @@ import {
 } from '@/features/trips/tripForm';
 import { isLocalDate, toLocalDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errorMessage';
-import { parseFlightNumber } from '@/lib/flights';
 import { formatDateRange, formatTripLength } from '@/lib/format';
 
 interface TripFormProps {
@@ -70,30 +69,15 @@ export function TripForm({
     }));
   }
 
-  async function lookUp(key: number) {
-    const flight = values.flights.find((row) => row.key === key);
-    const number = flight && parseFlightNumber(flight.number);
-    if (!flight || !number || !isLocalDate(flight.date)) return;
-    const { date } = flight;
-    setFlights((flights) =>
-      flights.map((row) => (row.key === key ? { ...row, lookup: { number, date, result: null } } : row)),
-    );
-    const result = await lookUpFlight(number, date);
+  // Each flight is looked up as it is typed; one found adds the countries it lands in.
+  const lookUp = useFlightLookups(values.flights, setFlights, (key) =>
     setValues((current) => {
-      // Unless the row was asked again meanwhile.
-      const flights = current.flights.map((row) =>
-        row.key === key && row.lookup?.number === number && row.lookup.date === date
-          ? { ...row, lookup: { number, date, result } }
-          : row,
-      );
-      const found = flights.find((row) => row.key === key);
-      const countries =
-        found && result.status === 'ok'
-          ? withFlightCountries(current.countries, flights, found)
-          : current.countries;
-      return { ...current, flights, countries };
-    });
-  }
+      const found = current.flights.find((row) => row.key === key);
+      if (!found) return current;
+      return { ...current, countries: withFlightCountries(current.countries, current.flights, found) };
+    }),
+  );
+  const awaitingFlights = values.flights.some(awaitingLookup);
 
   async function pickCover(file: File) {
     setPreparingCover(true);
@@ -185,6 +169,7 @@ export function TripForm({
                     // Likely the way there, then the way back.
                     date: current.flights.length === 0 ? current.startDate : current.endDate,
                     lookup: null,
+                    leg: 0,
                   },
                 ],
               }))
@@ -193,7 +178,10 @@ export function TripForm({
               setFlights((flights) => flights.map((row) => (row.key === key ? { ...row, ...change } : row)))
             }
             onRemove={(key) => setFlights((flights) => flights.filter((row) => row.key !== key))}
-            onLookUp={(key) => void lookUp(key)}
+            onChoose={(key, leg) =>
+              setFlights((flights) => flights.map((row) => (row.key === key ? { ...row, leg } : row)))
+            }
+            onLookUp={lookUp}
           />
         )}
         <CoverPhotoField
@@ -212,8 +200,9 @@ export function TripForm({
             {submitError}
           </p>
         )}
-        {/* A photo still being made smaller would be left out. */}
-        <Button type="submit" block disabled={submitting || preparingCover}>
+        {/* A photo still being made smaller would be left out; a flight still being looked up would
+            go in by its number only. */}
+        <Button type="submit" block disabled={submitting || preparingCover || awaitingFlights}>
           {submitLabel}
         </Button>
       </BottomActionBar>
