@@ -13,7 +13,7 @@ import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { controlClass } from '@/components/ui/fieldClass';
-import { TrashIcon } from '@/components/ui/icons';
+import { ChevronDownIcon, TrashIcon } from '@/components/ui/icons';
 import type {
   Companion,
   CurrencyCode,
@@ -158,7 +158,6 @@ export function ExpenseForm({
   }
 
   const rateLookup = lookup?.currency === values.currency ? lookup.status : null;
-  const digits = currencyDigits(values.currency);
   const errors = validateExpenseForm(values, companions, settlement);
   const visibleErrors = showErrors ? errors : {};
   const amount = parseAmount(values.amount, values.currency);
@@ -211,7 +210,7 @@ export function ExpenseForm({
 
   return (
     <form noValidate onSubmit={handleSubmit} className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-6 px-4 py-5">
+      <div className="flex flex-1 flex-col gap-5 px-4 py-5">
         {notice && (
           <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {notice}
@@ -219,33 +218,26 @@ export function ExpenseForm({
         )}
 
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-3">
-            <TextField
-              label="금액"
-              name="amount"
-              inputMode={digits === 0 ? 'numeric' : 'decimal'}
-              placeholder="0"
-              autoComplete="off"
-              enterKeyHint="next"
-              className="[&_input]:text-xl [&_input]:font-semibold"
-              value={values.amount}
-              onChange={(e) => set({ amount: e.target.value })}
-              error={visibleErrors.amount}
-              hint={amount === null ? undefined : formatMoney(amount, values.currency)}
-            />
-            <SelectField
-              label="통화"
-              name="currency"
-              value={values.currency}
-              onChange={(e) => changeCurrency(e.target.value)}
-            >
-              {CURRENCY_CODES.map((code) => (
-                <option key={code} value={code}>
-                  {currencyOptionLabel(code)}
-                </option>
-              ))}
-            </SelectField>
-          </div>
+          <AmountField
+            amount={values.amount}
+            currency={values.currency}
+            error={visibleErrors.amount}
+            readBack={
+              amount !== null && (
+                <>
+                  <span>{formatMoney(amount, values.currency)}</span>
+                  {converted !== null && (
+                    <>
+                      {' · '}
+                      <span>≈ {formatMoney(converted, settlement)}</span>
+                    </>
+                  )}
+                </>
+              )
+            }
+            onAmount={(text) => set({ amount: text })}
+            onCurrency={changeCurrency}
+          />
 
           {values.currency !== settlement && (
             <TextField
@@ -259,7 +251,7 @@ export function ExpenseForm({
                 set({ rate: { rate: e.target.value, source: 'manual', fetchedAt: null } })
               }
               error={visibleErrors.rate}
-              hint={rateHint(values.rate, converted, settlement, rateLookup)}
+              hint={rateHint(values.rate, rateLookup)}
               action={
                 <button
                   type="button"
@@ -277,8 +269,8 @@ export function ExpenseForm({
         <ChoiceGroup<ExpenseCategory>
           legend="카테고리"
           name="category"
-          columns={3}
-          appearance="checks"
+          columns={6}
+          appearance="pills"
           options={CATEGORY_OPTIONS}
           value={values.category}
           onChange={(category) => set({ category })}
@@ -297,7 +289,7 @@ export function ExpenseForm({
           <ChoiceGroup<PaymentMethod>
             legend="결제 수단"
             name="paymentMethod"
-            columns={2}
+            appearance="segmented"
             options={PAYMENT_OPTIONS}
             value={values.paymentMethod}
             onChange={(paymentMethod) => set({ paymentMethod })}
@@ -307,6 +299,7 @@ export function ExpenseForm({
         <ChoiceGroup<ID>
           legend="결제한 사람"
           name="payerId"
+          appearance="pills"
           options={companions.map((c) => ({ value: c.id, label: c.name }))}
           value={values.payerId}
           onChange={(payerId) => set({ payerId })}
@@ -316,7 +309,7 @@ export function ExpenseForm({
           <ChoiceGroup<SplitMethod>
             legend="나누는 방법"
             name="splitMethod"
-            columns={3}
+            appearance="segmented"
             options={SPLIT_OPTIONS}
             value={values.splitMethod}
             onChange={(method) =>
@@ -451,15 +444,9 @@ export function ExpenseForm({
   );
 }
 
-/** The converted amount, where the rate came from, and how the latest-rate lookup is going. */
-function rateHint(
-  rate: RateDraft,
-  converted: number | null,
-  settlement: CurrencyCode,
-  lookup: RateLookupStatus | null,
-): ReactNode {
+/** Where the rate came from, and how the latest-rate lookup is going. */
+function rateHint(rate: RateDraft, lookup: RateLookupStatus | null): ReactNode {
   const parts: string[] = [];
-  if (converted !== null) parts.push(`≈ ${formatMoney(converted, settlement)}`);
   if (rate.source === 'last') parts.push('마지막으로 쓴 환율');
   // From the API (now, or reused): when it was published, and the credit below.
   if (rate.fetchedAt) parts.push(`${formatDateTime(rate.fetchedAt)} 기준`);
@@ -486,6 +473,75 @@ function rateHint(
         </span>
       )}
     </>
+  );
+}
+
+interface AmountFieldProps {
+  amount: string;
+  currency: CurrencyCode;
+  error?: string;
+  /** Under it: the amount as money, and in the settlement currency (`≈ 10,849원`). */
+  readBack: ReactNode;
+  onAmount: (text: string) => void;
+  onCurrency: (currency: CurrencyCode) => void;
+}
+
+/**
+ * The amount, big on a line, and its currency beside it as a small pill: the code shows, the
+ * list says the names. The select lies over the pill, unseen, so a tap opens the phone's picker.
+ */
+function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }: AmountFieldProps) {
+  const id = useId();
+  const noteId = `${id}-note`;
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-semibold text-gray-700">
+        금액
+      </label>
+      <div className="flex items-center gap-3 border-b-2 border-gray-200 transition-colors focus-within:border-brand-500 has-[[aria-invalid=true]]:border-red-400">
+        <input
+          id={id}
+          name="amount"
+          inputMode={currencyDigits(currency) === 0 ? 'numeric' : 'decimal'}
+          placeholder="0"
+          autoComplete="off"
+          enterKeyHint="next"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || readBack ? noteId : undefined}
+          value={amount}
+          onChange={(e) => onAmount(e.target.value)}
+          className="h-14 min-w-0 flex-1 bg-transparent text-3xl font-bold tabular-nums outline-none placeholder:text-gray-300"
+        />
+        <div className="relative flex h-9 shrink-0 items-center gap-0.5 rounded-full bg-gray-100 pr-2 pl-3.5 text-[15px] font-semibold text-gray-700 has-focus-visible:ring-2 has-focus-visible:ring-brand-100">
+          <span aria-hidden="true">{currency}</span>
+          <ChevronDownIcon aria-hidden="true" width={16} height={16} className="text-gray-500" />
+          <select
+            aria-label="통화"
+            name="currency"
+            value={currency}
+            onChange={(e) => onCurrency(e.target.value)}
+            className="absolute inset-x-0 -inset-y-1 cursor-pointer opacity-0"
+          >
+            {CURRENCY_CODES.map((code) => (
+              <option key={code} value={code}>
+                {currencyOptionLabel(code)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {error ? (
+        <p id={noteId} className="text-sm text-red-500">
+          {error}
+        </p>
+      ) : (
+        readBack && (
+          <p id={noteId} className="text-sm text-gray-500">
+            {readBack}
+          </p>
+        )
+      )}
+    </div>
   );
 }
 
@@ -517,8 +573,8 @@ function ParticipantRow({ companion, values, share, invalid, onToggle, onValue }
   const inputClass = `h-11 px-3 text-right tabular-nums ${controlClass}`;
 
   return (
-    <li className="flex min-h-13 items-center gap-2 py-1">
-      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2">
+    <li className="flex min-h-12 items-center gap-2">
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2.5">
         <input
           type="checkbox"
           name="participants"
