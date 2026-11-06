@@ -1,42 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { findRegions, type RegionRow, shownPlaces } from '@/features/countries/regionMaps';
+import { codeOfCity, type CityRow, findCities, namesOf } from '@/features/countries/regionMaps';
 
-describe('findRegions', () => {
-  const regions: RegionRow[] = [
-    ['VN-34', '카인호아성', 'M0 0Z'],
-    ['VN-SG', '호찌민시', 'M1 1Z'],
-    ['VN-27', '꽝남성', 'M2 2Z'],
-  ];
-  const places = { 'VN-34': ['나트랑', '냐짱'], 'VN-27': ['호이안'], 'VN-SG': ['호찌민'] };
-  const codes = (query: string) => findRegions(regions, places, query).map(([code]) => code);
-
-  it('finds regions by name or by a place in them', () => {
-    expect(codes('')).toEqual(['VN-34', 'VN-SG', 'VN-27']);
-    expect(codes('나트랑')).toEqual(['VN-34']);
-    expect(codes('호치민')).toEqual(['VN-SG']);
-    expect(codes('다낭')).toEqual([]);
-  });
-
-  it('puts the ones a name starts with first', () => {
-    // 호찌민시 and 호이안 (in 꽝남성) start with it, 카인호아성 has it.
-    expect(codes('호')).toEqual(['VN-SG', 'VN-27', 'VN-34']);
-    expect(codes('짱')).toEqual(['VN-34']);
-  });
-
-  it('finds by a name typed with the word for a city after it', () => {
-    expect(codes('나트랑시')).toEqual(['VN-34']);
+describe('codeOfCity', () => {
+  it('is where the city is listed and its name; its other names find it', () => {
+    const city: CityRow = ['나트랑', 'VN-34', 10, 10, '', ['냐짱']];
+    expect(codeOfCity(city)).toBe('VN-34:나트랑');
+    expect(namesOf(city)).toEqual(['나트랑', '냐짱']);
   });
 });
 
-describe('shownPlaces', () => {
-  const places = ['삿포로', '오타루', '하코다테', '후라노', '비에이', '아사히카와'];
+describe('findCities', () => {
+  // The biggest built-up areas first, as the map files have them.
+  const cities: CityRow[] = [
+    ['호찌민', 'VN-SG', 10, 10, 'M0 0L1 0L1 1Z'],
+    ['나트랑', 'VN-34', 20, 20, 'M0 0L1 0L1 1Z', ['냐짱']],
+    ['다낭', 'VN-DN', 30, 30, ''],
+    ['호이안', 'VN-27', 40, 40, ''],
+    ['깜라인', 'VN-34', 50, 50, ''],
+  ];
+  const regions = new Map([
+    ['VN-SG', '호찌민시'],
+    ['VN-34', '카인호아성'],
+    ['VN-DN', '다낭'],
+    ['VN-27', '꽝남성'],
+  ]);
+  const find = (query: string) => findCities(cities, regions, query).map(([name]) => name);
 
-  it("shows the best known, and the ones searched for first", () => {
-    expect(shownPlaces(places, '홋카이도', '')).toEqual(['삿포로', '오타루', '하코다테', '후라노']);
-    expect(shownPlaces(places, '홋카이도', '아사히카와')).toEqual(['아사히카와', '삿포로', '오타루', '하코다테']);
+  it('finds them all for nothing, the better known first', () => {
+    expect(find('')).toEqual(['호찌민', '나트랑', '다낭', '호이안', '깜라인']);
   });
 
-  it("leaves out one the region's name says", () => {
-    expect(shownPlaces(['교토', '우지'], '교토부', '')).toEqual(['우지']);
+  it('finds a city by any of its names, and as it sounds', () => {
+    expect(find('냐짱')).toEqual(['나트랑']);
+    expect(find('호이')).toEqual(['호이안']);
+    expect(find('호치민')).toEqual(['호찌민']);
+  });
+
+  it('finds the cities of a region by its name, after one named so', () => {
+    expect(find('카인호아')).toEqual(['나트랑', '깜라인']);
+    expect(find('다낭')).toEqual(['다낭']);
+  });
+
+  it('puts a name that is the query first, then one starting with it, then having it, then a region', () => {
+    const rows: CityRow[] = [
+      ['코스트로마', 'RU-KOS', 1, 1, ''],
+      ['로마냐노', 'IT-21', 2, 2, ''],
+      ['로마', 'IT-62', 3, 3, ''],
+      ['볼로냐', 'IT-45', 4, 4, ''],
+    ];
+    const names = new Map([['IT-45', '에밀리아로마냐']]);
+    expect(findCities(rows, names, '로마').map(([name]) => name)).toEqual(['로마', '로마냐노', '코스트로마', '볼로냐']);
   });
 });

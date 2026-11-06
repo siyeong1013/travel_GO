@@ -40,14 +40,19 @@ export interface SearchTry {
 // as written may not have (제주특별자치도, 삿포로).
 const PLACE_WORD = /(특별자치시|특별자치도|특별시|광역시|시|도|군|현|성|주|부|구)$/;
 
+/** `name` without such a word at its end if two letters are left (제주도 → 제주, not 광주 → 광). */
+export function shortName(name: string): string {
+  const short = name.trim().replace(PLACE_WORD, '');
+  return [...writtenKey(short)].length >= 2 ? short : name;
+}
+
 /**
  * The ways to look for `query`, in turn, for when one finds nothing: as written; then without such
- * a word at its end if two letters are left (제주도 → 제주, not 광주 → 광); then both as they sound
- * (푸켓 finds 푸껫, but 파리 doesn't find 바리 as long as it finds 파리). None for an empty query.
+ * a word at its end (`shortName`); then both as they sound (푸켓 finds 푸껫, but 파리 doesn't find
+ * 바리 as long as it finds 파리). None for an empty query.
  */
 export function searchTries(query: string): SearchTry[] {
-  const short = query.trim().replace(PLACE_WORD, '');
-  const texts = [query, ...([...writtenKey(short)].length >= 2 ? [short] : [])];
+  const texts = [query, shortName(query)];
   const tries = (['written', 'sound'] as const).flatMap((kind) =>
     texts.map((text) => ({ key: keyOf[kind](text), kind })),
   );

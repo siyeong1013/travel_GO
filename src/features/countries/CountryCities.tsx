@@ -3,11 +3,16 @@ import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { PageSection } from '@/components/ui/PageSection';
 import { Snackbar } from '@/components/ui/Snackbar';
+import { CityMap } from '@/features/countries/CityMap';
 import { countryName, flagOf } from '@/features/countries/countryNames';
 import { useCountryStore } from '@/features/countries/countryStore';
-import { RegionMap } from '@/features/countries/RegionMap';
-import { findRegions, loadRegionMap, type RegionMapData, shownPlaces } from '@/features/countries/regionMaps';
-import { usePlaces } from '@/features/countries/usePlaces';
+import {
+  codeOfCity,
+  findCities,
+  loadRegionMap,
+  namesOf,
+  type RegionMapData,
+} from '@/features/countries/regionMaps';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
 
@@ -18,17 +23,16 @@ interface Notice {
 }
 
 /**
- * Where in `country` the person has been: its regions (states, provinces, prefectures) on a map a
- * tap fills in or clears (with an undo), and by name below, with the places people go in each (a
- * search for 나트랑 finds 카인호아성). A region visited puts the country on the world map too.
- * `query`: what the search starts with (the city the countries' search found).
+ * The cities in `country` the person has been to: on its map, each city's built-up area a tap fills
+ * in or clears (with an undo), and by name below, each with its region (a city's other name finds
+ * it too: 냐짱 finds 나트랑; a region's name finds its cities). A city visited puts the country on
+ * the world map too. `query`: what the search starts with (the city the countries' search found).
  */
-export function CountryRegions({ country, query: initialQuery = '' }: { country: string; query?: string }) {
+export function CountryCities({ country, query: initialQuery = '' }: { country: string; query?: string }) {
   const countries = useCountryStore((state) => state.countries);
   const status = useCountryStore((state) => state.status);
   const load = useCountryStore((state) => state.load);
   const setVisited = useCountryStore((state) => state.setVisited);
-  const places = usePlaces();
   const [query, setQuery] = useState(initialQuery);
   const [notice, setNotice] = useState<Notice | null>(null);
   const notices = useRef(0);
@@ -59,25 +63,29 @@ export function CountryRegions({ country, query: initialQuery = '' }: { country:
   const map = shown?.map ?? null;
 
   const visited = useMemo(() => new Set(countries.map((mark) => mark.id)), [countries]);
-  const regions = map?.regions ?? [];
-  const here = regions.filter(([code]) => visited.has(code));
-  const away = regions.filter(([, , path]) => !path).map(([, name]) => name);
-  const found = findRegions(regions, places, query);
-  const nameOf = (code: string) => regions.find(([other]) => other === code)?.[1] ?? code;
+  const regionNames = useMemo(
+    () => new Map<string, string>((map?.regions ?? []).map(([code, name]) => [code, name])),
+    [map],
+  );
+  const cities = map?.cities ?? [];
+  const here = cities.filter((city) => visited.has(codeOfCity(city)));
+  const away = (map?.regions ?? []).filter(([, , path]) => !path).map(([, name]) => name);
+  const found = findCities(cities, regionNames, query);
 
-  async function change(code: string, next: boolean, undoable: boolean) {
+  async function change(code: string, name: string, next: boolean, undoable: boolean) {
     try {
       await setVisited(code, next);
-      // Somewhere in a country is in the country.
+      // A city of a country is in the country.
       if (next && !visited.has(country)) await setVisited(country, true);
       if (!undoable) return;
-      const name = josa(nameOf(code), '을/를');
       setNotice({
         id: ++notices.current,
-        message: next ? `${name} 다녀온 곳에 넣었어요.` : `${name} 다녀온 곳에서 뺐어요.`,
+        message: next
+          ? `${josa(name, '을/를')} 다녀온 도시에 넣었어요.`
+          : `${josa(name, '을/를')} 다녀온 도시에서 뺐어요.`,
         undo: () => {
           setNotice(null);
-          void change(code, !next, false);
+          void change(code, name, !next, false);
         },
       });
     } catch (error) {
@@ -86,30 +94,24 @@ export function CountryRegions({ country, query: initialQuery = '' }: { country:
     }
   }
 
+  const nameOf = (code: string) => cities.find((city) => codeOfCity(city) === code)?.[0] ?? code;
+
   return (
     <>
       <div className="px-4 pt-5">
         <p className="text-sm font-semibold text-gray-500">
           <span aria-hidden="true">{flagOf(country)} </span>
-          {countryName(country)}에서 다녀온 곳
+          {countryName(country)}에서 다녀온 도시
         </p>
-        <p className="mt-0.5 text-3xl font-bold">
-          {map && status === 'ready' ? (
-            <>
-              {here.length}곳<span className="text-lg font-semibold text-gray-400"> / {regions.length}</span>
-            </>
-          ) : (
-            ' '
-          )}
-        </p>
+        <p className="mt-0.5 text-3xl font-bold">{map && status === 'ready' ? `${here.length}곳` : ' '}</p>
       </div>
       <div className="mx-4 mt-4 rounded-2xl bg-gray-50 p-3">
         {map ? (
-          <RegionMap
+          <CityMap
             map={map}
             visited={visited}
-            label={[`${countryName(country)} 지도`, ...here.map(([, name]) => name)].join(', ')}
-            onPick={(code) => void change(code, !visited.has(code), true)}
+            label={[`${countryName(country)} 지도`, ...here.map(([name]) => name)].join(', ')}
+            onPick={(code) => void change(code, nameOf(code), !visited.has(code), true)}
           />
         ) : shown ? (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
@@ -128,48 +130,50 @@ export function CountryRegions({ country, query: initialQuery = '' }: { country:
       </div>
       {map && (
         <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-          지도에서 지역을 누르면 넣거나 빼요.
-          {away.length > 0 && ` 지도에 없는 ${josa(away.join(', '), '은/는')} 아래에서 골라요.`}
+          지도에서 도시를 누르면 넣거나 빼요. 작은 도시는 아래에서 이름으로 찾아요.
+          {away.length > 0 && ` 지도에 없는 ${away.join(', ')}의 도시도 아래에 있어요.`}
         </p>
       )}
 
       {map && (
-        <PageSection title={`지역 ${regions.length}곳`}>
+        <PageSection title={`도시 ${cities.length}곳`}>
           <TextField
-            label="지역이나 도시 이름"
+            label="도시나 지역 이름"
             type="search"
-            placeholder="예: 홋카이도, 삿포로"
+            placeholder={cities[0] ? `예: ${cities[0][0]}` : undefined}
             autoComplete="off"
             enterKeyHint="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <ul aria-label="지역" className="mt-2 divide-y divide-gray-100">
-            {found.map(([code, name]) => {
-              const shown = shownPlaces(places[code] ?? [], name, query);
+          <ul aria-label="도시" className="mt-2 divide-y divide-gray-100">
+            {found.map((city) => {
+              const code = codeOfCity(city);
+              const [name, where] = city;
+              const details = [regionNames.get(where), ...namesOf(city).slice(1)].filter(Boolean).join(' · ');
               return (
                 <li key={code}>
                   <label className="flex min-h-12 items-center gap-3 px-1 py-1.5">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-base">{name}</span>
-                      {shown.length > 0 && (
+                      {details && (
                         <>
                           {' '}
-                          <span className="block truncate text-sm text-gray-500">{shown.join(', ')}</span>
+                          <span className="block truncate text-sm text-gray-500">{details}</span>
                         </>
                       )}
                     </span>
                     <input
                       type="checkbox"
                       checked={visited.has(code)}
-                      onChange={(event) => void change(code, event.target.checked, false)}
+                      onChange={(event) => void change(code, name, event.target.checked, false)}
                       className="size-5 accent-brand-600"
                     />
                   </label>
                 </li>
               );
             })}
-            {found.length === 0 && <li className="py-3 text-sm text-gray-500">찾는 지역이 없어요.</li>}
+            {found.length === 0 && <li className="py-3 text-sm text-gray-500">찾는 도시가 없어요.</li>}
           </ul>
         </PageSection>
       )}

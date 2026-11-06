@@ -3,6 +3,8 @@ import { repositories } from '@/data';
 import type { VisitedCountry } from '@/data/models';
 import type { Repositories } from '@/data/repositories';
 import { tripCountriesToMark } from '@/data/rules/country';
+import { loadRegionMap, regionCount, type RegionMapData } from '@/features/countries/regionMaps';
+import { tripCities } from '@/features/countries/tripCities';
 import type { LoadStatus } from '@/features/trips/tripStore';
 import { toLocalDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errorMessage';
@@ -19,7 +21,10 @@ export interface CountryState {
    * the first `load`.
    */
   reload: () => Promise<void>;
-  /** Puts the countries of trips that have begun on the map (`tripCountriesToMark`). */
+  /**
+   * Puts the countries of trips that have begun on the map, and their cities on their countries'
+   * maps (`tripCountriesToMark`, `tripCities`).
+   */
   markTrips: () => Promise<void>;
   /** Puts `code` on the map, or takes it off. Shown at once. */
   setVisited: (code: string, visited: boolean) => Promise<void>;
@@ -34,7 +39,23 @@ export function createCountryStore(repos: Pick<Repositories, 'countries' | 'trip
     marking ??= (async () => {
       try {
         const [trips, marks] = await Promise.all([repos.trips.list(), repos.countries.listAll()]);
-        for (const code of tripCountriesToMark(trips, marks, toLocalDate())) {
+        const today = toLocalDate();
+        const begun = trips.filter((trip) => trip.startDate <= today);
+        // The maps of their countries, to find their cities on; one that doesn't come (offline,
+        // never opened) is tried again next time.
+        const countries = new Set(begun.flatMap((trip) => (trip.cities.length > 0 ? trip.countries : [])));
+        const maps = new Map<string, RegionMapData | null>(
+          await Promise.all(
+            [...countries]
+              .filter((country) => regionCount(country) > 0)
+              .map(async (country) => [country, await loadRegionMap(country).catch(() => null)] as const),
+          ),
+        );
+        const withCities = begun.map((trip) => ({
+          startDate: trip.startDate,
+          countries: [...trip.countries, ...tripCities(trip, maps)],
+        }));
+        for (const code of tripCountriesToMark(withCities, marks, today)) {
           await repos.countries.set(code, true);
         }
       } catch (error) {

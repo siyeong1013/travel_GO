@@ -14,6 +14,36 @@ const total = () => screen.getByText(/^\d+곳$/);
 const onMap = (code: string) => document.querySelector(`svg [data-code="${code}"]`)!;
 const visited = async () => (await repositories.countries.list()).map((c) => c.id);
 
+// The app keeps the maps it fetched: every test fetches the same Japan.
+const JAPAN = {
+  width: 100,
+  height: 100,
+  regions: [
+    ['JP-01', '홋카이도', 'M60 0L90 0L90 20Z'],
+    ['JP-13', '도쿄도', 'M0 0L10 0L10 10Z'],
+    ['JP-27', '오사카부', 'M20 20L30 20L30 30Z'],
+    ['JP-47', '오키나와현', 'M40 40L41 40L41 41Z', 40, 40],
+  ],
+  // The biggest built-up areas first; small cities have none.
+  cities: [
+    ['도쿄', 'JP-13', 5, 5, 'M4 4L6 4L6 6Z'],
+    ['오사카', 'JP-27', 25, 25, 'M24 24L26 24L26 26Z'],
+    ['삿포로', 'JP-01', 70, 10, 'M69 9L71 9L71 11Z'],
+    ['나하', 'JP-47', 40, 40, ''],
+    ['이시가키', 'JP-47', 41, 41, ''],
+  ],
+};
+
+/** The countries' maps the app fetches: `maps` by country code, no others. */
+function stubMaps(maps: Record<string, unknown>) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+    const country = /\/regions\/([A-Z]{2})\.json/.exec(String(input))?.[1];
+    return country && maps[country] ? Response.json(maps[country]) : new Response('', { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
+}
+
 describe('visited countries', () => {
   it('opens from the trip list', async () => {
     const { user } = renderApp('/');
@@ -64,7 +94,7 @@ describe('visited countries', () => {
     expect(document.querySelector('svg circle[data-code="SG"]')).toBeNull();
   });
 
-  it('finds countries by a city in them, and opens their regions on it', async () => {
+  it('finds countries by a city in them, and opens their cities on it', async () => {
     const FRANCE = {
       width: 100,
       height: 100,
@@ -72,19 +102,23 @@ describe('visited countries', () => {
         ['FR-IDF', '일드프랑스', 'M0 0L10 0L10 10Z'],
         ['FR-PAC', '프로방스알프코트다쥐르', 'M20 20L30 20L30 30Z'],
       ],
+      cities: [
+        ['파리', 'FR-IDF', 5, 5, 'M4 4L6 4L6 6Z'],
+        ['니스', 'FR-PAC', 25, 25, ''],
+      ],
     };
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json(FRANCE)));
+    stubMaps({ FR: FRANCE });
     const { user } = renderApp('/countries');
     await user.type(await screen.findByLabelText('나라나 도시 이름'), '파리');
     await user.click(screen.getByRole('checkbox', { name: '프랑스 파리' }));
     await waitFor(async () => expect(await visited()).toEqual(['FR']));
 
-    await user.click(screen.getByRole('link', { name: '프랑스 지역' }));
-    expect(await screen.findByLabelText('지역이나 도시 이름')).toHaveValue('파리');
-    const list = await screen.findByRole('list', { name: '지역' });
+    await user.click(screen.getByRole('link', { name: '프랑스 도시' }));
+    expect(await screen.findByLabelText('도시나 지역 이름')).toHaveValue('파리');
+    const list = await screen.findByRole('list', { name: '도시' });
     await waitFor(() => expect(within(list).getAllByRole('checkbox')).toHaveLength(1));
-    await user.click(within(list).getByRole('checkbox', { name: /^일드프랑스 파리/ }));
-    await waitFor(async () => expect(await visited()).toEqual(['FR', 'FR-IDF']));
+    await user.click(within(list).getByRole('checkbox', { name: /^파리 일드프랑스/ }));
+    await waitFor(async () => expect(await visited()).toEqual(['FR', 'FR-IDF:파리']));
   });
 
   it('says when no country has the name', async () => {
@@ -125,46 +159,65 @@ describe("trips' countries", () => {
     expect(await screen.findByText('0곳')).toBeInTheDocument();
     expect(await repositories.countries.list()).toEqual([]);
   });
+
+  const japanTrip = (startDate: string, ...cities: string[]) =>
+    repositories.trips.create({
+      title: '일본 여행',
+      countries: ['JP'],
+      cities: cities.map(typedCity),
+      startDate,
+      endDate: addDays(startDate, 2),
+    });
+
+  it('go on the map with their cities', async () => {
+    const fetch = stubMaps({ JP: JAPAN });
+    const today = toLocalDate();
+    // A city written another way, a region (no city), and a name it doesn't know.
+    await japanTrip(addDays(today, -1), '오사카시', '홋카이도', '아틀란티스');
+    await japanTrip(addDays(today, 10), '나하');
+    renderApp('/countries');
+    expect(await screen.findByText('1곳')).toBeInTheDocument();
+    expect(await visited()).toEqual(['JP', 'JP-27:오사카']);
+    expect(String(fetch.mock.calls[0]![0])).toBe('/regions/JP.json?v=2');
+  });
+
+  it('leave a city off when taken off after the trip began', async () => {
+    stubMaps({ JP: JAPAN });
+    await japanTrip('2025-12-20', '오사카');
+    await repositories.countries.set('JP-27:오사카', false);
+    renderApp('/countries');
+    expect(await screen.findByText('1곳')).toBeInTheDocument();
+    expect(await visited()).toEqual(['JP']);
+  });
 });
 
-describe('regions of a country', () => {
-  const JAPAN = {
-    width: 100,
-    height: 100,
-    regions: [
-      ['JP-13', '도쿄도', 'M0 0L10 0L10 10Z'],
-      ['JP-27', '오사카부', 'M20 20L30 20L30 30Z'],
-      ['JP-47', '오키나와현', 'M40 40L41 40L41 41Z', 40, 40],
-    ],
-  };
-
+describe('cities of a country', () => {
   it("open from the country's row; a tap fills one in and puts the country on the map", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(JAPAN));
-    vi.stubGlobal('fetch', fetch);
+    stubMaps({ JP: JAPAN });
     const { user } = renderApp('/countries');
     await user.type(await screen.findByLabelText('나라나 도시 이름'), '일본');
-    await user.click(screen.getByRole('link', { name: '일본 지역' }));
+    await user.click(screen.getByRole('link', { name: '일본 도시' }));
 
     expect(await screen.findByRole('heading', { level: 1, name: '일본' })).toBeInTheDocument();
     await screen.findByRole('img', { name: '일본 지도' });
-    expect(String(fetch.mock.calls[0]![0])).toBe('/regions/JP.json');
     expect(await screen.findByText('0곳')).toBeInTheDocument();
+    // The regions are under the cities, not to tap.
+    expect(onMap('JP-27')).toBeNull();
 
-    await user.click(document.querySelector('svg [data-code="JP-27"]')!);
-    expect(await screen.findByText('오사카부를 다녀온 곳에 넣었어요.')).toBeInTheDocument();
+    await user.click(onMap('JP-27:오사카'));
+    expect(await screen.findByText('오사카를 다녀온 도시에 넣었어요.')).toBeInTheDocument();
     expect(screen.getByText('1곳')).toBeInTheDocument();
-    expect((await repositories.countries.list()).map((mark) => mark.id)).toEqual(['JP', 'JP-27']);
+    expect(onMap('JP-27:오사카')).toHaveClass('fill-brand-500');
+    expect(await visited()).toEqual(['JP', 'JP-27:오사카']);
     await user.click(screen.getByRole('button', { name: '되돌리기' }));
-    await waitFor(async () =>
-      expect((await repositories.countries.list()).map((mark) => mark.id)).toEqual(['JP']),
-    );
+    await waitFor(async () => expect(await visited()).toEqual(['JP']));
 
-    // Too small to tap on the map: by name, or by a place in it (that one first under the name).
-    await user.type(screen.getByLabelText('지역이나 도시 이름'), '이시가키');
-    const list = screen.getByRole('list', { name: '지역' });
-    expect(within(list).getAllByRole('checkbox')).toHaveLength(1);
-    await user.click(within(list).getByRole('checkbox', { name: /^오키나와현 이시가키, 나하/ }));
-    await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47"]')).not.toBeNull());
+    // Too small to draw: by name, or by its region's, then a dot on the map.
+    await user.type(screen.getByLabelText('도시나 지역 이름'), '오키나와');
+    const list = screen.getByRole('list', { name: '도시' });
+    expect(within(list).getAllByRole('checkbox')).toHaveLength(2);
+    await user.click(within(list).getByRole('checkbox', { name: /^이시가키 오키나와현/ }));
+    await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47:이시가키"]')).not.toBeNull());
   });
 
   it("say when the map didn't come, and try again", async () => {
@@ -172,8 +225,11 @@ describe('regions of a country', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { user } = renderApp('/countries/TH');
     expect(await screen.findByText('지도를 불러오지 못했어요.')).toBeInTheDocument();
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...JAPAN, regions: [['TH-10', '방콕', 'M0 0L9 0L9 9Z']] })));
+    const fetch = stubMaps({
+      TH: { width: 100, height: 100, regions: [['TH-10', '방콕', 'M0 0L9 0L9 9Z']], cities: [['방콕', 'TH-10', 4, 4, '']] },
+    });
     await user.click(screen.getByRole('button', { name: '다시 시도' }));
     expect(await screen.findByRole('img', { name: '태국 지도' })).toBeInTheDocument();
+    expect(String(fetch.mock.calls[0]![0])).toBe('/regions/TH.json?v=2');
   });
 });

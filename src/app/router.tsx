@@ -77,7 +77,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'countries/:code',
-            lazy: lazyPage(() => import('@/pages/CountryRegionsPage'), 'CountryRegionsPage'),
+            lazy: lazyPage(() => import('@/pages/CountryCitiesPage'), 'CountryCitiesPage'),
           },
           { path: '*', element: <NotFoundPage /> },
         ],

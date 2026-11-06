@@ -4,7 +4,7 @@ import { TextField } from '@/components/ui/Field';
 import { ChevronRightIcon } from '@/components/ui/icons';
 import { PageSection } from '@/components/ui/PageSection';
 import { Snackbar } from '@/components/ui/Snackbar';
-import { isCountryCode } from '@/data/rules/country';
+import { isCityCode, isCountryCode } from '@/data/rules/country';
 import { byName, countryName, flagOf, searchCountries } from '@/features/countries/countryNames';
 import { useCountryStore } from '@/features/countries/countryStore';
 import { regionCount } from '@/features/countries/regionMaps';
@@ -22,7 +22,7 @@ interface Notice {
 /**
  * "다녀온 나라": a world map with the countries the person has been to, which a tap puts on it
  * or takes off (with an undo), and a search for the rest, small ones included: by name, or by a
- * city in one (파리 finds 프랑스, and its regions open on 파리).
+ * city in one (파리 finds 프랑스, and its cities open on 파리).
  */
 export function VisitedCountries() {
   const countries = useCountryStore((state) => state.countries);
@@ -43,8 +43,8 @@ export function VisitedCountries() {
     () => new Set(countries.flatMap((mark) => (isCountryCode(mark.id) ? [mark.id] : []))),
     [countries],
   );
-  const regionsVisited = (code: string) =>
-    countries.filter((mark) => mark.id.startsWith(`${code}-`)).length;
+  const citiesVisited = (code: string) =>
+    countries.filter((mark) => isCityCode(mark.id) && mark.id.startsWith(code)).length;
   const visitedNames = byName([...visited]);
   const found = searchCountries(query, places);
 
@@ -87,10 +87,10 @@ export function VisitedCountries() {
       {regionCount(code) > 0 && (
         <Link
           to={matched[0] ? `/countries/${code}?q=${encodeURIComponent(matched[0])}` : `/countries/${code}`}
-          aria-label={`${countryName(code)} 지역`}
+          aria-label={`${countryName(code)} 도시`}
           className="flex h-11 shrink-0 items-center rounded-full pr-1 pl-2.5 text-sm text-gray-500 active:bg-gray-100"
         >
-          지역 {regionsVisited(code)}/{regionCount(code)}
+          도시{citiesVisited(code) > 0 && ` ${citiesVisited(code)}곳`}
           <ChevronRightIcon width={16} height={16} />
         </Link>
       )}
