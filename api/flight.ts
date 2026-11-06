@@ -13,6 +13,13 @@ export interface FlightEnv {
 
 const AERODATABOX_HOST = 'aerodatabox.p.rapidapi.com';
 const TIMEOUT_MS = 10_000;
+/**
+ * The free plan takes one request a second (flights typed together can come at once): one refused
+ * for that is asked again once, after a second and a bit (spread, so two don't meet again).
+ */
+const RETRY_AFTER_MS = 1100;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type Json = Record<string, unknown>;
 
@@ -28,6 +35,13 @@ function localParts(movement: Json): [string | null, string | null] {
   return match ? [match[1]!, match[2]!] : [null, null];
 }
 
+/** An airport's point (`{ lat, lon }`), as places keep one (`{ lat, lng }`). */
+function point(value: unknown): FlightEnd['location'] {
+  const { lat, lon } = json(value);
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lng: lon } : null;
+}
+
 function flightEnd(value: unknown): FlightEnd {
   const movement = json(value);
   const airport = json(movement.airport);
@@ -37,6 +51,7 @@ function flightEnd(value: unknown): FlightEnd {
     iata: text(airport.iata),
     name: text(airport.shortName) ?? text(airport.municipalityName) ?? text(airport.name) ?? '?',
     countryCode: /^[A-Z]{2}$/.test(country) ? country : null,
+    location: point(airport.location),
     date,
     time,
     terminal: text(movement.terminal),
@@ -88,6 +103,7 @@ export async function answerFlightRequest(
   request: Request,
   env: FlightEnv,
   fetchFn: typeof fetch = fetch,
+  wait: (ms: number) => Promise<void> = sleep,
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const number = params.get('number') ?? '';
@@ -108,14 +124,20 @@ export async function answerFlightRequest(
       return answer(401, { status: 'signedOut' });
     }
 
-    const response = await fetchFn(
-      `https://${AERODATABOX_HOST}/flights/number/${number}/${date}` +
-        '?dateLocalRole=Departure&withAircraftImage=false&withLocation=false',
-      {
-        headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': AERODATABOX_HOST },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      },
-    );
+    const ask = () =>
+      fetchFn(
+        `https://${AERODATABOX_HOST}/flights/number/${number}/${date}` +
+          '?dateLocalRole=Departure&withAircraftImage=false&withLocation=false',
+        {
+          headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': AERODATABOX_HOST },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        },
+      );
+    let response = await ask();
+    if (response.status === 429) {
+      await wait(RETRY_AFTER_MS + Math.random() * 400);
+      response = await ask();
+    }
     // No such flight that day, or a date the data doesn't cover.
     if ([204, 400, 404].includes(response.status)) return answer(200, { status: 'notFound' });
     if (response.status === 429) return answer(429, { status: 'busy' });

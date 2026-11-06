@@ -116,8 +116,8 @@ function leg(number: string, from: [string, string], to: [string, string], date 
   return {
     number,
     airline: 'Korean Air',
-    departure: { iata: from[0], name: from[0], countryCode: from[1], date, time: '09:00', terminal: null },
-    arrival: { iata: to[0], name: to[0], countryCode: to[1], date, time: '11:00', terminal: null },
+    departure: { iata: from[0], name: from[0], countryCode: from[1], location: null, date, time: '09:00', terminal: null },
+    arrival: { iata: to[0], name: to[0], countryCode: to[1], location: null, date, time: '11:00', terminal: null },
   };
 }
 

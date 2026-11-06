@@ -1,6 +1,6 @@
-// Flights for the schedule: a flight number typed where a place goes, looked up for its day by the
-// app's server function (api/flight.ts), which asks AeroDataBox. The function takes its types from
-// here (types only: it runs on its own), so no `@/` imports.
+// Flights for the schedule: a flight number looked up for its day by the app's server function
+// (api/flight.ts), which asks AeroDataBox. The function takes its types from here (types only: it
+// runs on its own), so no `@/` imports.
 
 /** One end of a flight, in the airport's local time. */
 export interface FlightEnd {
@@ -10,6 +10,8 @@ export interface FlightEnd {
   name: string;
   /** The airport's country, ISO 3166-1 alpha-2 (`KR`). */
   countryCode: string | null;
+  /** Where the airport is, as the flight data has it (a point on the airfield). */
+  location: { lat: number; lng: number } | null;
   /** `YYYY-MM-DD`, local. */
   date: string | null;
   /** `HH:mm`, local. */
@@ -35,8 +37,8 @@ export type FlightAnswer =
   | { status: 'notFound' | 'invalid' | 'signedOut' | 'unavailable' | 'busy' | 'error' };
 
 /**
- * A flight number typed as a place (`KE723`, `7c 1301`, `KAL723`), as the server takes it
- * (`KE723`); null for anything else.
+ * A flight number as typed (`KE723`, `7c 1301`, `KAL723`), as the server takes it (`KE723`); null
+ * for anything else.
  */
 export function parseFlightNumber(text: string): string | null {
   const match = /^\s*([A-Z0-9]{2}|[A-Z]{3})\s?(\d{1,4}[A-Z]?)\s*$/i.exec(text);

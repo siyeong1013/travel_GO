@@ -54,8 +54,8 @@ describe('flightsFromAeroDataBox', () => {
       {
         number: 'KE723',
         airline: 'Korean Air',
-        departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', date: '2026-12-01', time: '09:00', terminal: '2' },
-        arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', date: '2026-12-01', time: '10:55', terminal: '1' },
+        departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', location: { lat: 37.46, lng: 126.44 }, date: '2026-12-01', time: '09:00', terminal: '2' },
+        arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', location: { lat: 34.43, lng: 135.24 }, date: '2026-12-01', time: '10:55', terminal: '1' },
       },
     ]);
   });
@@ -66,8 +66,8 @@ describe('flightsFromAeroDataBox', () => {
     expect(bare[0]).toEqual({
       number: 'XX1',
       airline: null,
-      departure: { iata: null, name: '?', countryCode: null, date: null, time: null, terminal: null },
-      arrival: { iata: null, name: 'Far', countryCode: null, date: null, time: null, terminal: null },
+      departure: { iata: null, name: '?', countryCode: null, location: null, date: null, time: null, terminal: null },
+      arrival: { iata: null, name: 'Far', countryCode: null, location: null, date: null, time: null, terminal: null },
     });
     expect(flightsFromAeroDataBox({ message: 'nope' })).toEqual([]);
   });
@@ -104,7 +104,9 @@ describe('answerFlightRequest', () => {
 
   it('says what AeroDataBox couldn’t answer', async () => {
     const ask = (aero: () => Response) =>
-      answerFlightRequest(request('number=KE723&date=2026-12-01'), ENV, servers(aero)).then(body);
+      answerFlightRequest(request('number=KE723&date=2026-12-01'), ENV, servers(aero), async () => {}).then(
+        body,
+      );
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await ask(() => new Response(null, { status: 204 }))).toEqual([200, { status: 'notFound' }]);
     expect(await ask(() => Response.json([]))).toEqual([200, { status: 'notFound' }]);
@@ -112,6 +114,21 @@ describe('answerFlightRequest', () => {
     expect(await ask(() => new Response('{}', { status: 403 }))).toEqual([503, { status: 'unavailable' }]);
     expect(await ask(() => new Response('{}', { status: 500 }))).toEqual([502, { status: 'error' }]);
     expect(await ask(() => { throw new TypeError('offline'); })).toEqual([502, { status: 'error' }]);
+  });
+
+  it('asks again once, a moment later, when too many asked at once', async () => {
+    const answers = [new Response('{}', { status: 429 }), Response.json([KE723])];
+    const fetch = servers(() => answers.shift()!);
+    const wait = vi.fn<(ms: number) => Promise<void>>(async () => {});
+    const response = await answerFlightRequest(request('number=KE723&date=2026-12-01'), ENV, fetch, wait);
+    expect(await body(response)).toEqual([200, { status: 'ok', flights: flightsFromAeroDataBox([KE723]) }]);
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(wait.mock.calls[0]![0]).toBeGreaterThanOrEqual(1100);
+    // Still busy the second time: no more asking.
+    const busy = servers(() => new Response('{}', { status: 429 }));
+    const again = await answerFlightRequest(request('number=KE723&date=2026-12-01'), ENV, busy, async () => {});
+    expect(await body(again)).toEqual([429, { status: 'busy' }]);
+    expect(busy.mock.calls.filter(([url]) => String(url).includes('aerodatabox'))).toHaveLength(2);
   });
 
   it('is unavailable without a key', async () => {

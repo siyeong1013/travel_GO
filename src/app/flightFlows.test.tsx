@@ -21,8 +21,8 @@ const KE723: FlightAnswer = {
     {
       number: 'KE723',
       airline: 'Korean Air',
-      departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', date: '2026-12-01', time: '09:00', terminal: '2' },
-      arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', date: '2026-12-01', time: '10:55', terminal: '1' },
+      departure: { iata: 'ICN', name: 'Incheon', countryCode: 'KR', location: null, date: '2026-12-01', time: '09:00', terminal: '2' },
+      arrival: { iata: 'KIX', name: 'Kansai', countryCode: 'JP', location: null, date: '2026-12-01', time: '10:55', terminal: '1' },
     },
   ],
 };
