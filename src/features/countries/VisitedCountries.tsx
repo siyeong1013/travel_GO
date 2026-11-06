@@ -20,9 +20,11 @@ interface Notice {
 }
 
 /**
- * "다녀온 나라": a world map with the countries the person has been to, which a tap puts on it
- * or takes off (with an undo), and a search for the rest, small ones included: by name, or by a
- * city in one (파리 finds 프랑스, and its cities open on 파리).
+ * "다녀온 나라": a world map with the countries the person has been to, a search that puts them
+ * on or takes them off by name, small ones included, or by a city in one (파리 finds 프랑스, and
+ * its cities open on 파리), and the list of them. A pick in the search is the search done: back to
+ * the map, with an undo. In the list only a country's checkbox takes it off (with an undo), not a
+ * tap on its name.
  */
 export function VisitedCountries() {
   const countries = useCountryStore((state) => state.countries);
@@ -48,7 +50,7 @@ export function VisitedCountries() {
   const visitedNames = byName([...visited]);
   const found = searchCountries(query, places);
 
-  async function change(code: string, next: boolean, undoable: boolean) {
+  async function change(code: string, next: boolean, undoable = true) {
     try {
       await setVisited(code, next);
       if (!undoable) return;
@@ -67,40 +69,79 @@ export function VisitedCountries() {
     }
   }
 
-  // `matched`: places in it the search found, shown under its name.
-  const row = (code: string, matched: string[] = []) => (
+  /** A search result checked or not: the search is done, so back to the map, on top. */
+  function pick(code: string, next: boolean) {
+    setQuery('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    void change(code, next);
+  }
+
+  // `matched`: places in it the search found, shown under its name. `nameId`: to name its checkbox.
+  const country = (code: string, matched: string[], nameId?: string) => (
+    <>
+      <span aria-hidden="true" className="text-xl">
+        {flagOf(code)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span id={nameId} className="block truncate text-base">
+          {countryName(code)}
+        </span>
+        {matched.length > 0 && (
+          <>
+            {' '}
+            <span className="block truncate text-sm text-gray-500">{matched.join(', ')}</span>
+          </>
+        )}
+      </span>
+    </>
+  );
+
+  // Its cities' page, on the first place the search found in it.
+  const citiesLink = (code: string, matched: string[]) =>
+    regionCount(code) > 0 && (
+      <Link
+        to={matched[0] ? `/countries/${code}?q=${encodeURIComponent(matched[0])}` : `/countries/${code}`}
+        aria-label={`${countryName(code)} 도시`}
+        className="flex h-11 shrink-0 items-center rounded-full pr-1 pl-2.5 text-sm text-gray-500 active:bg-gray-100"
+      >
+        도시{citiesVisited(code) > 0 && ` ${citiesVisited(code)}곳`}
+        <ChevronRightIcon width={16} height={16} />
+      </Link>
+    );
+
+  // A search result: a tap on its name checks it too.
+  const foundRow = (code: string, matched: string[]) => (
     <li key={code} className="flex min-h-12 items-center gap-1 px-1">
       <label htmlFor={`country-${code}`} className="flex min-w-0 flex-1 items-center gap-3 py-3">
-        <span aria-hidden="true" className="text-xl">
-          {flagOf(code)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-base">{countryName(code)}</span>
-          {matched.length > 0 && (
-            <>
-              {' '}
-              <span className="block truncate text-sm text-gray-500">{matched.join(', ')}</span>
-            </>
-          )}
-        </span>
+        {country(code, matched)}
       </label>
-      {regionCount(code) > 0 && (
-        <Link
-          to={matched[0] ? `/countries/${code}?q=${encodeURIComponent(matched[0])}` : `/countries/${code}`}
-          aria-label={`${countryName(code)} 도시`}
-          className="flex h-11 shrink-0 items-center rounded-full pr-1 pl-2.5 text-sm text-gray-500 active:bg-gray-100"
-        >
-          도시{citiesVisited(code) > 0 && ` ${citiesVisited(code)}곳`}
-          <ChevronRightIcon width={16} height={16} />
-        </Link>
-      )}
+      {citiesLink(code, matched)}
       <input
         id={`country-${code}`}
         type="checkbox"
         checked={visited.has(code)}
-        onChange={(event) => void change(code, event.target.checked, false)}
+        onChange={(event) => pick(code, event.target.checked)}
         className="ml-2 size-5 shrink-0 accent-brand-600"
       />
+    </li>
+  );
+
+  // One been to: only its checkbox (a 44px square around it) takes it off, not its name.
+  const visitedRow = (code: string) => (
+    <li key={code} className="flex min-h-12 items-center gap-1 pl-1">
+      <div className="flex min-w-0 flex-1 items-center gap-3 py-3">
+        {country(code, [], `visited-${code}`)}
+      </div>
+      {citiesLink(code, [])}
+      <label className="-mr-2 flex size-11 shrink-0 items-center justify-center">
+        <input
+          type="checkbox"
+          aria-labelledby={`visited-${code}`}
+          checked={visited.has(code)}
+          onChange={(event) => void change(code, event.target.checked)}
+          className="size-5 accent-brand-600"
+        />
+      </label>
     </li>
   );
 
@@ -116,11 +157,10 @@ export function VisitedCountries() {
         <WorldMap
           visited={visited}
           label={['다녀온 나라 지도', ...visitedNames.map(countryName)].join(', ')}
-          onPick={(code) => void change(code, !visited.has(code), true)}
         />
       </div>
       <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-        지도에서 나라를 누르면 넣거나 빼요. 작은 나라와 도시는 아래에서 이름으로 찾아요.
+        다녀온 나라는 아래에서 나라나 도시 이름으로 검색하여 추가하세요.
       </p>
 
       <PageSection title="나라 찾기">
@@ -136,7 +176,7 @@ export function VisitedCountries() {
         {query.trim() &&
           (found.length > 0 ? (
             <ul className="mt-2 divide-y divide-gray-100">
-              {found.map((match) => row(match.code, match.places))}
+              {found.map((match) => foundRow(match.code, match.places))}
             </ul>
           ) : (
             <p className="mt-3 text-sm text-gray-500">찾는 나라가 없어요.</p>
@@ -146,10 +186,10 @@ export function VisitedCountries() {
       {!query.trim() && (
         <PageSection title={`다녀온 나라 ${visited.size}곳`}>
           {visitedNames.length > 0 ? (
-            <ul className="divide-y divide-gray-100">{visitedNames.map((code) => row(code))}</ul>
+            <ul className="divide-y divide-gray-100">{visitedNames.map(visitedRow)}</ul>
           ) : (
             <p className="text-sm break-keep text-gray-500">
-              아직 없어요. 지도에서 누르거나 이름으로 찾아 넣어 보세요.
+              아직 없어요. 위에서 나라나 도시 이름으로 찾아 넣어 보세요.
             </p>
           )}
         </PageSection>

@@ -14,19 +14,17 @@ import {
   type RegionMapData,
 } from '@/features/countries/regionMaps';
 import { errorMessage } from '@/lib/errorMessage';
-import { josa } from '@/lib/format';
 
 interface Notice {
   id: number;
   message: string;
-  undo?: () => void;
 }
 
 /**
- * The cities in `country` the person has been to: on its map, each city's built-up area a tap fills
- * in or clears (with an undo), and by name below, each with its region (a city's other name finds
- * it too: 냐짱 finds 나트랑; a region's name finds its cities). A city visited puts the country on
- * the world map too. `query`: what the search starts with (the city the countries' search found).
+ * The cities in `country` the person has been to: on its map, each city's built-up area filled in,
+ * and below, every city to check by name, each with its region (a city's other name finds it too:
+ * 냐짱 finds 나트랑; a region's name finds its cities). A city visited puts the country on the
+ * world map too. `query`: what the search starts with (the city the countries' search found).
  */
 export function CountryCities({ country, query: initialQuery = '' }: { country: string; query?: string }) {
   const countries = useCountryStore((state) => state.countries);
@@ -72,29 +70,16 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
   const away = (map?.regions ?? []).filter(([, , path]) => !path).map(([, name]) => name);
   const found = findCities(cities, regionNames, query);
 
-  async function change(code: string, name: string, next: boolean, undoable: boolean) {
+  async function change(code: string, next: boolean) {
     try {
       await setVisited(code, next);
       // A city of a country is in the country.
       if (next && !visited.has(country)) await setVisited(country, true);
-      if (!undoable) return;
-      setNotice({
-        id: ++notices.current,
-        message: next
-          ? `${josa(name, '을/를')} 다녀온 도시에 넣었어요.`
-          : `${josa(name, '을/를')} 다녀온 도시에서 뺐어요.`,
-        undo: () => {
-          setNotice(null);
-          void change(code, name, !next, false);
-        },
-      });
     } catch (error) {
       console.error(error);
       setNotice({ id: ++notices.current, message: errorMessage(error) });
     }
   }
-
-  const nameOf = (code: string) => cities.find((city) => codeOfCity(city) === code)?.[0] ?? code;
 
   return (
     <>
@@ -111,7 +96,6 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
             map={map}
             visited={visited}
             label={[`${countryName(country)} 지도`, ...here.map(([name]) => name)].join(', ')}
-            onPick={(code) => void change(code, nameOf(code), !visited.has(code), true)}
           />
         ) : shown ? (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
@@ -130,7 +114,7 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
       </div>
       {map && (
         <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-          지도에서 도시를 누르면 넣거나 빼요. 작은 도시는 아래에서 이름으로 찾아요.
+          다녀온 도시는 아래에서 이름으로 검색하여 추가하세요.
           {away.length > 0 && ` 지도에 없는 ${away.join(', ')}의 도시도 아래에 있어요.`}
         </p>
       )}
@@ -166,7 +150,7 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
                     <input
                       type="checkbox"
                       checked={visited.has(code)}
-                      onChange={(event) => void change(code, name, event.target.checked, false)}
+                      onChange={(event) => void change(code, event.target.checked)}
                       className="size-5 accent-brand-600"
                     />
                   </label>
@@ -179,13 +163,7 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
       )}
 
       {notice && (
-        <Snackbar
-          key={notice.id}
-          message={notice.message}
-          actionLabel={notice.undo ? '되돌리기' : undefined}
-          onAction={notice.undo}
-          onClose={() => setNotice(null)}
-        />
+        <Snackbar key={notice.id} message={notice.message} onClose={() => setNotice(null)} />
       )}
     </>
   );

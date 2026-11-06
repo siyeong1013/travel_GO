@@ -51,12 +51,22 @@ describe('visited countries', () => {
     expect(await screen.findByRole('heading', { name: '다녀온 나라' })).toBeInTheDocument();
   });
 
-  it('puts a country on the map with a tap, and takes it off again with undo', async () => {
+  it('puts a country found by name on the map, back on top of the page, with undo', async () => {
+    const scroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const { user } = renderApp('/countries');
     expect(await screen.findByText('0곳')).toBeInTheDocument();
-
+    // The map only shows.
     await user.click(onMap('JP'));
+    expect(onMap('JP')).toHaveClass('fill-gray-200');
+
+    // A tap on its name in the search checks it.
+    const search = screen.getByLabelText('나라나 도시 이름');
+    await user.type(search, '일본');
+    await user.click(screen.getByText('일본'));
+    // The search is done: back to the map, the list under it.
     expect(await screen.findByText('1곳')).toBeInTheDocument();
+    expect(search).toHaveValue('');
+    expect(scroll).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
     expect(onMap('JP')).toHaveClass('fill-brand-500');
     expect(screen.getByText('일본을 다녀온 나라에 넣었어요.')).toBeInTheDocument();
     const list = screen.getByRole('region', { name: '다녀온 나라 1곳' });
@@ -69,29 +79,43 @@ describe('visited countries', () => {
   });
 
   it('finds small countries by name, and places by what people call them', async () => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const { user } = renderApp('/countries');
     const search = await screen.findByLabelText('나라나 도시 이름');
 
     await user.type(search, '사이판');
     await user.click(screen.getByRole('checkbox', { name: '북마리아나 제도' }));
-    await user.clear(search);
+    expect(search).toHaveValue('');
     await user.type(search, '싱가');
     await user.click(screen.getByRole('checkbox', { name: '싱가포르' }));
-    await user.clear(search);
 
     const list = await screen.findByRole('region', { name: '다녀온 나라 2곳' });
-    const boxes = within(list).getAllByRole<HTMLInputElement>('checkbox');
-    expect(boxes.map((box) => [box.labels?.[0]?.textContent, box.checked])).toEqual([
-      ['🇲🇵북마리아나 제도', true],
-      ['🇸🇬싱가포르', true],
+    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      '🇲🇵북마리아나 제도',
+      '🇸🇬싱가포르',
     ]);
+    expect(within(list).getAllByRole('checkbox', { checked: true })).toHaveLength(2);
     expect(await visited()).toEqual(['MP', 'SG']);
     // Too small to see: a dot once visited.
     expect(document.querySelector('svg circle[data-code="SG"]')).not.toBeNull();
+  });
 
+  it('takes a country off its list by the checkbox only, with undo', async () => {
+    await repositories.countries.set('MP', true);
+    await repositories.countries.set('SG', true);
+    const { user } = renderApp('/countries');
+    const list = await screen.findByRole('region', { name: '다녀온 나라 2곳' });
+
+    // A tap on its name leaves it be (had it taken it off, the box would put it back on).
+    await user.click(within(list).getByText('싱가포르'));
     await user.click(within(list).getByRole('checkbox', { name: '싱가포르' }));
     expect(await screen.findByRole('region', { name: '다녀온 나라 1곳' })).toBeInTheDocument();
+    expect(screen.getByText('싱가포르를 다녀온 나라에서 뺐어요.')).toBeInTheDocument();
     expect(document.querySelector('svg circle[data-code="SG"]')).toBeNull();
+    expect(await visited()).toEqual(['MP']);
+
+    await user.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(await screen.findByRole('region', { name: '다녀온 나라 2곳' })).toBeInTheDocument();
   });
 
   it('finds countries by a city in them, and opens their cities on it', async () => {
@@ -110,15 +134,21 @@ describe('visited countries', () => {
     stubMaps({ FR: FRANCE });
     const { user } = renderApp('/countries');
     await user.type(await screen.findByLabelText('나라나 도시 이름'), '파리');
-    await user.click(screen.getByRole('checkbox', { name: '프랑스 파리' }));
-    await waitFor(async () => expect(await visited()).toEqual(['FR']));
+    expect(screen.getByRole('checkbox', { name: '프랑스 파리' })).not.toBeChecked();
 
     await user.click(screen.getByRole('link', { name: '프랑스 도시' }));
     expect(await screen.findByLabelText('도시나 지역 이름')).toHaveValue('파리');
     const list = await screen.findByRole('list', { name: '도시' });
     await waitFor(() => expect(within(list).getAllByRole('checkbox')).toHaveLength(1));
+    // A city puts its country on too.
     await user.click(within(list).getByRole('checkbox', { name: /^파리 일드프랑스/ }));
     await waitFor(async () => expect(await visited()).toEqual(['FR', 'FR-IDF:파리']));
+
+    // Back: the countries, the search done.
+    await user.click(screen.getByRole('button', { name: '뒤로' }));
+    expect(await screen.findByLabelText('나라나 도시 이름')).toHaveValue('');
+    const countries = await screen.findByRole('region', { name: '다녀온 나라 1곳' });
+    expect(within(countries).getByRole('link', { name: '프랑스 도시' })).toHaveTextContent('도시 1곳');
   });
 
   it('says when no country has the name', async () => {
@@ -192,7 +222,7 @@ describe("trips' countries", () => {
 });
 
 describe('cities of a country', () => {
-  it("open from the country's row; a tap fills one in and puts the country on the map", async () => {
+  it("open from the country's row; a city checked fills in and puts the country on the map", async () => {
     stubMaps({ JP: JAPAN });
     const { user } = renderApp('/countries');
     await user.type(await screen.findByLabelText('나라나 도시 이름'), '일본');
@@ -201,20 +231,19 @@ describe('cities of a country', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '일본' })).toBeInTheDocument();
     await screen.findByRole('img', { name: '일본 지도' });
     expect(await screen.findByText('0곳')).toBeInTheDocument();
-    // The regions are under the cities, not to tap.
+    // The regions are under the cities, and the map only shows.
     expect(onMap('JP-27')).toBeNull();
-
     await user.click(onMap('JP-27:오사카'));
-    expect(await screen.findByText('오사카를 다녀온 도시에 넣었어요.')).toBeInTheDocument();
-    expect(screen.getByText('1곳')).toBeInTheDocument();
+    expect(onMap('JP-27:오사카')).toHaveClass('fill-gray-400');
+
+    const list = screen.getByRole('list', { name: '도시' });
+    await user.click(within(list).getByRole('checkbox', { name: /^오사카 오사카부/ }));
+    expect(await screen.findByText('1곳')).toBeInTheDocument();
     expect(onMap('JP-27:오사카')).toHaveClass('fill-brand-500');
     expect(await visited()).toEqual(['JP', 'JP-27:오사카']);
-    await user.click(screen.getByRole('button', { name: '되돌리기' }));
-    await waitFor(async () => expect(await visited()).toEqual(['JP']));
 
     // Too small to draw: by name, or by its region's, then a dot on the map.
     await user.type(screen.getByLabelText('도시나 지역 이름'), '오키나와');
-    const list = screen.getByRole('list', { name: '도시' });
     expect(within(list).getAllByRole('checkbox')).toHaveLength(2);
     await user.click(within(list).getByRole('checkbox', { name: /^이시가키 오키나와현/ }));
     await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47:이시가키"]')).not.toBeNull());

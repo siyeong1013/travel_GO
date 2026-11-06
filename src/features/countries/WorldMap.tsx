@@ -4,27 +4,22 @@ const DOTS = WORLD_COUNTRIES.filter((country) => country.length === 4);
 
 interface WorldMapProps {
   visited: ReadonlySet<string>;
-  /** A country tapped on the map. */
-  onPick: (code: string) => void;
-  /** What the map shows, for screen readers (they use the list instead of tapping). */
+  /** What the map shows, for screen readers (the list below is what changes it). */
   label: string;
 }
 
 /**
  * The world with the visited countries filled in. Ones too small to see show as dots once
- * visited. Drawn from the app's own data (scripts/world-map.mjs): free, and there offline.
+ * visited. Drawn from the app's own data (scripts/world-map.mjs): free, and there offline. It
+ * only shows: countries go on and off by name, below (a tap on a phone scrolling by is no pick).
  */
-export function WorldMap({ visited, onPick, label }: WorldMapProps) {
+export function WorldMap({ visited, label }: WorldMapProps) {
   return (
     <svg
       viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
       role="img"
       aria-label={label}
       className="block h-auto w-full"
-      onClick={(event) => {
-        const code = (event.target as Element).closest('[data-code]')?.getAttribute('data-code');
-        if (code) onPick(code);
-      }}
     >
       {WORLD_COUNTRIES.map(([code, path]) => (
         <path

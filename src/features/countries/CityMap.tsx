@@ -3,28 +3,22 @@ import { codeOfCity, type RegionMapData } from '@/features/countries/regionMaps'
 interface CityMapProps {
   map: RegionMapData;
   visited: ReadonlySet<string>;
-  /** A city tapped on the map (its code). */
-  onPick: (code: string) => void;
-  /** What the map shows, for screen readers (they use the list instead of tapping). */
+  /** What the map shows, for screen readers (the list below is what changes it). */
   label: string;
 }
 
 /**
  * A country's cities on its regions: each city's built-up area, filled in once visited; a visited
  * city without one to draw (a sight, a small town) is a dot. Tall countries (Chile) fit the
- * screen's height.
+ * screen's height. It only shows: cities go on and off by name, below.
  */
-export function CityMap({ map, visited, onPick, label }: CityMapProps) {
+export function CityMap({ map, visited, label }: CityMapProps) {
   return (
     <svg
       viewBox={`0 0 ${map.width} ${map.height}`}
       role="img"
       aria-label={label}
       className="mx-auto block h-auto max-h-[55dvh] w-full"
-      onClick={(event) => {
-        const code = (event.target as Element).closest('[data-code]')?.getAttribute('data-code');
-        if (code) onPick(code);
-      }}
     >
       {map.regions.map(
         ([code, , path]) =>
