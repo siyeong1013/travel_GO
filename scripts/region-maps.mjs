@@ -1,21 +1,24 @@
-// Makes the region maps of "다녀온 나라" (a country's states, provinces, prefectures): one file a
-// country in public/regions/ (fetched when its page opens; the service worker keeps it then), and
+// Makes the country maps of "다녀온 나라": one file a country in public/regions/ (fetched when its
+// page opens; the service worker keeps it then) with its states, provinces or prefectures drawn
+// under its cities, each city's built-up area where it has one. And
 // src/features/countries/regionCountries.ts listing the countries that have one, with Korean names
 // put right (NAMES). And src/features/countries/places.ts: the cities and sights people go to, by
-// the region (or country) they are in, to find those by (파리 → 프랑스, 일드프랑스).
+// the region (or country) they are in, and each region's own name, to find those by (파리 → 프랑스,
+// 일드프랑스).
 //
-// Data: Natural Earth 1:10m admin-1 states and provinces and populated places (public domain), and
-// PLACES below. To run it again:
+// Data: Natural Earth 1:10m admin-1 states and provinces, populated places, and urban areas from
+// LandScan (public domain), and PLACES below. To run it again:
 //   curl -L -o admin1.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_1_states_provinces.geojson
 //   curl -L -o places.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_populated_places.geojson
+//   curl -L -o urban.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_urban_areas_landscan.geojson
 //   npm i --no-save --ignore-scripts topojson-server@3.0.1 topojson-client@3.1.0 \
 //     topojson-simplify@3.0.3 d3-geo@3.1.1
-//   node scripts/region-maps.mjs admin1.geojson places.geojson [folder holding those node_modules]
+//   node scripts/region-maps.mjs admin1.geojson places.geojson urban.geojson [folder holding those node_modules]
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
-const [source, townsSource, modulesArg] = process.argv.slice(2);
+const [source, townsSource, urbanSource, modulesArg] = process.argv.slice(2);
 const require = createRequire(join(resolve(modulesArg ?? '.'), 'package.json'));
 const { topology } = require('topojson-server');
 const { feature, merge } = require('topojson-client');
@@ -108,8 +111,8 @@ const NAMES = {
 // Places people go, by the region they are in (a city isn't a region: 나트랑 is in 카인호아성),
 // before Natural Earth's cities: the sights and towns it doesn't have, and names as people say them
 // (나트랑, which it writes 냐짱). [name, latitude, longitude]: the region is the one the point is
-// in. Or [name, region code] where Natural Earth's outlines miss the place (small islands) or are
-// too rough there.
+// in; [name, latitude, longitude, region code] where Natural Earth's outlines miss the place (small
+// islands) or are too rough there.
 const PLACES = {
   AR: [['이구아수 폭포', -25.6, -54.575], ['엘칼라파테', -50.338, -72.265],
     ['페리토모레노 빙하', -50.497, -73.138], ['엘찰텐', -49.332, -72.886], ['우수아이아', -54.802, -68.303],
@@ -179,7 +182,7 @@ const PLACES = {
   GR: [['산토리니', 36.393, 25.462], ['미코노스', 37.447, 25.329], ['로도스', 36.434, 28.218], ['아테네', 37.984, 23.728],
     ['메테오라', 39.722, 21.631], ['테살로니키', 40.64, 22.944], ['델포이', 38.482, 22.501], ['올림피아', 37.638, 21.63],
     ['코르푸', 39.624, 19.922], ['자킨토스', 37.787, 20.9]],
-  HR: [['흐바르', 43.173, 16.441], ['트로기르', 43.517, 16.25], ['플리트비체', 'HR-09'], ['로비니', 45.081, 13.639],
+  HR: [['흐바르', 43.173, 16.441], ['트로기르', 43.517, 16.25], ['플리트비체', 44.865, 15.582, 'HR-09'], ['로비니', 45.081, 13.639],
     ['풀라', 44.867, 13.85], ['크르카', 43.804, 15.972], ['리예카', 45.327, 14.442]],
   HU: [['센텐드레', 47.669, 19.076]],
   ID: [['우붓', -8.507, 115.263], ['꾸따', -8.718, 115.17], ['스미냑', -8.691, 115.168], ['누사두아', -8.8, 115.23],
@@ -206,7 +209,7 @@ const PLACES = {
     ['비에이', 43.588, 142.467], ['나하', 26.212, 127.681], ['이시가키', 24.345, 124.157], ['미야코지마', 24.806, 125.281],
     ['고베', 34.69, 135.196], ['히메지', 34.815, 134.685], ['요코하마', 35.444, 139.638], ['하코네', 35.232, 139.107],
     ['가마쿠라', 35.319, 139.547], ['나고야', 35.182, 136.907], ['벳푸', 33.285, 131.491], ['유후인', 33.265, 131.355],
-    ['기타큐슈', 33.884, 130.875], ['다카마쓰', 34.343, 134.047], ['나오시마', 'JP-37'], ['가나자와', 36.561, 136.656],
+    ['기타큐슈', 33.884, 130.875], ['다카마쓰', 34.343, 134.047], ['나오시마', 34.46, 133.995, 'JP-37'], ['가나자와', 36.561, 136.656],
     ['센다이', 38.268, 140.869], ['닛코', 36.72, 139.698], ['다카야마', 36.146, 137.252], ['시라카와고', 36.258, 136.906],
     ['마쓰야마', 33.839, 132.766], ['가와구치코', 35.499, 138.769], ['가루이자와', 36.348, 138.597],
     ['하쿠바', 36.698, 137.862], ['마쓰모토', 36.238, 137.972], ['이세', 34.488, 136.709], ['구사쓰', 36.621, 138.596],
@@ -221,7 +224,7 @@ const PLACES = {
     ['평창', 37.37, 128.39], ['전주', 35.824, 127.148], ['군산', 35.968, 126.737], ['여수', 34.76, 127.662],
     ['순천', 34.951, 127.487], ['목포', 34.812, 126.392], ['담양', 35.321, 126.988], ['통영', 34.854, 128.433],
     ['거제', 34.881, 128.621], ['남해', 34.838, 127.892], ['창원', 35.228, 128.681], ['가평', 37.832, 127.511],
-    ['수원', 37.264, 127.029], ['파주', 37.76, 126.78], ['공주', 'KR-44'], ['부여', 36.276, 126.91],
+    ['수원', 37.264, 127.029], ['파주', 37.76, 126.78], ['공주', 36.446, 127.119, 'KR-44'], ['부여', 36.276, 126.91],
     ['태안', 36.746, 126.298], ['단양', 36.985, 128.366], ['서귀포', 33.254, 126.56]],
   LA: [['방비엥', 18.923, 102.448], ['팍세', 15.12, 105.799]],
   LK: [['캔디', 7.291, 80.634], ['시기리야', 7.957, 80.76], ['담불라', 7.874, 80.651], ['갈레', 6.054, 80.221],
@@ -230,7 +233,7 @@ const PLACES = {
     ['와르자자트', 30.919, -6.893]],
   MM: [['바간', 21.172, 94.859], ['인레 호수', 20.55, 96.917]],
   MN: [['테를지', 47.98, 107.45], ['홉스골', 50.44, 100.16]],
-  MV: [['말레', 'MV-26']],
+  MV: [['말레', 4.175, 73.509, 'MV-26']],
   MX: [['칸쿤', 21.162, -86.852], ['툴룸', 20.211, -87.465], ['플라야델카르멘', 20.63, -87.074],
     ['치첸이차', 20.684, -88.568], ['메리다', 20.967, -89.593], ['로스카보스', 22.891, -109.917],
     ['과달라하라', 20.66, -103.35], ['푸에르토바야르타', 20.653, -105.225], ['테오티우아칸', 19.693, -98.844],
@@ -262,7 +265,7 @@ const PLACES = {
     ['카잔', 55.796, 49.106], ['소치', 43.603, 39.734], ['예카테린부르크', 56.839, 60.606]],
   SE: [['예테보리', 57.709, 11.975], ['말뫼', 55.605, 13.004], ['키루나', 67.856, 20.225]],
   TH: [['파타야', 12.924, 100.883], ['코사무이', 9.512, 100.014], ['코팡안', 9.738, 100.014],
-    ['후아힌', 12.568, 99.958], ['코창', 12.056, 102.325], ['코사멧', 12.569, 101.455], ['피피섬', 'TH-81'],
+    ['후아힌', 12.568, 99.958], ['코창', 12.056, 102.325], ['코사멧', 12.569, 101.455], ['피피섬', 7.74, 98.778, 'TH-81'],
     ['아오낭', 8.033, 98.823], ['코란타', 7.625, 99.079], ['카오락', 8.646, 98.25], ['빠이', 19.358, 98.44],
     ['담넌사두억', 13.517, 99.958], ['매끌렁', 13.407, 100]],
   TR: [['카파도키아', 38.643, 34.829], ['괴레메', 38.643, 34.829], ['파묵칼레', 37.92, 29.119], ['에페스', 37.94, 27.342],
@@ -285,7 +288,7 @@ const PLACES = {
   UZ: [['히바', 41.378, 60.364]],
   VN: [['나트랑', 12.239, 109.197], ['호이안', 15.88, 108.338], ['푸꾸옥', 10.227, 103.964], ['하롱베이', 20.952, 107.08],
     ['사파', 22.336, 103.844], ['달랏', 11.94, 108.458], ['무이네', 10.945, 108.286], ['후에', 16.464, 107.591],
-    ['퀴논', 13.782, 109.219], ['깟바', 'VN-HP'], ['짱안', 20.256, 105.896]],
+    ['퀴논', 13.782, 109.219], ['깟바', 20.727, 107.048, 'VN-HP'], ['짱안', 20.256, 105.896]],
   ZA: [['케이프타운', -33.925, 18.424], ['희망봉', -34.357, 18.474], ['요하네스버그', -26.204, 28.047],
     ['프리토리아', -25.748, 28.229], ['크루거 국립공원', -24.996, 31.592], ['더반', -29.859, 31.022]],
 };
@@ -428,24 +431,285 @@ for (const f of all) {
   byCountry.set(country, [...(byCountry.get(country) ?? []), f]);
 }
 
-// The files are replaced, not the folder: after the folder was deleted and made again, a running
-// dev server answered index.html for its maps until it restarted.
-const outDir = resolve('public/regions');
-mkdirSync(outDir, { recursive: true });
-const counts = {};
 const seen = new Set();
 /** The regions of each country with a map, as Natural Earth draws them: for where places are. */
 const mapped = new Map();
-let bytes = 0;
-
 for (const [country, features] of [...byCountry].sort(([a], [b]) => a.localeCompare(b))) {
   if (SKIP.has(country)) continue;
   const regions = regionsOf(country, features);
   if (regions.length < 2 || regions.length > MAX_REGIONS) continue;
   for (const region of regions) seen.add(region.properties.code);
   mapped.set(country, regions);
+}
+for (const code of Object.keys(NAMES)) if (!seen.has(code)) warnings.push(`NAMES: no region ${code}`);
 
-  const { centerLon, drawn, away } = mapParts(country, regions);
+// Places, by the code of where they are: the region of the country's map, else the country.
+const countries = new Set(
+  readFileSync(resolve('src/features/countries/countryCodes.ts'), 'utf8')
+    .match(/"[A-Z]{2}"/g)
+    .map((code) => code.slice(1, -1)),
+);
+const regionName = new Map([...mapped.values()].flat().map((r) => [r.properties.code, r.properties.name]));
+const places = {};
+/** Puts a place in a region's (or country's) list, unless one there has its name. */
+function addPlace(code, name) {
+  const list = (places[code] ??= []);
+  if (!list.some((other) => nameKey(other) === nameKey(name))) list.push(name);
+}
+function whereIs(country, point) {
+  const regions = mapped.get(country);
+  return (regions && regionOfPlace(regions, point)?.properties.code) ?? country;
+}
+
+for (const [country, list] of Object.entries(PLACES)) {
+  if (!countries.has(country)) warnings.push(`PLACES: no country ${country}`);
+  const shown = [];
+  for (const [name, lat, lon, forced] of list) {
+    let code = forced ?? whereIs(country, [lon, lat]);
+    if (code !== country && !regionName.has(code)) {
+      warnings.push(`PLACES: no region ${code} for ${name}`);
+      code = country;
+    }
+    if (code === country && mapped.has(country)) warnings.push(`PLACES: ${name} is in no region of ${country}`);
+    shown.push(`${name}→${regionName.get(code) ?? code}`);
+    addPlace(code, name);
+  }
+  console.log(`${country}: ${shown.join(', ')}`);
+}
+
+// Natural Earth's cities, the biggest first.
+const towns = JSON.parse(readFileSync(resolve(townsSource), 'utf8'))
+  .features.map((f) => f.properties)
+  .sort((a, b) => b.POP_MAX - a.POP_MAX);
+const unplaced = [];
+const away = {};
+/** Each town's country (as the map has it), or none for one the map has no country for. */
+const townCountry = (town) => {
+  const country = TOWN_COUNTRY[town.ISO_A2] ?? TOWN_COUNTRY[town.ADM0_A3] ?? town.ISO_A2;
+  return countries.has(country) ? country : null;
+};
+for (const town of towns) {
+  const country = townCountry(town);
+  if (!country) {
+    const code = TOWN_COUNTRY[town.ISO_A2] ?? TOWN_COUNTRY[town.ADM0_A3] ?? town.ISO_A2;
+    away[code] = (away[code] ?? 0) + 1;
+    continue;
+  }
+  const code = whereIs(country, [town.LONGITUDE, town.LATITUDE]);
+  if (code === country && mapped.has(country)) unplaced.push(`${town.NAME_KO}(${country})`);
+  addPlace(code, townName(country, town.NAME_KO));
+}
+if (unplaced.length) console.log(`towns in no region, so in their country: ${unplaced.join(', ')}`);
+// Antarctica's stations, and the few places the map has no country for (Gibraltar, Tuvalu).
+console.log(`towns left out: ${JSON.stringify(away)}`);
+
+// Names of Natural Earth's towns that PLACES has by the name people use: the same town, called so
+// on its page (나트랑), its own name kept to find it by (냐짱). Not a sight by a town (타지마할 at
+// 아그라), which is a place of its own.
+const SAME = {
+  AR: { '바릴로체': '산카를로스데바릴로체' },
+  AT: { '비엔나': '빈' },
+  BE: { '브뤼헤': '브뤼허', '겐트': '헨트' },
+  BR: { '살바도르': '사우바도르' },
+  GR: { '코르푸': '케르키라' },
+  ID: { '족자카르타': '욕야카르타' },
+  IS: { '아퀴레이리': '아쿠레이리' },
+  IT: { '베니스': '베네치아' },
+  KH: { '시엠립': '시엠레아프' },
+  LA: { '팍세': '빡세' },
+  LK: { '갈레': '갈' },
+  MX: { '칸쿤': '캉쿤', '로스카보스': '카보산루카스', '오악사카': '오아하카' },
+  MY: { '페낭': '조지타운', '말라카': '믈라카' },
+  NZ: { '더니든': '더니딘' },
+  TH: { '매끌렁': '사뭇송크람' },
+  US: { '그랜드캐니언': '그랜드 캐년', '나이아가라 폭포': '나이아가라폴스' },
+  VN: { '나트랑': '냐짱', '하롱베이': '할롱', '퀴논': '꾸이년' },
+};
+
+/** Kilometres between two [lon, lat] points. */
+function km([lon1, lat1], [lon2, lat2]) {
+  const r = Math.PI / 180;
+  const h =
+    Math.sin(((lat2 - lat1) * r) / 2) ** 2 +
+    Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lon2 - lon1) * r) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+/** A name in Latin letters to match by: no accents (Ōsaka), letters only, lowercase. */
+const latinKey = (name) =>
+  (name ?? '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\p{L}]/gu, '').toLowerCase();
+
+// Each mapped country's cities, for its page: Natural Earth's towns (one of a name in a region),
+// then PLACES that aren't one of them: a sight, or a town it lacks.
+const citiesOf = new Map();
+for (const town of towns) {
+  const country = townCountry(town);
+  if (!mapped.has(country)) continue;
+  const point = [town.LONGITUDE, town.LATITUDE];
+  const city = { name: townName(country, town.NAME_KO), code: whereIs(country, point), point, aliases: [] };
+  const list = citiesOf.get(country) ?? [];
+  if (list.some((other) => other.code === city.code && nameKey(other.name) === nameKey(city.name))) continue;
+  city.latin = [town.NAME, town.NAMEASCII, town.NAME_EN].map(latinKey).filter(Boolean);
+  city.population = town.POP_MAX;
+  list.push(city);
+  citiesOf.set(country, list);
+}
+for (const [country, list] of Object.entries(PLACES)) {
+  const cities = citiesOf.get(country);
+  if (!cities) continue;
+  for (const [name, lat, lon, forced] of list) {
+    const point = [lon, lat];
+    const named = (other, wanted) => [other.name, ...other.aliases].some((n) => nameKey(n) === nameKey(wanted));
+    const same = SAME[country]?.[name];
+    if (same) {
+      const town = cities.filter((other) => named(other, same)).sort((a, b) => km(a.point, point) - km(b.point, point))[0];
+      if (town) {
+        town.aliases.push(town.name);
+        town.name = name;
+        continue;
+      }
+      warnings.push(`SAME: no town ${same} for ${name}`);
+    }
+    if (cities.some((other) => named(other, name) && km(other.point, point) < 30)) continue;
+    const code = regionName.has(forced) ? forced : whereIs(country, point);
+    cities.push({ name, code, point, aliases: [], latin: [], population: 0 });
+  }
+}
+
+/** [west, south, east, north] of a geometry's points. */
+function boundsOf(geometry) {
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of polygonsOf(geometry).flat(2)) {
+    box[0] = Math.min(box[0], x);
+    box[1] = Math.min(box[1], y);
+    box[2] = Math.max(box[2], x);
+    box[3] = Math.max(box[3], y);
+  }
+  return box;
+}
+const within = ([x, y], [west, south, east, north]) => x >= west && x <= east && y >= south && y <= north;
+
+// Built-up areas (LandScan's) for the cities: each area to the city it is named for, else the
+// biggest town in it, else a place of PLACES in it. Areas of the same name elsewhere carry a number
+// (Sydney1).
+const urban = JSON.parse(readFileSync(resolve(urbanSource), 'utf8')).features;
+const countryBounds = [...mapped].map(([country, regions]) => [
+  country,
+  regions.map((region) => boundsOf(region.geometry)).reduce((a, b) => [
+    Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3]),
+  ]),
+]);
+/** Each city's area, and whether it was named for the city. */
+const areaOf = new Map();
+let areasUsed = 0;
+for (const area of urban) {
+  const center = [area.properties.mean_bb_xc, area.properties.mean_bb_yc];
+  const country = countryBounds.find(
+    ([code, bounds]) => within(center, bounds) && regionOfPlace(mapped.get(code), center),
+  )?.[0];
+  const cities = citiesOf.get(country) ?? [];
+  const bounds = boundsOf(area.geometry);
+  const inside = cities.filter((city) => within(city.point, bounds) && covers(area.geometry, city.point));
+  const wanted = latinKey(area.properties.name_conve.replace(/\d+$/, ''));
+  const named = cities
+    .filter((city) => city.latin.includes(wanted) && (inside.includes(city) || km(city.point, center) < 25))
+    .sort((a, b) => km(a.point, center) - km(b.point, center));
+  const city =
+    named[0] ?? inside.filter((c) => c.population > 0).sort((a, b) => b.population - a.population)[0] ?? inside[0];
+  if (!city) continue;
+  const had = areaOf.get(city);
+  if (had && (had.named || named.length === 0)) continue;
+  if (!had) areasUsed += 1;
+  areaOf.set(city, { area, named: named.length > 0 });
+}
+console.log(`built-up areas: ${areasUsed} of ${urban.length} on a city`);
+
+/** Distance from p to the segment a–b, on the plane. */
+function toSegment([px, py], [ax, ay], [bx, by]) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = dx || dy ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy))) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+/** Douglas–Peucker: the points of a line that keep it within `tolerance` of itself. */
+function simplifyLine(points, tolerance) {
+  if (points.length <= 2) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = keep[points.length - 1] = 1;
+  const stack = [[0, points.length - 1]];
+  while (stack.length > 0) {
+    const [a, b] = stack.pop();
+    let farthest = 0;
+    let at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = toSegment(points[i], points[a], points[b]);
+      if (d > farthest) [farthest, at] = [d, i];
+    }
+    if (farthest > tolerance) {
+      keep[at] = 1;
+      stack.push([a, at], [at, b]);
+    }
+  }
+  return points.filter((_, i) => keep[i]);
+}
+const ringArea = (ring) => ring.reduce((sum, [x, y], i) => {
+  const [nx, ny] = ring[(i + 1) % ring.length];
+  return sum + x * ny - nx * y;
+}, 0) / 2;
+const round = (value) => Math.round(value * 10) / 10;
+/**
+ * City outlines keep this much detail (map units: a map is about 1000 wide, a phone shows it about
+ * 350 pixels wide), and leave out holes and bits smaller than CITY_BITS units²: neither can be seen.
+ */
+const CITY_DETAIL = 1.2;
+const CITY_BITS = 4;
+/** About the most points a city's outline keeps: a sprawling one (Dhaka) is made rougher. */
+const CITY_POINTS = 400;
+
+/** A built-up area's rings on a map, as much simplified as `tolerance` allows. */
+function cityRings(geometry, projection, tolerance) {
+  const rings = polygonsOf(geometry).flatMap((polygon) =>
+    polygon.map((ring, i) => {
+      const points = simplifyLine(ring.map((p) => projection(p)).filter(Boolean), tolerance);
+      return { outer: i === 0, points, area: points.length < 4 ? 0 : Math.abs(ringArea(points)) };
+    }),
+  );
+  // The biggest part stays however small: the city is there.
+  const biggest = Math.max(0, ...rings.map((ring) => ring.area));
+  return rings.filter(({ area }) => area > 0 && (area >= CITY_BITS || area === biggest));
+}
+
+/** A built-up area as an SVG path on a map, and how big it is there; none if it comes to nothing. */
+function cityShape(geometry, projection) {
+  let tolerance = CITY_DETAIL;
+  let rings = cityRings(geometry, projection, tolerance);
+  while (rings.reduce((sum, ring) => sum + ring.points.length, 0) > CITY_POINTS) {
+    tolerance *= 1.5;
+    rings = cityRings(geometry, projection, tolerance);
+  }
+  let d = '';
+  let size = 0;
+  for (const { outer, points, area } of rings) {
+    if (outer) size += area;
+    // Whole units are close enough but on a small shape.
+    const [xs, ys] = [points.map(([x]) => x), points.map(([, y]) => y)];
+    const fine = Math.max(...xs) - Math.min(...xs) < 20 && Math.max(...ys) - Math.min(...ys) < 20;
+    const at = (value) => (fine ? round(value) : Math.round(value));
+    d += `M${points.slice(0, -1).map(([x, y]) => `${at(x)},${at(y)}`).join('L')}Z`;
+  }
+  return d ? { d, size } : null;
+}
+
+// The files are replaced, not the folder: after the folder was deleted and made again, a running
+// dev server answered index.html for its maps until it restarted.
+const outDir = resolve('public/regions');
+mkdirSync(outDir, { recursive: true });
+const counts = {};
+let bytes = 0;
+let cityCount = 0;
+let shapeCount = 0;
+
+for (const [country, regions] of mapped) {
+  const { centerLon, drawn, away: farRegions } = mapParts(country, regions);
   // Simplified together, so neighbours keep sharing their border.
   const t = topology({ regions: { type: 'FeatureCollection', features: drawn } }, 1e5);
   const pre = presimplify(t);
@@ -469,10 +733,30 @@ for (const [country, features] of [...byCountry].sort(([a], [b]) => a.localeComp
     }
     return row;
   });
-  for (const region of away) rows.push([region.properties.code, region.properties.name, '']);
+  for (const region of farRegions) rows.push([region.properties.code, region.properties.name, '']);
   rows.sort((a, b) => a[1].localeCompare(b[1], 'ko'));
 
-  const out = JSON.stringify({ width: Math.ceil(right - left), height: Math.ceil(bottom - top), regions: rows });
+  // Its cities: where each is, and its built-up area; none on the map in a region drawn only in
+  // the list, or on land left off it. The biggest areas first, so smaller ones are drawn over them.
+  const offMap = new Set(farRegions.map((region) => region.properties.code));
+  const keep = KEEP_LAND[country] ?? (() => true);
+  const cities = (citiesOf.get(country) ?? []).map((city) => {
+    const at = offMap.has(city.code) || !keep(city.point) ? null : projection(city.point);
+    const shape = at && areaOf.has(city) ? cityShape(areaOf.get(city).area.geometry, projection) : null;
+    const row = [city.name, city.code, at ? round(at[0]) : null, at ? round(at[1]) : null, shape?.d ?? ''];
+    if (city.aliases.length > 0) row.push(city.aliases);
+    return { row, size: shape?.size ?? 0 };
+  });
+  cities.sort((a, b) => b.size - a.size);
+  cityCount += cities.length;
+  shapeCount += cities.filter((city) => city.size > 0).length;
+
+  const out = JSON.stringify({
+    width: Math.ceil(right - left),
+    height: Math.ceil(bottom - top),
+    regions: rows,
+    cities: cities.map((city) => city.row),
+  });
   writeFileSync(join(outDir, `${country}.json`), out);
   counts[country] = rows.length;
   bytes += out.length;
@@ -490,62 +774,26 @@ writeFileSync(
 export const REGION_COUNTS: Readonly<Record<string, number>> = ${JSON.stringify(counts)};
 `,
 );
-for (const code of Object.keys(NAMES)) if (!seen.has(code)) warnings.push(`NAMES: no region ${code}`);
-console.log(`${Object.keys(counts).length} countries, ${(bytes / 1024).toFixed(0)} KB in all`);
-
-// Places, by the code of where they are: the region of the country's map, else the country.
-const countries = new Set(
-  readFileSync(resolve('src/features/countries/countryCodes.ts'), 'utf8')
-    .match(/"[A-Z]{2}"/g)
-    .map((code) => code.slice(1, -1)),
+console.log(
+  `${Object.keys(counts).length} countries, ${cityCount} cities (${shapeCount} with a built-up area), ` +
+    `${(bytes / 1024).toFixed(0)} KB in all`,
 );
-const regionName = new Map([...mapped.values()].flat().map((r) => [r.properties.code, r.properties.name]));
-const places = {};
-/** Puts a place in a region's (or country's) list, unless one there has its name. */
-function addPlace(code, name) {
+
+// Each region's own name last, to find its country by (홋카이도 → 일본), unless a place there has
+// it without the word for a province (제주 for 제주특별자치도), as the app's search reads it.
+const ADMIN_WORD = /(특별자치시|특별자치도|특별시|광역시|시|도|군|현|성|주|부|구)$/;
+const shortKey = (name) => {
+  const short = name.trim().replace(ADMIN_WORD, '');
+  return nameKey([...nameKey(short)].length >= 2 ? short : name);
+};
+let regionNames = 0;
+for (const [code, name] of regionName) {
   const list = (places[code] ??= []);
-  if (!list.some((other) => nameKey(other) === nameKey(name))) list.push(name);
+  if (list.some((other) => shortKey(other) === shortKey(name))) continue;
+  list.push(name);
+  regionNames += 1;
 }
-function whereIs(country, point) {
-  const regions = mapped.get(country);
-  return (regions && regionOfPlace(regions, point)?.properties.code) ?? country;
-}
-
-for (const [country, list] of Object.entries(PLACES)) {
-  if (!countries.has(country)) warnings.push(`PLACES: no country ${country}`);
-  const shown = [];
-  for (const [name, ...where] of list) {
-    let code = typeof where[0] === 'string' ? where[0] : whereIs(country, [where[1], where[0]]);
-    if (code !== country && !regionName.has(code)) {
-      warnings.push(`PLACES: no region ${code} for ${name}`);
-      code = country;
-    }
-    if (code === country && mapped.has(country)) warnings.push(`PLACES: ${name} is in no region of ${country}`);
-    shown.push(`${name}→${regionName.get(code) ?? code}`);
-    addPlace(code, name);
-  }
-  console.log(`${country}: ${shown.join(', ')}`);
-}
-
-// Natural Earth's cities, the biggest first.
-const towns = JSON.parse(readFileSync(resolve(townsSource), 'utf8'))
-  .features.map((f) => f.properties)
-  .sort((a, b) => b.POP_MAX - a.POP_MAX);
-const unplaced = [];
-const away = {};
-for (const town of towns) {
-  const country = TOWN_COUNTRY[town.ISO_A2] ?? TOWN_COUNTRY[town.ADM0_A3] ?? town.ISO_A2;
-  if (!countries.has(country)) {
-    away[country] = (away[country] ?? 0) + 1;
-    continue;
-  }
-  const code = whereIs(country, [town.LONGITUDE, town.LATITUDE]);
-  if (code === country && mapped.has(country)) unplaced.push(`${town.NAME_KO}(${country})`);
-  addPlace(code, townName(country, town.NAME_KO));
-}
-if (unplaced.length) console.log(`towns in no region, so in their country: ${unplaced.join(', ')}`);
-// Antarctica's stations, and the few places the map has no country for (Gibraltar, Tuvalu).
-console.log(`towns left out: ${JSON.stringify(away)}`);
+console.log(`region names added: ${regionNames} of ${regionName.size}`);
 
 const index = JSON.stringify(Object.fromEntries(Object.entries(places).sort(([a], [b]) => a.localeCompare(b))));
 writeFileSync(
@@ -554,8 +802,9 @@ writeFileSync(
 
 /**
  * Places people go, to find where they are by (파리 → 프랑스, 일드프랑스): the script's PLACES (sights
- * too), then Natural Earth's cities by size. By the code of where each is: the region of its
- * country's map (\`FR-IDF\`), or the country (\`SG\`) without a map or a region for the place.
+ * too), then Natural Earth's cities by size, then the region's own name unless a place has it
+ * already (홋카이도; not 제주특별자치도, which has 제주). By the code of where each is: the region of
+ * its country's map (\`FR-IDF\`), or the country (\`SG\`) without a map or a region for the place.
  */
 export const PLACES: Readonly<Record<string, readonly string[]>> = ${index};
 `,
