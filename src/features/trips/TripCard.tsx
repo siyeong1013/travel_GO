@@ -1,12 +1,7 @@
 import { Link } from 'react-router';
 import type { LocalDate, Trip } from '@/data/models';
-import {
-  coverBadgeClass,
-  coverInitial,
-  coverStyle,
-  photoTextShade,
-} from '@/features/trips/tripCover';
-import { tripPhase, tripPhaseLabel, tripPlacesText } from '@/features/trips/tripDisplay';
+import { coverInitial, coverStyle } from '@/features/trips/tripCover';
+import { tripPhase, tripPlacesText } from '@/features/trips/tripDisplay';
 import { TripPhaseBadge } from '@/features/trips/TripPhaseBadge';
 import { formatDateRange, formatTripLength } from '@/lib/format';
 
@@ -17,36 +12,6 @@ interface TripCardProps {
 
 const dates = (trip: Trip, today: LocalDate) =>
   `${formatDateRange(trip.startDate, trip.endDate, today)} · ${formatTripLength(trip.startDate, trip.endDate)}`;
-
-/** The next trip, large: its cover with how soon it is, the city, title and dates. */
-export function TripHeroCard({ trip, today }: TripCardProps) {
-  return (
-    <Link
-      to={`/trips/${trip.id}`}
-      style={trip.cover ? undefined : coverStyle(trip)}
-      className="relative block overflow-hidden rounded-3xl text-white shadow-lg shadow-gray-900/10 active:opacity-90"
-    >
-      {trip.cover && (
-        <img src={trip.cover.image} alt="" className="absolute inset-0 size-full object-cover" />
-      )}
-      <div className="relative px-5 pt-5">
-        <span
-          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${coverBadgeClass(trip.cover !== null)}`}
-        >
-          {tripPhaseLabel(trip, today)}
-        </span>
-      </div>
-      <div
-        style={trip.cover ? photoTextShade : undefined}
-        className={`relative px-5 pb-5 ${trip.cover ? 'pt-16' : 'pt-10'}`}
-      >
-        <p className="truncate text-sm font-semibold">{tripPlacesText(trip)}</p>
-        <h3 className="mt-0.5 truncate text-2xl leading-tight font-bold">{trip.title}</h3>
-        <p className="mt-1.5 text-sm font-medium">{dates(trip, today)}</p>
-      </div>
-    </Link>
-  );
-}
 
 /** A trip as a row: a small cover (its photo, or the city's first letter), title, city and dates. */
 export function TripCard({ trip, today }: TripCardProps) {

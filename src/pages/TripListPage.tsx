@@ -8,7 +8,7 @@ import { GlobeIcon, MapPinIcon, PlusIcon, SettingsIcon, UserIcon } from '@/compo
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { LocalDate, Trip } from '@/data/models';
 import { InstallBanner } from '@/features/install/InstallBanner';
-import { TripCard, TripHeroCard } from '@/features/trips/TripCard';
+import { TripCard } from '@/features/trips/TripCard';
 import { splitTrips } from '@/features/trips/tripDisplay';
 import { useTrips } from '@/features/trips/useTrips';
 import { toLocalDate } from '@/lib/dates';
@@ -17,7 +17,7 @@ import { supabaseConfig } from '@/lib/supabase';
 export function TripListPage() {
   const { trips, status, error, reload } = useTrips();
   const today = toLocalDate();
-  const { current, past, next } = splitTrips(trips, today);
+  const { current, past } = splitTrips(trips, today);
 
   let content;
   if (status === 'error' && trips.length === 0) {
@@ -45,8 +45,7 @@ export function TripListPage() {
       <div className="flex flex-col gap-8 px-4 pt-5 pb-6">
         {current.length > 0 && (
           <TripSection title="다가오는 여행" count={current.length}>
-            {next && <TripHeroCard trip={next} today={today} />}
-            <TripRows trips={next ? current.slice(1) : current} today={today} />
+            <TripRows trips={current} today={today} />
           </TripSection>
         )}
         {past.length > 0 && (
@@ -126,7 +125,7 @@ function TripRows({ trips, today }: { trips: Trip[]; today: LocalDate }) {
 function ListSkeleton() {
   return (
     <div className="flex flex-col gap-3 px-4 pt-14 pb-5" aria-hidden="true">
-      <div className="h-[184px] animate-pulse rounded-3xl bg-gray-100" />
+      <div className="h-[76px] animate-pulse rounded-2xl bg-gray-100" />
       <div className="h-[76px] animate-pulse rounded-2xl bg-gray-100" />
     </div>
   );

@@ -36,19 +36,12 @@ export function tripPhaseLabel(trip: TripDates, today: LocalDate): string {
   }
 }
 
-/**
- * Ongoing and upcoming trips soonest first; past trips most recent first. `next` is the first of
- * `current` when there are other trips to pick it out from (the big card); a lone trip is a row.
- */
-export function splitTrips(
-  trips: Trip[],
-  today: LocalDate,
-): { current: Trip[]; past: Trip[]; next: Trip | null } {
+/** Ongoing and upcoming trips soonest first; past trips most recent first. */
+export function splitTrips(trips: Trip[], today: LocalDate): { current: Trip[]; past: Trip[] } {
   const sorted = [...trips].sort(compareTrips);
   const current = sorted.filter((trip) => tripPhase(trip, today) !== 'past');
   return {
     current,
     past: sorted.filter((trip) => tripPhase(trip, today) === 'past').reverse(),
-    next: trips.length > 1 ? (current[0] ?? null) : null,
   };
 }

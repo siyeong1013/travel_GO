@@ -66,7 +66,7 @@ describe('cover photos', () => {
     const [trip] = await repositories.trips.list();
     expect(trip!.cover).toEqual(makeCover('castle'));
 
-    // The next trip's large card has the photo; rows have the thumbnail.
+    // In the list, every trip is a row with the thumbnail.
     await repositories.trips.create({
       ...osaka,
       title: '도쿄 여행',
@@ -79,8 +79,9 @@ describe('cover photos', () => {
     resetStores();
     renderApp('/');
     await screen.findByRole('link', { name: /도쿄 여행/ });
-    expect(shown(makeCover('castle').image)).toHaveLength(1);
+    expect(shown(makeCover('castle').thumbnail)).toHaveLength(1);
     expect(shown(makeCover('tower').thumbnail)).toHaveLength(1);
+    expect(shown(makeCover('castle').image)).toHaveLength(0);
   });
 
   it('changes the photo or takes it off when editing', async () => {
