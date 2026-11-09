@@ -1,24 +1,17 @@
-import { type ReactNode, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ChevronRightIcon } from '@/components/ui/icons';
 import { PageSection, sectionActionClass } from '@/components/ui/PageSection';
 import type { Companion, ExpenseWithShares, Settlement, Trip } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
-import { BudgetBar } from '@/features/expenses/BudgetBar';
-import { BudgetSheet } from '@/features/expenses/BudgetSheet';
 import {
   CATEGORY_LABELS,
   expenseTitle,
   usesApiRates,
 } from '@/features/expenses/expenseDisplay';
 import { RateAttribution } from '@/features/expenses/RateAttribution';
-import {
-  budgetStatus,
-  categoryRows,
-  dayRows,
-  formatShare,
-} from '@/features/expenses/summaryDisplay';
+import { categoryRows, dayRows, formatShare } from '@/features/expenses/summaryDisplay';
 import { formatDate, formatMoney } from '@/lib/format';
 
 interface ExpenseSummaryProps {
@@ -28,37 +21,18 @@ interface ExpenseSummaryProps {
   settlements: Settlement[];
 }
 
-/** The budget, then spending by category, by day and by person, in the settlement currency. */
+/** The total, then spending by category, by day and by person, in the settlement currency. */
 export function ExpenseSummary({ trip, companions, expenses, settlements }: ExpenseSummaryProps) {
-  const [editingBudget, setEditingBudget] = useState(false);
   const ledger = buildLedger(trip, companions, expenses, settlements);
   const currency = ledger.currency;
-  const budget = budgetStatus(ledger);
   const days = dayRows(trip, ledger.byDate);
   const busiestDay = Math.max(0, ...days.map((day) => day.total));
   const unconvertible = expenses.filter((expense) => ledger.unconvertible.includes(expense.id));
 
   return (
     <main className="flex flex-1 flex-col">
-      <PageSection
-        title="예산"
-        action={
-          <button type="button" onClick={() => setEditingBudget(true)} className={sectionActionClass}>
-            {budget ? '예산 수정' : '예산 정하기'}
-          </button>
-        }
-      >
-        <p className="text-sm text-gray-600">총 지출</p>
+      <PageSection title="총 지출">
         <p className="text-2xl font-bold tabular-nums">{formatMoney(ledger.total, currency)}</p>
-        {budget ? (
-          <div className="mt-3">
-            <BudgetBar status={budget} currency={currency} />
-          </div>
-        ) : (
-          <p className="mt-1 text-sm text-gray-500">
-            여행 예산을 정하면 얼마나 남았는지 알려 드려요.
-          </p>
-        )}
       </PageSection>
 
       {expenses.length === 0 ? (
@@ -177,7 +151,6 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
 
       {usesApiRates(expenses) && <RateAttribution />}
 
-      {editingBudget && <BudgetSheet trip={trip} onClose={() => setEditingBudget(false)} />}
     </main>
   );
 }

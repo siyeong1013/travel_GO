@@ -8,7 +8,6 @@ import { PlusIcon } from '@/components/ui/icons';
 import type { Trip } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
 import { planTransfers } from '@/data/rules/settlementPlan';
-import { BudgetSheet } from '@/features/expenses/BudgetSheet';
 import { CompanionSheet } from '@/features/expenses/CompanionSheet';
 import { groupExpenses, usesApiRates } from '@/features/expenses/expenseDisplay';
 import { ExpenseList } from '@/features/expenses/ExpenseList';
@@ -18,12 +17,12 @@ import { SettlementCurrencySheet } from '@/features/expenses/SettlementCurrencyS
 import { useExpenses } from '@/features/expenses/useExpenses';
 import { useSchedule } from '@/features/schedule/useSchedule';
 
-/** The ledger half of the trip page: total and budget, companions, expenses by day, "add expense". */
+/** The ledger half of the trip page: total, companions, expenses by day, "add expense". */
 export function TripExpenses({ trip }: { trip: Trip }) {
   const navigate = useNavigate();
   const { companions, expenses, settlements, status, error, reload } = useExpenses(trip.id);
   const { items } = useSchedule(trip.id);
-  const [sheet, setSheet] = useState<'companions' | 'currency' | 'budget' | null>(null);
+  const [sheet, setSheet] = useState<'companions' | 'currency' | null>(null);
 
   const ledger = buildLedger(trip, companions, expenses, settlements);
 
@@ -74,7 +73,6 @@ export function TripExpenses({ trip }: { trip: Trip }) {
         pendingTransfers={planTransfers(ledger.balances).length}
         onManageCompanions={() => setSheet('companions')}
         onChangeCurrency={() => setSheet('currency')}
-        onEditBudget={() => setSheet('budget')}
       />
       <div className="flex flex-1 flex-col">{content}</div>
 
@@ -101,7 +99,6 @@ export function TripExpenses({ trip }: { trip: Trip }) {
           onClose={() => setSheet(null)}
         />
       )}
-      {sheet === 'budget' && <BudgetSheet trip={trip} onClose={() => setSheet(null)} />}
     </>
   );
 }

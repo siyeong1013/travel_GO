@@ -7,7 +7,6 @@ import { CURRENCY_CODES } from '@/data/rules/money';
 import { currencyOptionLabel } from '@/features/expenses/expenseDisplay';
 import { useTripStore } from '@/features/trips/tripStore';
 import { errorMessage } from '@/lib/errorMessage';
-import { formatMoney } from '@/lib/format';
 
 interface SettlementCurrencySheetProps {
   trip: Trip;
@@ -61,12 +60,6 @@ export function SettlementCurrencySheet({ trip, locked, onClose }: SettlementCur
             </option>
           ))}
         </SelectField>
-        {trip.budget !== null && currency !== trip.settlementCurrency && (
-          <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            정산 통화를 바꾸면 예산({formatMoney(trip.budget, trip.settlementCurrency)})이 지워져요.
-            새 통화로 다시 정해 주세요.
-          </p>
-        )}
         {error && (
           <p role="alert" className="text-sm text-red-500">
             {error}

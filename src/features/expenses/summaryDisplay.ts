@@ -4,27 +4,6 @@ import type { Ledger } from '@/data/rules/ledger';
 import { type DayHeading, dayHeading } from '@/features/expenses/expenseDisplay';
 import { eachDateInRange } from '@/lib/dates';
 
-export interface BudgetStatus {
-  budget: number;
-  /** budget − total: what is left, negative when over. */
-  remaining: number;
-  /** How full the bar is, 0–1. */
-  fill: number;
-  /** Percent spent, rounded down so 100% means all of it; may exceed 100. Null for a 0 budget. */
-  percent: number | null;
-}
-
-/** The whole trip's spending against its budget; null without a budget. */
-export function budgetStatus({ total, budget }: Pick<Ledger, 'total' | 'budget'>): BudgetStatus | null {
-  if (budget === null) return null;
-  return {
-    budget,
-    remaining: budget - total,
-    fill: budget > 0 ? Math.min(total / budget, 1) : Number(total > 0),
-    percent: budget > 0 ? Math.floor((total * 100) / budget) : null,
-  };
-}
-
 export interface CategoryRow {
   category: ExpenseCategory;
   total: number;

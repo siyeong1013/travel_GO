@@ -1,11 +1,11 @@
 /** @vitest-environment happy-dom */
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { Companion, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
 import { createBackupFile } from '@/data/rules/backupFormat';
-import { renderApp, resetApp, resetStores, stubRatesApi } from '@/test/app';
+import { renderApp, resetApp, stubRatesApi } from '@/test/app';
 import {
   backupData,
   latestRatesBody,
@@ -54,66 +54,31 @@ const rows = (title: string) =>
     .getAllByRole('listitem')
     .map((item) => item.textContent);
 
-describe('budget and summary', () => {
-  it('sets a budget, shows what is left or over, and removes it', async () => {
+describe('summary', () => {
+  it('has no budget: a budget kept from before shows nowhere', async () => {
+    // Set before the budget left the app (2026-11-09); still in the data, and in backups.
+    await repositories.trips.update(trip.id, { budget: 500_000 });
     await repositories.expenses.create(expense({ amount: 120_000 }));
     const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
 
-    await user.click(await screen.findByRole('button', { name: '예산 정하기' }));
-    const sheet = await screen.findByRole('dialog', { name: '예산' });
-    const field = within(sheet).getByLabelText('여행 예산 (원)');
-    await user.type(field, '50만');
-    await user.click(within(sheet).getByRole('button', { name: '저장' }));
-    expect(within(sheet).getByText(/금액을 숫자로 입력해 주세요/)).toBeInTheDocument();
-    expect(field).toHaveFocus();
-
-    await user.clear(field);
-    await user.type(field, '500,000');
-    expect(within(sheet).getByText('500,000원')).toBeInTheDocument();
-    await user.click(within(sheet).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(overview()).toHaveTextContent('380,000원 남음'));
-    expect(overview()).toHaveTextContent('예산 500,000원 · 24% 사용');
-    expect((await repositories.trips.get(trip.id))?.budget).toBe(500_000);
-
-    // Over budget
-    await repositories.expenses.create(expense({ amount: 400_000 }));
-    cleanup();
-    resetStores();
-    const next = renderApp(`/trips/${trip.id}?tab=expenses`);
-    expect(await screen.findByText('20,000원 초과')).toBeInTheDocument();
-    expect(overview()).toHaveTextContent('예산 500,000원 · 104% 사용');
-
-    // Emptied: no budget
-    await next.user.click(screen.getByRole('button', { name: '예산 수정' }));
-    const edit = await screen.findByRole('dialog', { name: '예산' });
-    await next.user.clear(within(edit).getByLabelText('여행 예산 (원)'));
-    await next.user.click(within(edit).getByRole('button', { name: '저장' }));
-    expect(await screen.findByRole('button', { name: '예산 정하기' })).toBeInTheDocument();
+    await waitFor(() => expect(overview()).toHaveTextContent('120,000원'));
+    expect(overview()).not.toHaveTextContent('예산');
     expect(overview()).not.toHaveTextContent('남음');
-    expect((await repositories.trips.get(trip.id))?.budget).toBeNull();
-  });
+    expect(screen.queryByRole('button', { name: /예산/ })).not.toBeInTheDocument();
 
-  it('warns that changing the settlement currency drops the budget', async () => {
-    await repositories.trips.update(trip.id, { budget: 500_000 });
-    const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
+    // Changing the settlement currency says nothing about it either.
+    await user.click(screen.getByRole('button', { name: '정산 통화 KRW 기준' }));
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '닫기' }));
 
-    await user.click(await screen.findByRole('button', { name: '정산 통화 KRW 기준' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: '정산 통화' }), 'JPY · 엔');
-    expect(screen.getByRole('note')).toHaveTextContent('예산(500,000원)이 지워져요');
-    await user.click(screen.getByRole('button', { name: '저장' }));
-
-    expect(await screen.findByRole('button', { name: '정산 통화 JPY 기준' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '예산 정하기' })).toBeInTheDocument();
-    expect(await repositories.trips.get(trip.id)).toMatchObject({
-      settlementCurrency: 'JPY',
-      budget: null,
-    });
+    await user.click(screen.getByRole('link', { name: '지출 요약' }));
+    expect(await screen.findByRole('region', { name: '총 지출' })).toHaveTextContent('120,000원');
+    expect(screen.queryByRole('region', { name: '예산' })).not.toBeInTheDocument();
   });
 
   it('sums up spending by category, by day and by person', async () => {
     const chulsoo = await repositories.companions.create({ tripId: trip.id, name: '철수' });
     const both = [me, chulsoo].map((c) => ({ companionId: c.id, value: null }));
-    await repositories.trips.update(trip.id, { budget: 300_000 });
     await repositories.expenses.create(expense({ amount: 30_000, participants: both }));
     await repositories.expenses.create(
       expense({
@@ -135,8 +100,7 @@ describe('budget and summary', () => {
     expect(await screen.findByRole('heading', { name: '지출 요약' })).toBeInTheDocument();
 
     // The header comes first; the page once the ledger and the rates used before are read.
-    expect(await screen.findByRole('region', { name: '예산' })).toHaveTextContent('총 지출239,000원');
-    expect(section('예산')).toHaveTextContent('61,000원 남음');
+    expect(await screen.findByRole('region', { name: '총 지출' })).toHaveTextContent('239,000원');
     expect(rows('카테고리별')).toEqual([
       '숙소200,000원84%',
       '식비30,000원13%',
@@ -182,7 +146,7 @@ describe('budget and summary', () => {
     const { user } = renderApp(`/trips/${merged.id}/expenses/summary`);
 
     const fix = await screen.findByRole('region', { name: '환율을 다시 입력해야 하는 지출' });
-    expect(section('예산')).toHaveTextContent('총 지출0원');
+    expect(section('총 지출')).toHaveTextContent('0원');
     await user.click(within(fix).getByRole('link', { name: /자판기/ }));
 
     expect(await screen.findByRole('note')).toHaveTextContent('USD 기준이에요');

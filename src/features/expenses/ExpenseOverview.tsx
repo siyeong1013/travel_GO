@@ -2,8 +2,6 @@ import { Link } from 'react-router';
 import { ChevronRightIcon } from '@/components/ui/icons';
 import type { Companion } from '@/data/models';
 import type { Ledger } from '@/data/rules/ledger';
-import { BudgetBar } from '@/features/expenses/BudgetBar';
-import { budgetStatus } from '@/features/expenses/summaryDisplay';
 import { formatMoney } from '@/lib/format';
 
 interface ExpenseOverviewProps {
@@ -16,13 +14,12 @@ interface ExpenseOverviewProps {
   pendingTransfers: number;
   onManageCompanions: () => void;
   onChangeCurrency: () => void;
-  onEditBudget: () => void;
 }
 
 const actionClass =
   'flex h-11 shrink-0 items-center rounded-full px-3 text-sm font-semibold text-brand-600 active:bg-gray-200/70';
 
-/** Total in the settlement currency against the budget, who is on the trip, what is left to settle. */
+/** Total in the settlement currency, who is on the trip, what is left to settle. */
 export function ExpenseOverview({
   ledger,
   companions,
@@ -31,10 +28,7 @@ export function ExpenseOverview({
   pendingTransfers,
   onManageCompanions,
   onChangeCurrency,
-  onEditBudget,
 }: ExpenseOverviewProps) {
-  const budget = budgetStatus(ledger);
-
   return (
     <section aria-label="가계부 요약" className="mx-4 mt-4 rounded-3xl bg-gray-50 px-5 pt-5">
       <div className="flex items-start justify-between gap-3">
@@ -49,11 +43,6 @@ export function ExpenseOverview({
           {ledger.currency} 기준
         </button>
       </div>
-      {budget && (
-        <div className="mt-3">
-          <BudgetBar status={budget} currency={ledger.currency} />
-        </div>
-      )}
       {ledger.unconvertible.length > 0 && (
         <p className="mt-2 text-sm text-red-600">
           환율을 다시 입력해야 하는 지출 {ledger.unconvertible.length}건은 합계에서 빠졌어요.
@@ -82,10 +71,7 @@ export function ExpenseOverview({
           <ChevronRightIcon width={16} height={16} className="shrink-0 text-gray-400" />
         </Link>
       )}
-      <div className="flex items-center justify-between gap-2 border-t border-gray-200/70 py-1">
-        <button type="button" onClick={onEditBudget} className={`-ml-3 ${actionClass}`}>
-          {ledger.budget === null ? '예산 정하기' : '예산 수정'}
-        </button>
+      <div className="flex items-center justify-end gap-2 border-t border-gray-200/70 py-1">
         <Link to={summaryHref} className={`-mr-1 gap-0.5 ${actionClass}`}>
           지출 요약
           <ChevronRightIcon width={16} height={16} />

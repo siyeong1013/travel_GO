@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Expense } from '@/data/models';
 import { buildLedger } from '@/data/rules/ledger';
-import {
-  budgetStatus,
-  categoryRows,
-  dayRows,
-  formatShare,
-} from '@/features/expenses/summaryDisplay';
+import { categoryRows, dayRows, formatShare } from '@/features/expenses/summaryDisplay';
 import { makeCompanion, makeExpense, makeTrip } from '@/test/fixtures';
 
 const trip = makeTrip({ startDate: '2026-11-10', endDate: '2026-11-12' });
@@ -17,29 +12,6 @@ const spend = (amount: number, extra: Partial<Expense>) =>
   makeExpense({ tripId: trip.id, payerIds: [me.id], amount, ...extra }, [
     { companionId: me.id, weight: 1, amount },
   ]);
-
-describe('budgetStatus', () => {
-  it('says what is left and how much is spent, rounding the percent down', () => {
-    expect(budgetStatus({ total: 123_000, budget: 500_000 })).toEqual({
-      budget: 500_000,
-      remaining: 377_000,
-      fill: 0.246,
-      percent: 24,
-    });
-    expect(budgetStatus({ total: 499_999, budget: 500_000 })?.percent).toBe(99);
-    expect(budgetStatus({ total: 0, budget: null })).toBeNull();
-  });
-
-  it('caps the bar when over budget', () => {
-    expect(budgetStatus({ total: 600_000, budget: 500_000 })).toEqual({
-      budget: 500_000,
-      remaining: -100_000,
-      fill: 1,
-      percent: 120,
-    });
-    expect(budgetStatus({ total: 1, budget: 0 })).toMatchObject({ fill: 1, percent: null });
-  });
-});
 
 describe('categoryRows', () => {
   it('lists categories with spending, largest first', () => {
