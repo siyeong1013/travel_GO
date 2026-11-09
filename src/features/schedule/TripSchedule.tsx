@@ -17,6 +17,7 @@ import {
   buildDayTabs,
   dateOf,
   type GroupKey,
+  keyOf,
   resolveDayKey,
   tabElementId,
 } from '@/features/schedule/dayTabs';
@@ -38,8 +39,8 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const move = useScheduleStore((state) => state.move);
   const [params, setParams] = useSearchParams();
   /**
-   * The sheet open: a place for the selected day, or flights for their own days (`typed`: a flight
-   * number typed as a place, and the day).
+   * The sheet open: a place for a day it chooses, the selected one to begin with, or flights for
+   * their own days (`typed`: a flight number typed as a place, and the day chosen there).
    */
   const [adding, setAdding] = useState<
     { flight: false } | { flight: true; typed?: { number: string; date: LocalDate | null } } | null
@@ -184,7 +185,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
         <div className="flex gap-2">
           <Button block className="min-w-0" onClick={() => setAdding({ flight: false })}>
             <PlusIcon width={20} height={20} className="shrink-0" />
-            <span className="truncate">{selectedTab.title}에 장소 추가</span>
+            <span className="truncate">장소 추가</span>
           </Button>
           <Button
             variant="secondary"
@@ -201,9 +202,14 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       {adding?.flight === false && (
         <AddPlaceSheet
           tripId={trip.id}
-          target={selectedTab}
+          tabs={tabs}
+          day={selected}
           bias={bias}
-          onFlight={(number) => setAdding({ flight: true, typed: { number, date: selectedDate } })}
+          onFlight={(number, date) => setAdding({ flight: true, typed: { number, date } })}
+          onAdded={(date) => {
+            // Another day: shown there, as if its tab was tapped (the next place starts there too).
+            if (keyOf(date) !== selected) select(keyOf(date));
+          }}
           onClose={() => setAdding(null)}
         />
       )}

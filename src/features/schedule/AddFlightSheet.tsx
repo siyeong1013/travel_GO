@@ -23,7 +23,7 @@ export interface AddedFlight {
 
 interface AddFlightSheetProps {
   trip: Trip;
-  /** A flight number typed in place search, and the day it was typed on (null: the inbox). */
+  /** A flight number typed in place search, and the day chosen there (null: the inbox). */
   typed?: { number: string; date: LocalDate | null };
   /** After they went in; the sheet closes. */
   onAdded: (flights: AddedFlight[]) => void;
@@ -166,7 +166,7 @@ export function AddFlightSheet({ trip, typed, onAdded, onClose }: AddFlightSheet
 
 /**
  * The way there on the trip's first day and back on its last. A number typed in place search goes
- * in the way back when typed on the last day, else the way there, on the day it was typed.
+ * in the way back when the day chosen there is the last, else the way there, on that day.
  */
 function startingFlights(trip: Trip, typed: AddFlightSheetProps['typed']): FlightDraft[] {
   const out: FlightDraft = { key: 1, number: '', date: trip.startDate, lookup: null, leg: 0 };

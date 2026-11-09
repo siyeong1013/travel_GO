@@ -39,8 +39,8 @@ describe('schedule flows', () => {
     expect(await screen.findByText('아직 일정이 없어요')).toBeInTheDocument();
 
     for (const name of ['오사카성', '도톤보리']) {
-      await user.click(screen.getByRole('button', { name: 'Day 1에 장소 추가' }));
-      expect(screen.getByText('Day 1 · 11.10 (화)에 추가돼요.')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: '장소 추가' }));
+      expect(screen.getByLabelText('날짜')).toHaveDisplayValue('Day 1 · 11.10 (화)');
       await user.type(screen.getByLabelText('장소 이름'), name);
       await user.click(screen.getByRole('button', { name: '추가' }));
       await findCard(name);
@@ -86,6 +86,38 @@ describe('schedule flows', () => {
     resetStores();
     renderApp(`/trips/${trip.id}?day=2026-11-10`);
     await waitFor(() => expect(cards()).toEqual(['1오사카성09:30입장권 예매']));
+  });
+
+  it('adds a place to the day chosen in the sheet, or the inbox, and shows it there', async () => {
+    const { router, user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
+    await user.click(await screen.findByRole('button', { name: '장소 추가' }));
+    // The day is above, but the name is what's typed first.
+    expect(screen.getByLabelText('장소 이름')).toHaveFocus();
+
+    await user.selectOptions(screen.getByLabelText('날짜'), 'Day 3 · 11.12 (목)');
+    await user.type(screen.getByLabelText('장소 이름'), '유니버설 스튜디오');
+    await user.click(screen.getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(cards()).toEqual(['1유니버설 스튜디오']));
+    expect(screen.getByRole('tab', { name: /Day 3/ })).toHaveAttribute('aria-selected', 'true');
+    expect(router.state.location.search).toBe('?day=2026-11-12');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // The next one starts on the day now shown.
+    await user.click(screen.getByRole('button', { name: '장소 추가' }));
+    expect(screen.getByLabelText('날짜')).toHaveDisplayValue('Day 3 · 11.12 (목)');
+    await user.selectOptions(screen.getByLabelText('날짜'), '보관함');
+    await user.type(screen.getByLabelText('장소 이름'), '편의점');
+    await user.click(screen.getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(cards()).toEqual(['편의점']));
+    expect(router.state.location.search).toBe('?day=inbox');
+
+    const saved = await repositories.schedule.listByTrip(trip.id);
+    expect(saved.map((item) => [item.place.name, item.date])).toEqual(
+      expect.arrayContaining([
+        ['유니버설 스튜디오', '2026-11-12'],
+        ['편의점', null],
+      ]),
+    );
   });
 
   it('keeps unsaved edits when the delete is cancelled', async () => {

@@ -293,7 +293,7 @@ describe('adding flights', () => {
   it('isn’t in place search: a flight number typed there points to it, unsearched', async () => {
     const places = stubPlacesApi([]);
     const { user } = renderApp(`/trips/${trip.id}?day=2026-12-02`);
-    await user.click(await screen.findByRole('button', { name: 'Day 2에 장소 추가' }));
+    await user.click(await screen.findByRole('button', { name: '장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), 'ke723');
     expect(screen.getByRole('button', { name: /'ke723' 그대로 추가/ })).toBeInTheDocument();
     // Each search is billed.
@@ -302,16 +302,18 @@ describe('adding flights', () => {
 
     await user.click(screen.getByRole('button', { name: /^항공편 추가에서 KE723 찾기/ }));
     expect(screen.queryByRole('dialog', { name: '장소 추가' })).toBeNull();
-    // On the day it was typed on.
+    // On the day chosen there: the one being looked at, to begin with.
     const out = screen.getByRole('group', { name: '항공편 1' });
     expect(within(out).getByLabelText('편명')).toHaveValue('KE723');
     expect(within(out).getByLabelText('출발일')).toHaveValue('2026-12-02');
   });
 
-  it('takes a flight number typed on the last day as the way back', async () => {
+  it('takes a flight number typed for the last day as the way back', async () => {
     stubPlacesApi([]);
-    const { user } = renderApp(`/trips/${trip.id}?day=2026-12-03`);
-    await user.click(await screen.findByRole('button', { name: 'Day 3에 장소 추가' }));
+    const { user } = renderApp(`/trips/${trip.id}?day=2026-12-01`);
+    await user.click(await screen.findByRole('button', { name: '장소 추가' }));
+    // The day chosen in the sheet, not the one being looked at.
+    await user.selectOptions(screen.getByLabelText('날짜'), 'Day 3 · 12.3 (목)');
     await user.type(screen.getByLabelText('장소 이름'), 'KE724');
     await user.click(screen.getByRole('button', { name: /^항공편 추가에서 KE724 찾기/ }));
     const back = screen.getByRole('group', { name: '항공편 2' });
@@ -322,7 +324,7 @@ describe('adding flights', () => {
   it('searches a place again once it is no flight number', async () => {
     const places = stubPlacesApi([]);
     const { user } = renderApp(`/trips/${trip.id}?day=2026-12-01`);
-    await user.click(await screen.findByRole('button', { name: 'Day 1에 장소 추가' }));
+    await user.click(await screen.findByRole('button', { name: '장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), 'KE723 라운지');
     await waitFor(() => expect(places.requests).toHaveLength(1));
     expect(screen.queryByRole('button', { name: /항공편 추가에서/ })).toBeNull();

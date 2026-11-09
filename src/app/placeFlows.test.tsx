@@ -43,7 +43,7 @@ const cards = () =>
     .map((li) => li.textContent);
 
 async function openAddSheet(user: User) {
-  await user.click(await screen.findByRole('button', { name: 'Day 1에 장소 추가' }));
+  await user.click(await screen.findByRole('button', { name: '장소 추가' }));
   return screen.getByRole('dialog', { name: '장소 추가' });
 }
 
@@ -237,7 +237,7 @@ describe('trip city search', () => {
     expect(created.countries).toEqual(['JP']);
     expect(created.cities).toEqual([FOUND_OSAKA]);
 
-    await user.click(await screen.findByRole('button', { name: 'Day 1에 장소 추가' }));
+    await user.click(await screen.findByRole('button', { name: '장소 추가' }));
     await user.type(screen.getByLabelText('장소 이름'), '도톤보리');
     await screen.findByRole('button', { name: /^도톤보리/ });
     expect(api.requests.at(-1)!.locationBias).toEqual(AROUND_OSAKA);

@@ -1,26 +1,30 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/Button';
-import { TextField } from '@/components/ui/Field';
+import { SelectField, TextField } from '@/components/ui/Field';
 import { PencilIcon, PlaneIcon } from '@/components/ui/icons';
-import type { GeoPoint, ID, PlaceSnapshot } from '@/data/models';
+import type { GeoPoint, ID, LocalDate, PlaceSnapshot } from '@/data/models';
 import type { PlaceSuggestion } from '@/features/places/placeSearch';
 import { PlaceSuggestionList } from '@/features/places/PlaceSuggestionList';
 import { SearchUnavailableNote } from '@/features/places/SearchUnavailableNote';
 import { usePlaceSearch } from '@/features/places/usePlaceSearch';
-import { type DayTab, tabLabel } from '@/features/schedule/dayTabs';
+import { type DayTab, dateOf, type GroupKey, tabLabel } from '@/features/schedule/dayTabs';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
 import { parseFlightNumber } from '@/lib/flights';
 
 interface AddPlaceSheetProps {
   tripId: ID;
-  /** Day (or inbox) the place is added to, at the end. */
-  target: DayTab;
+  /** Days and the inbox, for the day select. */
+  tabs: DayTab[];
+  /** The day (or inbox) chosen to begin with: the one being looked at. */
+  day: GroupKey;
   /** Where search looks first (`searchBias`). */
   bias: GeoPoint | null;
-  /** Opens the flight sheet for a flight number typed here. */
-  onFlight?: (number: string) => void;
+  /** Opens the flight sheet for a flight number typed here, and the day chosen. */
+  onFlight?: (number: string, date: LocalDate | null) => void;
+  /** After the place went in at the end of its day (or the inbox); the sheet closes. */
+  onAdded?: (date: LocalDate | null) => void;
   onClose: () => void;
 }
 
@@ -28,12 +32,23 @@ interface AddPlaceSheetProps {
 const BY_NAME = 'by-name';
 
 /**
- * Adds a place found by search (saved with its address and location), or by its name alone:
- * typed as is, or whenever search is unavailable (no API key, offline). Flights have a sheet of
- * their own: a flight number typed here (`KE723`) points to it, and isn't searched for.
+ * Adds a place, at the end of the day chosen (or the inbox): found by search (saved with its
+ * address and location), or by its name alone: typed as is, or whenever search is unavailable (no
+ * API key, offline). Flights have a sheet of their own: a flight number typed here (`KE723`)
+ * points to it, and isn't searched for.
  */
-export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPlaceSheetProps) {
+export function AddPlaceSheet({
+  tripId,
+  tabs,
+  day,
+  bias,
+  onFlight,
+  onAdded,
+  onClose,
+}: AddPlaceSheetProps) {
   const add = useScheduleStore((state) => state.add);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [groupKey, setGroupKey] = useState(day);
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string>();
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +59,12 @@ export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPl
   // A flight number isn't a place to search for (each search is billed).
   const search = usePlaceSearch(flightNumber ? '' : name, { kind: 'place', bias });
   const searchable = search.availability === 'ready';
+  const date = dateOf(groupKey);
+
+  // The name is typed first; on its own the sheet would focus its first control, the day.
+  useEffect(() => {
+    (formRef.current?.elements.namedItem('name') as HTMLElement | null)?.focus();
+  }, []);
 
   async function save(key: string, getPlace: () => Promise<PlaceSnapshot>) {
     setSaving(key);
@@ -58,7 +79,8 @@ export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPl
       return;
     }
     try {
-      await add({ tripId, date: target.date, place });
+      await add({ tripId, date, place });
+      onAdded?.(date);
       onClose();
     } catch (err) {
       console.error(err);
@@ -94,8 +116,25 @@ export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPl
 
   return (
     <BottomSheet open onClose={onClose} title="장소 추가">
-      <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4 px-3 pb-2">
-        <p className="-mt-1 text-sm text-gray-500">{tabLabel(target)}에 추가돼요.</p>
+      <form
+        ref={formRef}
+        noValidate
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-4 px-3 pb-2"
+      >
+        <SelectField
+          label="날짜"
+          name="day"
+          value={groupKey}
+          disabled={saving !== null}
+          onChange={(e) => setGroupKey(e.target.value)}
+        >
+          {tabs.map((tab) => (
+            <option key={tab.key} value={tab.key}>
+              {tabLabel(tab)}
+            </option>
+          ))}
+        </SelectField>
         <SearchUnavailableNote availability={search.availability} />
         <TextField
           label="장소 이름"
@@ -116,7 +155,7 @@ export function AddPlaceSheet({ tripId, target, bias, onFlight, onClose }: AddPl
           <button
             type="button"
             disabled={saving !== null}
-            onClick={() => onFlight(flightNumber)}
+            onClick={() => onFlight(flightNumber, date)}
             className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left active:bg-gray-50 disabled:text-gray-400"
           >
             <PlaneIcon width={20} height={20} className="shrink-0 text-brand-600" />
