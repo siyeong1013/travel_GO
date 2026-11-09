@@ -5,7 +5,10 @@ import type { GeoPoint } from '@/data/models';
 export interface FakeMap {
   container: HTMLElement;
   options: google.maps.MapOptions;
-  /** Every camera change: `{ bounds, padding }` from fitBounds, or moveCamera's options. */
+  /**
+   * Every camera change: `{ bounds, padding }` from fitBounds, moveCamera's options, or
+   * `{ panTo }`.
+   */
   cameras: unknown[];
 }
 
@@ -29,6 +32,8 @@ export interface FakeMapsApi {
   maps: FakeMap[];
   /** Markers on a map now (as `[number, title]`, in the order they were added). */
   markers: () => [string | null, string][];
+  /** The title of the marker up close now, if any. */
+  focused: () => string | null;
   /** Every line drawn. */
   lines: FakeLine[];
 }
@@ -40,17 +45,28 @@ export function fakeMapsApi(): FakeMapsApi {
 
   class Map implements FakeMap {
     cameras: unknown[] = [];
+    /** As a map fitted to a city would be (fitting doesn't say here). */
+    private zoom: number | undefined;
     constructor(
       public container: HTMLElement,
       public options: google.maps.MapOptions,
     ) {
+      this.zoom = options.zoom ?? undefined;
       maps.push(this);
     }
     fitBounds(bounds: google.maps.LatLngBoundsLiteral, padding: number) {
       this.cameras.push({ bounds, padding });
+      this.zoom = 12;
     }
     moveCamera(camera: google.maps.CameraOptions) {
       this.cameras.push(camera);
+      if (camera.zoom != null) this.zoom = camera.zoom;
+    }
+    panTo(center: GeoPoint) {
+      this.cameras.push({ panTo: center });
+    }
+    getZoom() {
+      return this.zoom;
     }
   }
 
@@ -83,6 +99,8 @@ export function fakeMapsApi(): FakeMapsApi {
     maps,
     markers: () =>
       markers.filter((marker) => marker.map != null).map((m) => [m.content.textContent, m.title]),
+    focused: () =>
+      markers.find((m) => m.map != null && m.content.dataset.focused !== undefined)?.title ?? null,
     lines,
   };
 }

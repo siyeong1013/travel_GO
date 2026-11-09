@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 import { describe, expect, it, vi } from 'vitest';
 import { routeStops } from '@/features/map/route';
-import { createRouteMap } from '@/features/map/routeMap';
+import { createRouteMap, FOCUS_ZOOM } from '@/features/map/routeMap';
 import { makeItem, makePlace } from '@/test/fixtures';
 import { fakeMapsApi } from '@/test/maps';
 
@@ -60,6 +60,37 @@ describe('route map', () => {
 
     routeMap.show(stops(['도톤보리', DOTONBORI], ['오사카성', CASTLE], ['우메다', UMEDA]));
     expect(api.maps[0]!.cameras).toHaveLength(2);
+  });
+
+  it('brings a stop up close, and the whole route back', () => {
+    const api = fakeMapsApi();
+    const routeMap = createRouteMap(document.createElement('div'), api.libraries);
+    const day = stops(['오사카성', CASTLE], ['도톤보리', DOTONBORI], ['우메다', UMEDA]);
+    routeMap.show(day);
+    const map = api.maps[0]!;
+    expect(api.focused()).toBeNull();
+
+    // From the whole route: near enough to see around it.
+    routeMap.focus(day[1]!.id);
+    expect(api.focused()).toBe('2번 도톤보리');
+    expect(map.cameras.at(-1)).toEqual({ center: DOTONBORI, zoom: FOCUS_ZOOM });
+    // Close already: sliding over.
+    routeMap.focus(day[2]!.id);
+    expect(api.focused()).toBe('3번 우메다');
+    expect(map.cameras.at(-1)).toEqual({ panTo: UMEDA });
+    const moves = map.cameras.length;
+    routeMap.focus(day[2]!.id);
+    // Redrawn in another order: still up close, the camera where it is.
+    routeMap.show([day[2]!, day[0]!, day[1]!].map((stop, i) => ({ ...stop, number: i + 1 })));
+    expect(api.focused()).toBe('1번 우메다');
+    expect(map.cameras).toHaveLength(moves);
+
+    routeMap.focus(null);
+    expect(api.focused()).toBeNull();
+    expect(map.cameras.at(-1)).toMatchObject({ padding: 24 });
+    // One that isn't on the map: the whole route still.
+    routeMap.focus('elsewhere');
+    expect(map.cameras).toHaveLength(moves + 1);
   });
 
   it('takes everything off the map when destroyed', () => {

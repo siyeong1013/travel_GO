@@ -8,6 +8,8 @@ import { Snackbar } from '@/components/ui/Snackbar';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
 import { DayMap } from '@/features/map/DayMap';
+import { useMapFocus } from '@/features/map/mapFocus';
+import { routeStops } from '@/features/map/route';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { searchBias } from '@/features/places/placeSearch';
 import { type AddedFlight, AddFlightSheet } from '@/features/schedule/AddFlightSheet';
@@ -34,7 +36,11 @@ interface Notice {
   undo?: () => Promise<void>;
 }
 
-/** Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". */
+/**
+ * Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". A day's map is
+ * pinned at the top with the tabs, and the list scrolls under it, the map following the places
+ * as they go by (`useMapFocus`).
+ */
 export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) {
   const { items, status, error, reload } = useSchedule(trip.id);
   const move = useScheduleStore((state) => state.move);
@@ -49,6 +55,9 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const [editingId, setEditingId] = useState<ID | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeCount = useRef(0);
+  const pinnedRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const idPrefix = useId();
   const panelId = `${idPrefix}-panel`;
 
@@ -62,6 +71,12 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const hasFlights = groupItems.some((item) => item.flight);
   const editing = items.find((item) => item.id === editingId);
   const bias = searchBias(trip, items);
+  // The inbox has no order, so no route.
+  const mapShown = status !== 'error' && groupItems.length > 0 && selectedDate !== null;
+  const focusedId = useMapFocus(
+    { pinned: pinnedRef, list: listRef, bar: barRef },
+    mapShown ? routeStops(groupItems).map((stop) => stop.id) : [],
+  );
 
   function select(key: GroupKey) {
     setParams(
@@ -147,17 +162,18 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   } else {
     content = (
       <>
-        {/* The inbox has no order, so no route. */}
-        {selectedTab.date !== null && <DayMap items={groupItems} />}
-        <ScheduleBoard
-          items={groupItems}
-          numbered={selectedTab.date !== null}
-          targets={tabs.filter((tab) => tab.key !== selected)}
-          onSelect={(item) => setEditingId(item.id)}
-          onDragStart={() => setNotice(null)}
-          onReorder={(item, index) => dropItem(item, item.date, index)}
-          onMoveToGroup={(item, target) => dropItem(item, target.date)}
-        />
+        <div ref={listRef}>
+          <ScheduleBoard
+            items={groupItems}
+            numbered={selectedTab.date !== null}
+            focusedId={focusedId}
+            targets={tabs.filter((tab) => tab.key !== selected)}
+            onSelect={(item) => setEditingId(item.id)}
+            onDragStart={() => setNotice(null)}
+            onReorder={(item, index) => dropItem(item, item.date, index)}
+            onMoveToGroup={(item, target) => dropItem(item, target.date)}
+          />
+        </div>
         {(hasGooglePlaces || hasFlights) && (
           <div className="-mt-2 flex flex-col items-end gap-1 px-4 pb-4">
             {hasGooglePlaces && <GoogleMapsAttribution />}
@@ -170,7 +186,10 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
 
   return (
     <>
-      <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-10 border-b border-gray-100 bg-white">
+      <div
+        ref={pinnedRef}
+        className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-10 border-b border-gray-100 bg-white"
+      >
         <DayTabs
           tabs={tabs}
           selected={selected}
@@ -178,6 +197,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
           idPrefix={idPrefix}
           panelId={panelId}
         />
+        {mapShown && <DayMap items={groupItems} focusedId={focusedId} />}
       </div>
       <section
         id={panelId}
@@ -188,7 +208,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
         {content}
       </section>
 
-      <BottomActionBar>
+      <BottomActionBar ref={barRef}>
         <div className="flex gap-2">
           <Button block className="min-w-0" onClick={() => setAdding({ flight: false })}>
             <PlusIcon width={20} height={20} className="shrink-0" />

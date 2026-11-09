@@ -36,6 +36,8 @@ interface ScheduleBoardProps {
   /** The shown group (a day or the inbox), in display order. */
   items: ScheduleItem[];
   numbered: boolean;
+  /** The item whose place the day's map shows up close, if any (`useMapFocus`). */
+  focusedId?: ID | null;
   /** Other groups, offered as drop targets while dragging. */
   targets: DayTab[];
   onSelect: (item: ScheduleItem) => void;
@@ -86,6 +88,7 @@ const screenReaderInstructions = {
 export function ScheduleBoard({
   items,
   numbered,
+  focusedId = null,
   targets,
   onSelect,
   onDragStart,
@@ -196,6 +199,7 @@ export function ScheduleBoard({
               key={item.id}
               item={item}
               number={numbers?.[index] ?? null}
+              focused={item.id === focusedId}
               joinedAbove={numbered && index > 0}
               joinedBelow={numbered && index < items.length - 1}
               leg={legs?.get(item.id)}
@@ -230,6 +234,7 @@ export function ScheduleBoard({
 function SortableItem({
   item,
   number,
+  focused,
   joinedAbove,
   joinedBelow,
   leg,
@@ -238,6 +243,7 @@ function SortableItem({
 }: {
   item: ScheduleItem;
   number: number | null;
+  focused: boolean;
   joinedAbove: boolean;
   joinedBelow: boolean;
   leg: RouteLeg | undefined;
@@ -257,12 +263,15 @@ function SortableItem({
   return (
     <li
       ref={setNodeRef}
+      // Where the map's place up close is read from (`useMapFocus`).
+      data-item-id={item.id}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={isDragging ? 'opacity-40' : undefined}
     >
       <ScheduleItemCard
         item={item}
         number={number}
+        focused={focused}
         joinedAbove={joinedAbove}
         joinedBelow={joinedBelow}
         leg={leg}

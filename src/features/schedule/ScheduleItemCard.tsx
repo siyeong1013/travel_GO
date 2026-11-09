@@ -12,6 +12,8 @@ interface ScheduleItemCardProps {
    * order, and for a flight, which shows a plane instead.
    */
   number: number | null;
+  /** Whether the day's map shows the item's place up close: its number has a halo. */
+  focused?: boolean;
   /** The day's timeline line to the item above, and to the one below. */
   joinedAbove?: boolean;
   joinedBelow?: boolean;
@@ -33,6 +35,7 @@ interface ScheduleItemCardProps {
 export function ScheduleItemCard({
   item,
   number,
+  focused = false,
   joinedAbove = false,
   joinedBelow = false,
   leg,
@@ -53,7 +56,9 @@ export function ScheduleItemCard({
         ) : number === null ? (
           <span className="relative mt-[23px] size-2.5 rounded-full bg-gray-300" />
         ) : (
-          <span className="relative mt-3.5 flex size-7 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white ring-4 ring-white">
+          <span
+            className={`relative mt-3.5 flex size-7 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white ring-4 transition-shadow ${focused ? 'ring-brand-100' : 'ring-white'}`}
+          >
             {number}
           </span>
         )}

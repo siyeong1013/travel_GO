@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import type { ScheduleItem } from '@/data/models';
+import type { ID, ScheduleItem } from '@/data/models';
 import { type RouteStop, routeStops, unplacedNumbers } from '@/features/map/route';
 import { createRouteMap, loadRouteMapLibraries, type RouteMap } from '@/features/map/routeMap';
 import { type SearchAvailability, useSearchAvailability } from '@/features/places/usePlaceSearch';
@@ -11,15 +11,22 @@ const NOTES: Record<Exclude<SearchAvailability, 'ready'>, string> = {
 
 /**
  * The day's places on a Google map, numbered like the list and joined in order by straight lines
- * (the list has the directions for each leg). Nothing when no item has a location.
+ * (the list has the directions for each leg), with the one in `focusedId` up close (`useMapFocus`).
+ * Nothing when no item has a location.
  */
-export function DayMap({ items }: { items: ScheduleItem[] }) {
+export function DayMap({ items, focusedId }: { items: ScheduleItem[]; focusedId: ID | null }) {
   const stops = routeStops(items);
   if (stops.length === 0) return null;
-  return <DayMapCard stops={stops} unplaced={unplacedNumbers(items)} />;
+  return <DayMapCard stops={stops} unplaced={unplacedNumbers(items)} focusedId={focusedId} />;
 }
 
-function DayMapCard({ stops, unplaced }: { stops: RouteStop[]; unplaced: number[] }) {
+interface DayMapCardProps {
+  stops: RouteStop[];
+  unplaced: number[];
+  focusedId: ID | null;
+}
+
+function DayMapCard({ stops, unplaced, focusedId }: DayMapCardProps) {
   const availability = useSearchAvailability();
   const container = useRef<HTMLDivElement>(null);
   const [routeMap, setRouteMap] = useState<RouteMap | null>(null);
@@ -53,8 +60,13 @@ function DayMapCard({ stops, unplaced }: { stops: RouteStop[]; unplaced: number[
     if (routeMap) draw(routeMap);
   }, [routeMap, stopsKey]);
 
+  // After drawing: the stop up close is among those drawn.
+  useEffect(() => {
+    routeMap?.focus(focusedId);
+  }, [routeMap, focusedId, stopsKey]);
+
   return (
-    <div className="px-4 pt-4">
+    <div className="px-4 pt-3 pb-3">
       {/* A map that has loaded stays when the connection drops (what it has drawn still shows). */}
       {routeMap === null && availability !== 'ready' ? (
         <p role="note" className="rounded-xl bg-gray-50 px-3 py-2.5 text-sm break-keep text-gray-600">
@@ -63,7 +75,8 @@ function DayMapCard({ stops, unplaced }: { stops: RouteStop[]; unplaced: number[
       ) : (
         <>
           <div
-            className={`relative h-48 overflow-hidden rounded-2xl bg-gray-100 ${loading ? 'animate-pulse motion-reduce:animate-none' : ''}`}
+            // Taller on taller screens; it stays on screen while the list scrolls under it.
+            className={`relative h-[clamp(12rem,30svh,16rem)] overflow-hidden rounded-2xl bg-gray-100 ${loading ? 'animate-pulse motion-reduce:animate-none' : ''}`}
           >
             <div ref={container} className="absolute inset-0" />
             {loading && (
