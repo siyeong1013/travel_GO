@@ -100,6 +100,17 @@ describe('scheduleStore', () => {
     expect(store.getState().items.map((item) => [item.order, item.place.name])).toEqual([[0, 'b']]);
   });
 
+  it('removes several items at once', async () => {
+    await store.getState().load(trip.id);
+    const a = await add('a');
+    await add('b');
+    const c = await add('c');
+
+    await store.getState().removeMany([a.id, c.id]);
+
+    expect(store.getState().items.map((item) => [item.order, item.place.name])).toEqual([[0, 'b']]);
+  });
+
   it('ignores a late answer for a trip it already switched away from', async () => {
     await add('from the first trip');
     const other = await repos.trips.create({ ...trip, title: '다른 여행' });

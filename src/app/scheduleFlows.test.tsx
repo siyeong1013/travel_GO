@@ -46,10 +46,8 @@ describe('schedule flows', () => {
       await findCard(name);
     }
     expect(cards()).toEqual(['1오사카성', '2도톤보리']);
-    expect(screen.getByRole('button', { name: '오사카성 순서 바꾸기' })).toHaveAttribute(
-      'aria-roledescription',
-      '순서 바꾸기',
-    );
+    // Out of the edit mode, no drag handles.
+    expect(screen.queryByRole('button', { name: /순서 바꾸기$/ })).not.toBeInTheDocument();
 
     // Time and memo
     await user.click(card('오사카성'));
@@ -157,6 +155,106 @@ describe('schedule flows', () => {
     await user.click(screen.getByRole('button', { name: '되돌리기' }));
     await waitFor(() => expect(cards()).toEqual(['1오사카성', '2구로몬 시장', '3도톤보리']));
     expect(screen.queryByText('구로몬 시장을 Day 3으로 옮겼어요.')).not.toBeInTheDocument();
+  });
+
+  it('picks items in the edit mode, and deletes them together', async () => {
+    const add = (name: string, date: string | null = '2026-11-10') =>
+      repositories.schedule.create({
+        tripId: trip.id,
+        date,
+        place: { placeId: null, name, address: null, location: null, fetchedAt: null },
+      });
+    for (const name of ['오사카성', '구로몬 시장', '도톤보리', '신세카이']) await add(name);
+    await add('편의점', null);
+    const { router, user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
+    await findCard('오사카성');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+    // The pencil: boxes to pick, handles to drag, and the delete button for the add ones.
+    await user.click(screen.getByRole('button', { name: '일정 편집' }));
+    expect(router.state.location.search).toBe('?day=2026-11-10&edit=1');
+    expect(screen.getAllByRole('checkbox').map((box) => box.getAttribute('aria-label'))).toEqual([
+      '오사카성',
+      '구로몬 시장',
+      '도톤보리',
+      '신세카이',
+    ]);
+    expect(screen.getByRole('button', { name: '오사카성 순서 바꾸기' })).toHaveAttribute(
+      'aria-roledescription',
+      '순서 바꾸기',
+    );
+    expect(screen.queryByRole('button', { name: '장소 추가' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '삭제' })).toBeDisabled();
+
+    // A tap on a card picks it (no edit sheet); the box too.
+    await user.click(screen.getByText('구로몬 시장'));
+    await user.click(screen.getByRole('checkbox', { name: '신세카이' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: '일정 2개 삭제' }));
+    const confirm = await screen.findByRole('dialog', { name: '일정 2개를 삭제할까요?' });
+    expect(confirm).toHaveTextContent('구로몬 시장, 신세카이. 되돌릴 수 없어요.');
+    await user.click(within(confirm).getByRole('button', { name: '삭제' }));
+    // Picking, the numbers are in the cards.
+    await waitFor(() => expect(cards()).toEqual(['1오사카성', '2도톤보리']));
+    expect(await screen.findByText('일정 2개를 삭제했어요.')).toBeInTheDocument();
+    expect((await repositories.schedule.listByTrip(trip.id)).map((i) => i.place.name)).toEqual([
+      '오사카성',
+      '도톤보리',
+      '편의점',
+    ]);
+
+    // The whole day at once, and back.
+    await user.click(screen.getByRole('button', { name: 'Day 1 전체 선택' }));
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Day 1 전체 해제' }));
+    expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
+
+    // Another day starts with none picked; done, the cards open again.
+    await user.click(screen.getByRole('checkbox', { name: '도톤보리' }));
+    await user.click(screen.getByRole('tab', { name: /보관함/ }));
+    expect(await screen.findByRole('checkbox', { name: '편의점' })).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: '완료' }));
+    expect(router.state.location.search).toBe('?day=inbox');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '장소 추가' })).toBeInTheDocument();
+    await user.click(card('편의점'));
+    expect(await screen.findByRole('dialog', { name: '일정 편집' })).toBeInTheDocument();
+  });
+
+  it('starts the edit mode with the item a finger holds picked, and leaves it on the ledger', async () => {
+    for (const name of ['오사카성', '도톤보리']) {
+      await repositories.schedule.create({
+        tripId: trip.id,
+        date: '2026-11-10',
+        place: { placeId: null, name, address: null, location: null, fetchedAt: null },
+      });
+    }
+    const { router, user } = renderApp(`/trips/${trip.id}?day=2026-11-10`);
+    const castle = await findCard('오사카성');
+
+    // A quick touch is a tap: nothing yet. Held, the edit mode, the item picked.
+    const held = { touches: [{ clientX: 10, clientY: 10 }] };
+    fireEvent.touchStart(castle, held);
+    fireEvent.touchEnd(castle);
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    fireEvent.touchStart(castle, held);
+    expect(await screen.findByRole('checkbox', { name: '오사카성' })).toBeChecked();
+    // The click the finger may end with does not take the pick back.
+    fireEvent.touchEnd(window);
+    fireEvent.click(screen.getByText('오사카성'));
+    expect(screen.getByRole('checkbox', { name: '오사카성' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '도톤보리' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '일정 1개 삭제' })).toBeEnabled();
+
+    // The ledger has no edit mode, and coming back leaves it.
+    await user.click(screen.getByRole('link', { name: '가계부' }));
+    expect(router.state.location.search).toBe('?day=2026-11-10&tab=expenses');
+    expect(screen.queryByRole('button', { name: '일정 편집' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: '일정' }));
+    expect(await findCard('오사카성')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('switches days with the arrow keys', async () => {

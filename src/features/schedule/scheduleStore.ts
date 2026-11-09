@@ -26,6 +26,8 @@ export interface ScheduleState {
   add: (input: NewScheduleItem) => Promise<ScheduleItem>;
   update: (id: ID, patch: ScheduleItemPatch) => Promise<ScheduleItem>;
   remove: (id: ID) => Promise<void>;
+  /** Several items at once (the schedule's edit mode). */
+  removeMany: (ids: ID[]) => Promise<void>;
   /** Shown immediately, then saved; the list is re-read afterwards (rolls back on failure). */
   move: (id: ID, to: ScheduleMoveTarget) => Promise<void>;
   /** Saves freshly fetched Google data of the trip's places; re-reads if it is the held trip. */
@@ -85,6 +87,12 @@ export function createScheduleStore(repos: Pick<Repositories, 'schedule'>) {
       async remove(id) {
         const { tripId } = get();
         await repos.schedule.delete(id);
+        if (tripId) await refresh(tripId);
+      },
+
+      async removeMany(ids) {
+        const { tripId } = get();
+        await repos.schedule.deleteMany(ids);
         if (tripId) await refresh(tripId);
       },
 

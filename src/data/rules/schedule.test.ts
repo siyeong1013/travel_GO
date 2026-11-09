@@ -92,10 +92,19 @@ describe('planAppend / planRemove', () => {
 
   it('closes the gap left by a removed item', () => {
     const items = sampleItems();
-    const changed = planRemove(items, 'a', NOW);
+    const changed = planRemove(items, ['a'], NOW);
     const rest = items.filter((item) => item.id !== 'a');
 
     expect(layout(rest, changed)[DAY1]).toEqual(['b', 'c']);
+  });
+
+  it('closes the gaps left by several, in each of their groups', () => {
+    const items = sampleItems();
+    const changed = planRemove(items, ['b', 'a', 'x', 'nope'], NOW);
+    const rest = items.filter((item) => !['a', 'b', 'x'].includes(item.id));
+
+    expect(layout(rest, changed)).toEqual({ [DAY1]: ['c'], inbox: ['i'] });
+    expect(changed.map((item) => item.id)).toEqual(['c']);
   });
 });
 

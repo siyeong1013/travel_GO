@@ -38,6 +38,8 @@ export interface ScheduleRepository {
   update(id: ID, patch: ScheduleItemPatch): Promise<ScheduleItem>;
   /** Closes the gap in the remaining order. No-op if the item does not exist. */
   delete(id: ID): Promise<void>;
+  /** `delete` for several items at once (one change); those that don't exist are skipped. */
+  deleteMany(ids: ID[]): Promise<void>;
   /** Reorders within a group or moves between days/inbox; renumbers both groups. */
   move(id: ID, to: ScheduleMoveTarget): Promise<void>;
   /**

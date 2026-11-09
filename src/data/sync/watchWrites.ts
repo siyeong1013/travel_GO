@@ -3,7 +3,7 @@ import type { Repositories } from '@/data/repositories';
 /** What changes the app's data. Refreshing or expiring Google's place data isn't an edit. */
 const WRITES: { [K in keyof Repositories]: (keyof Repositories[K])[] } = {
   trips: ['create', 'update', 'delete'],
-  schedule: ['create', 'update', 'delete', 'move'],
+  schedule: ['create', 'update', 'delete', 'deleteMany', 'move'],
   companions: ['create', 'rename', 'claim', 'delete'],
   expenses: ['create', 'update', 'delete'],
   settlements: ['create', 'delete'],

@@ -64,14 +64,16 @@ export function planMove(
   return sameGroup ? changed : [...changed, ...assignOrder(source, item.date, now)];
 }
 
-/** Renumbers the rest of the removed item's group. Does not include the removed item. */
-export function planRemove(tripItems: ScheduleItem[], id: ID, now: ISODateTime): ScheduleItem[] {
-  const item = tripItems.find((i) => i.id === id);
-  if (!item) return [];
-  return assignOrder(
-    itemsOn(tripItems, item.date).filter((i) => i.id !== id),
-    item.date,
-    now,
+/** Renumbers the rest of the removed items' groups. Does not include the removed items. */
+export function planRemove(tripItems: ScheduleItem[], ids: ID[], now: ISODateTime): ScheduleItem[] {
+  const removed = new Set(ids);
+  const groups = new Set(tripItems.filter((i) => removed.has(i.id)).map((i) => i.date));
+  return [...groups].flatMap((date) =>
+    assignOrder(
+      itemsOn(tripItems, date).filter((i) => !removed.has(i.id)),
+      date,
+      now,
+    ),
   );
 }
 

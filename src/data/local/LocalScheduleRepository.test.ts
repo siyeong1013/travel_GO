@@ -145,6 +145,20 @@ describe('LocalScheduleRepository', () => {
 
     expect(await layout()).toEqual({ [DAY1]: ['b', 'c'] });
   });
+
+  it('deletes several at once, across days, closing the gaps; missing ones are skipped', async () => {
+    const a = await add(DAY1, 'a');
+    await add(DAY1, 'b');
+    const c = await add(DAY1, 'c');
+    const x = await add(DAY2, 'x');
+    await add(DAY2, 'y');
+    await add(null, 'inbox');
+
+    await repos.schedule.deleteMany([c.id, a.id, x.id, newId()]);
+    await repos.schedule.deleteMany([]);
+
+    expect(await layout()).toEqual({ [DAY1]: ['b'], [DAY2]: ['y'], inbox: ['inbox'] });
+  });
 });
 
 // The test clock starts at 2026-01-01T00:00:00Z.

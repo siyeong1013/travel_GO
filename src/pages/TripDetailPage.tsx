@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { iconButtonClass, iconButtonOnCoverClass } from '@/components/ui/buttonClass';
+import { PencilIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { ID } from '@/data/models';
 import { TripExpenses } from '@/features/expenses/TripExpenses';
@@ -14,7 +15,7 @@ import { TripCover } from '@/features/trips/TripCover';
 import { TripNotFound } from '@/features/trips/TripNotFound';
 import { TripPageHeader } from '@/features/trips/TripPageHeader';
 import { useTripStore } from '@/features/trips/tripStore';
-import { viewOf } from '@/features/trips/tripView';
+import { editingOf, viewOf, withEditing } from '@/features/trips/tripView';
 import { TripViewTabs } from '@/features/trips/TripViewTabs';
 import { useTrips } from '@/features/trips/useTrips';
 import { toLocalDate } from '@/lib/dates';
@@ -23,7 +24,7 @@ import { useScrolledPast } from '@/lib/useScrolledPast';
 export function TripDetailPage() {
   const { tripId } = useParams();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const { trips, status } = useTrips();
   // Both halves load up front: the delete confirmation counts items and expenses.
   const { items, status: itemsStatus } = useSchedule(tripId);
@@ -62,6 +63,9 @@ export function TripDetailPage() {
 
   const today = toLocalDate();
   const view = viewOf(params);
+  const editMode = editingOf(params);
+  const setEditMode = (on: boolean) =>
+    setParams((current) => withEditing(current, on), { replace: true });
 
   return (
     <>
@@ -71,13 +75,37 @@ export function TripDetailPage() {
         solid={solid}
         showTitle={showTitle}
         right={
-          <TripActions
-            trip={trip}
-            itemCount={items.length}
-            expenseCount={expenses.length}
-            onDelete={() => deleteTrip(trip.id)}
-            buttonClassName={solid ? iconButtonClass : iconButtonOnCoverClass}
-          />
+          <>
+            {/* The schedule's edit mode: pick items to delete, drag them by their handles. */}
+            {view === 'schedule' &&
+              (editMode ? (
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  className={`flex h-11 shrink-0 items-center rounded-full px-3 font-semibold transition-colors ${
+                    solid ? 'text-brand-600 active:bg-gray-100' : 'text-white active:bg-white/20'
+                  }`}
+                >
+                  완료
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label="일정 편집"
+                  onClick={() => setEditMode(true)}
+                  className={solid ? iconButtonClass : iconButtonOnCoverClass}
+                >
+                  <PencilIcon />
+                </button>
+              ))}
+            <TripActions
+              trip={trip}
+              itemCount={items.length}
+              expenseCount={expenses.length}
+              onDelete={() => deleteTrip(trip.id)}
+              buttonClassName={solid ? iconButtonClass : iconButtonOnCoverClass}
+            />
+          </>
         }
       />
       <main className="flex flex-1 flex-col">

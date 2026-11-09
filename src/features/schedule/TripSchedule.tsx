@@ -2,8 +2,9 @@ import { useId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
+import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PlaneIcon, PlusIcon } from '@/components/ui/icons';
+import { PlaneIcon, PlusIcon, TrashIcon } from '@/components/ui/icons';
 import { Snackbar } from '@/components/ui/Snackbar';
 import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
@@ -28,6 +29,8 @@ import { FlightDataCredit } from '@/features/schedule/FlightResults';
 import { ScheduleBoard } from '@/features/schedule/ScheduleBoard';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { useSchedule } from '@/features/schedule/useSchedule';
+import { editingOf, withEditing } from '@/features/trips/tripView';
+import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
 
 interface Notice {
@@ -40,11 +43,16 @@ interface Notice {
  * Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". A day's map is
  * pinned at the top with the tabs, and the list scrolls under it, the map following the places
  * as they go by (`useMapFocus`).
+ *
+ * The edit mode (`?edit=1`, from the header's pencil or a long press on an item) picks items to
+ * delete together, and drags them by their handles; a tap on an item picks it there.
  */
 export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) {
   const { items, status, error, reload } = useSchedule(trip.id);
   const move = useScheduleStore((state) => state.move);
+  const removeMany = useScheduleStore((state) => state.removeMany);
   const [params, setParams] = useSearchParams();
+  const editMode = editingOf(params);
   /**
    * The sheet open: a place for a day it chooses, the selected one to begin with, or flights for
    * their own days (`typed`: a flight number typed as a place, and the day chosen there).
@@ -71,6 +79,19 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const hasFlights = groupItems.some((item) => item.flight);
   const editing = items.find((item) => item.id === editingId);
   const bias = searchBias(trip, items);
+  // Picked in the edit mode: of the group shown when they were (another tab starts afresh).
+  const [picks, setPicks] = useState<{ group: GroupKey; ids: ID[] }>({ group: selected, ids: [] });
+  const [wasEditing, setWasEditing] = useState(editMode);
+  if (wasEditing !== editMode) {
+    setWasEditing(editMode);
+    if (!editMode) setPicks({ group: selected, ids: [] });
+  }
+  const picked =
+    editMode && picks.group === selected
+      ? groupItems.filter((item) => picks.ids.includes(item.id))
+      : [];
+  const allPicked = groupItems.length > 0 && picked.length === groupItems.length;
+  const [deleting, setDeleting] = useState<{ busy: boolean; error: string | null } | null>(null);
   // The inbox has no order, so no route.
   const mapShown = status !== 'error' && groupItems.length > 0 && selectedDate !== null;
   const focusedId = useMapFocus(
@@ -87,6 +108,34 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       },
       { replace: true },
     );
+  }
+
+  /** Into the edit mode with `ids` picked (a long-pressed item), or out of it. */
+  function setEditMode(on: boolean, ids: ID[] = []) {
+    setParams((current) => withEditing(current, on), { replace: true });
+    setPicks({ group: selected, ids });
+  }
+
+  function pick(item: ScheduleItem) {
+    const ids = picked.map((i) => i.id);
+    setPicks({
+      group: selected,
+      ids: ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id],
+    });
+  }
+
+  async function deletePicked() {
+    const ids = picked.map((item) => item.id);
+    setDeleting({ busy: true, error: null });
+    try {
+      await removeMany(ids);
+      setDeleting(null);
+      setPicks({ group: selected, ids: [] });
+      notify(`${josa(`일정 ${ids.length}개`, '을/를')} 삭제했어요.`);
+    } catch (err) {
+      console.error(err);
+      setDeleting({ busy: false, error: errorMessage(err) });
+    }
   }
 
   function notify(message: string, undo?: () => Promise<void>) {
@@ -168,12 +217,30 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
             numbered={selectedTab.date !== null}
             focusedId={focusedId}
             targets={tabs.filter((tab) => tab.key !== selected)}
+            picked={editMode ? new Set(picked.map((item) => item.id)) : null}
+            onPick={pick}
+            onLongPress={(item) => {
+              if (!editMode) setEditMode(true, [item.id]);
+            }}
             onSelect={(item) => setEditingId(item.id)}
             onDragStart={() => setNotice(null)}
             onReorder={(item, index) => dropItem(item, item.date, index)}
             onMoveToGroup={(item, target) => dropItem(item, target.date)}
           />
         </div>
+        {editMode && (
+          <div className="px-4 pb-4">
+            <Button
+              variant="secondary"
+              block
+              onClick={() =>
+                setPicks({ group: selected, ids: allPicked ? [] : groupItems.map((i) => i.id) })
+              }
+            >
+              {selectedTab.title} {allPicked ? '전체 해제' : '전체 선택'}
+            </Button>
+          </div>
+        )}
         {(hasGooglePlaces || hasFlights) && (
           <div className="-mt-2 flex flex-col items-end gap-1 px-4 pb-4">
             {hasGooglePlaces && <GoogleMapsAttribution />}
@@ -209,22 +276,51 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       </section>
 
       <BottomActionBar ref={barRef}>
-        <div className="flex gap-2">
-          <Button block className="min-w-0" onClick={() => setAdding({ flight: false })}>
-            <PlusIcon width={20} height={20} className="shrink-0" />
-            <span className="truncate">장소 추가</span>
-          </Button>
+        {editMode ? (
           <Button
-            variant="secondary"
-            aria-label="항공편 추가"
-            className="shrink-0 px-4"
-            onClick={() => setAdding({ flight: true })}
+            variant="danger"
+            block
+            disabled={picked.length === 0}
+            onClick={() => setDeleting({ busy: false, error: null })}
           >
-            <PlaneIcon width={20} height={20} />
-            항공편
+            <TrashIcon width={20} height={20} className="shrink-0" />
+            {picked.length > 0 ? `일정 ${picked.length}개 삭제` : '삭제'}
           </Button>
-        </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button block className="min-w-0" onClick={() => setAdding({ flight: false })}>
+              <PlusIcon width={20} height={20} className="shrink-0" />
+              <span className="truncate">장소 추가</span>
+            </Button>
+            <Button
+              variant="secondary"
+              aria-label="항공편 추가"
+              className="shrink-0 px-4"
+              onClick={() => setAdding({ flight: true })}
+            >
+              <PlaneIcon width={20} height={20} />
+              항공편
+            </Button>
+          </div>
+        )}
       </BottomActionBar>
+      <ConfirmSheet
+        open={deleting !== null}
+        title={
+          picked.length === 1
+            ? `'${picked[0]!.place.name}' 일정을 삭제할까요?`
+            : `${josa(`일정 ${picked.length}개`, '을/를')} 삭제할까요?`
+        }
+        description={
+          picked.length > 1 ? `${namesOf(picked)}. 되돌릴 수 없어요.` : '되돌릴 수 없어요.'
+        }
+        confirmLabel="삭제"
+        tone="danger"
+        busy={deleting?.busy}
+        error={deleting?.error}
+        onConfirm={() => void deletePicked()}
+        onClose={() => setDeleting(null)}
+      />
 
       {adding?.flight === false && (
         <AddPlaceSheet
@@ -270,6 +366,12 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       )}
     </>
   );
+}
+
+/** The items' names, the first three and how many more: `오사카성, 도톤보리, 쿠로몬 시장 외 2개`. */
+function namesOf(items: ScheduleItem[]): string {
+  const names = items.slice(0, 3).map((item) => item.place.name).join(', ');
+  return items.length > 3 ? `${names} 외 ${items.length - 3}개` : names;
 }
 
 function ListSkeleton() {

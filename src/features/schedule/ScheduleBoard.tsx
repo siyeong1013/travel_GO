@@ -40,6 +40,13 @@ interface ScheduleBoardProps {
   focusedId?: ID | null;
   /** Other groups, offered as drop targets while dragging. */
   targets: DayTab[];
+  /**
+   * The edit mode's picked items; null out of it. Only in it can items be picked and dragged (by
+   * their handles); out of it a tap opens an item, and a long press starts the edit mode.
+   */
+  picked: ReadonlySet<ID> | null;
+  onPick: (item: ScheduleItem) => void;
+  onLongPress: (item: ScheduleItem) => void;
   onSelect: (item: ScheduleItem) => void;
   onDragStart?: () => void;
   /** Same group, final position `index`. */
@@ -81,15 +88,18 @@ const screenReaderInstructions = {
 };
 
 /**
- * Sortable list of one group. Drag by the handle: mouse right away, touch after a 200ms
- * hold (a quick swipe still scrolls), keyboard with Space + arrows. While a pointer drag is
- * active, `MoveDock` offers the other days and the inbox.
+ * Sortable list of one group. In the edit mode, drag by the handle: mouse right away, touch after
+ * a 200ms hold (a quick swipe still scrolls), keyboard with Space + arrows. While a pointer drag
+ * is active, `MoveDock` offers the other days and the inbox.
  */
 export function ScheduleBoard({
   items,
   numbered,
   focusedId = null,
   targets,
+  picked,
+  onPick,
+  onLongPress,
   onSelect,
   onDragStart,
   onReorder,
@@ -97,8 +107,11 @@ export function ScheduleBoard({
 }: ScheduleBoardProps) {
   const [active, setActive] = useState<{ id: ID; byPointer: boolean } | null>(null);
   const [hovered, setHovered] = useState<GroupKey | null>(null);
+  /** Whether the dock shows its days: the finger has reached it (see `MoveDock`). */
+  const [dockOpen, setDockOpen] = useState(false);
   const pointer = useRef<Point | null>(null);
   const dockRef = useRef<HTMLDivElement>(null);
+  const dockGridRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -131,9 +144,10 @@ export function ScheduleBoard({
     return targets.find((target) => target.key === cell?.dataset.dropGroup) ?? null;
   }
 
-  // Over the dock nothing in the list is a target, so the list stops making room.
+  // Over the dock's days nothing in the list is a target, so the list stops making room. Over its
+  // bar the list still answers, so letting go there drops the item where it was headed.
   const collisionDetection: CollisionDetection = (args) =>
-    contains(dockRef.current, pointer.current) ? [] : closestCenter(args);
+    contains(dockGridRef.current, pointer.current) ? [] : closestCenter(args);
 
   function handleDragStart({ active: dragged, activatorEvent }: DragStartEvent) {
     pointer.current = getEventCoordinates(activatorEvent);
@@ -145,6 +159,7 @@ export function ScheduleBoard({
   function finish() {
     setActive(null);
     setHovered(null);
+    setDockOpen(false);
     pointer.current = null;
   }
 
@@ -187,7 +202,11 @@ export function ScheduleBoard({
       collisionDetection={collisionDetection}
       accessibility={{ announcements, screenReaderInstructions }}
       onDragStart={handleDragStart}
-      onDragMove={() => setHovered(targetAt(pointer.current)?.key ?? null)}
+      onDragMove={() => {
+        // Opened by the finger reaching the bar, closed by it leaving the days again.
+        setDockOpen(contains(dockRef.current, pointer.current));
+        setHovered(targetAt(pointer.current)?.key ?? null);
+      }}
       onDragEnd={handleDragEnd}
       onDragCancel={finish}
     >
@@ -204,14 +223,22 @@ export function ScheduleBoard({
               joinedBelow={numbered && index < items.length - 1}
               leg={legs?.get(item.id)}
               legHidden={active !== null}
+              pick={picked && { checked: picked.has(item.id), onChange: () => onPick(item) }}
               onSelect={() => onSelect(item)}
+              onLongPress={() => onLongPress(item)}
             />
           ))}
         </ol>
       </SortableContext>
 
       {active?.byPointer && targets.length > 0 && (
-        <MoveDock ref={dockRef} targets={targets} hovered={hovered} />
+        <MoveDock
+          ref={dockRef}
+          gridRef={dockGridRef}
+          targets={targets}
+          hovered={hovered}
+          open={dockOpen}
+        />
       )}
 
       {createPortal(
@@ -239,7 +266,9 @@ function SortableItem({
   joinedBelow,
   leg,
   legHidden,
+  pick,
   onSelect,
+  onLongPress,
 }: {
   item: ScheduleItem;
   number: number | null;
@@ -248,7 +277,9 @@ function SortableItem({
   joinedBelow: boolean;
   leg: RouteLeg | undefined;
   legHidden: boolean;
+  pick: { checked: boolean; onChange: () => void } | null;
   onSelect: () => void;
+  onLongPress: () => void;
 }) {
   const {
     attributes,
@@ -276,7 +307,9 @@ function SortableItem({
         joinedBelow={joinedBelow}
         leg={leg}
         legHidden={legHidden}
+        pick={pick}
         onClick={onSelect}
+        onLongPress={onLongPress}
         handle={
           <button
             ref={setActivatorNodeRef}

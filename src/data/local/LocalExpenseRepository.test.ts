@@ -196,6 +196,18 @@ describe('LocalExpenseRepository', () => {
     const [after] = await repos.expenses.listByTrip(trip.id);
     expect(after).toMatchObject({ id: ticket.id, scheduleItemId: null });
   });
+
+  it('keeps the expenses of several schedule items deleted at once, unlinked', async () => {
+    const place = (name: string) =>
+      repos.schedule.create({ tripId: trip.id, date: null, place: makePlace(name) });
+    const [usj, castle, kept] = [await place('USJ'), await place('오사카성'), await place('도톤보리')];
+    for (const item of [usj, castle, kept]) await repos.expenses.create(input({ scheduleItemId: item.id }));
+
+    await repos.schedule.deleteMany([usj.id, castle.id]);
+
+    const links = (await repos.expenses.listByTrip(trip.id)).map((e) => e.scheduleItemId);
+    expect(links.sort()).toEqual([kept.id, null, null].sort());
+  });
 });
 
 describe('trip settings and cleanup', () => {

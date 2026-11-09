@@ -26,6 +26,21 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
     return current;
   }
 
+  /** Deletes the items there are, closes the gaps in their groups and unlinks their expenses. */
+  function deleteItems(ids: ID[]): Promise<void> {
+    return db.transaction('rw', db.scheduleItems, db.expenses, async () => {
+      const found = (await db.scheduleItems.bulkGet(ids)).filter((item) => item !== undefined);
+      if (found.length === 0) return;
+      const timestamp = now();
+      const removed = found.map((item) => item.id);
+      for (const tripId of new Set(found.map((item) => item.tripId))) {
+        await db.scheduleItems.bulkPut(planRemove(await itemsOfTrip(tripId), removed, timestamp));
+      }
+      await db.scheduleItems.bulkDelete(removed);
+      await unlinkExpenses(db, removed, timestamp);
+    });
+  }
+
   function assertDateInTrip(trip: Trip, date: LocalDate | null) {
     if (date === null) return;
     if (!isLocalDate(date) || !isDateInRange(date, trip.startDate, trip.endDate)) {
@@ -86,17 +101,9 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
       });
     },
 
-    delete(id) {
-      return db.transaction('rw', db.scheduleItems, db.expenses, async () => {
-        const item = await db.scheduleItems.get(id);
-        if (!item) return;
-        const timestamp = now();
-        const changed = planRemove(await itemsOfTrip(item.tripId), id, timestamp);
-        await db.scheduleItems.delete(id);
-        await db.scheduleItems.bulkPut(changed);
-        await unlinkExpenses(db, [id], timestamp);
-      });
-    },
+    delete: (id) => deleteItems([id]),
+
+    deleteMany: deleteItems,
 
     move(id, to) {
       return db.transaction('rw', db.trips, db.scheduleItems, async () => {
