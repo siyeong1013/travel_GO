@@ -39,7 +39,7 @@ const expense = (payer: Companion, amount: number): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: payer.id,
+  payerIds: [payer.id],
   splitMethod: 'equal',
   participants: [me, chulsoo, younghee].map((c) => ({ companionId: c.id, value: null })),
   memo: '',

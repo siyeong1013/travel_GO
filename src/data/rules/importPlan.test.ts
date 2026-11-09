@@ -75,7 +75,7 @@ describe('planImport (merge)', () => {
   describe('expenses and their shares', () => {
     const trip = makeTrip({ id: 't' });
     const me = makeMeCompanion('t', OLD);
-    const local = makeExpense({ id: 'e', tripId: 't', payerId: me.id, amount: 10_000, updatedAt: OLD }, [
+    const local = makeExpense({ id: 'e', tripId: 't', payerIds: [me.id], amount: 10_000, updatedAt: OLD }, [
       { companionId: me.id, weight: 1, amount: 10_000 },
     ]);
     const data = (expense: typeof local) => {

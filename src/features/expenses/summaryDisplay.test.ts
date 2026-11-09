@@ -14,7 +14,7 @@ const me = makeCompanion({ tripId: trip.id, name: '나', isMe: true, order: 0 })
 
 /** A personal expense of "나" in won. */
 const spend = (amount: number, extra: Partial<Expense>) =>
-  makeExpense({ tripId: trip.id, payerId: me.id, amount, ...extra }, [
+  makeExpense({ tripId: trip.id, payerIds: [me.id], amount, ...extra }, [
     { companionId: me.id, weight: 1, amount },
   ]);
 

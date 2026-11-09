@@ -9,20 +9,22 @@ const me = makeCompanion({ id: 'me', tripId: 't', name: '나', isMe: true, order
 const a = makeCompanion({ id: 'a', tripId: 't', name: '철수', order: 1 });
 const b = makeCompanion({ id: 'b', tripId: 't', name: '영희', order: 2 });
 
+/** Paid by one person (or several, in equal parts), split equally. */
 function expense(
-  payerId: string,
+  payers: string | string[],
   amount: number,
   participantIds: string[],
   extra: Partial<Expense> = {},
 ) {
+  const payerIds = typeof payers === 'string' ? [payers] : payers;
   const split = splitExpense(
     amount,
-    payerId,
+    payerIds,
     'equal',
     participantIds.map((companionId) => ({ companionId, value: null })),
   );
   if (!split.ok) throw new Error('bad split');
-  return makeExpense({ tripId: 't', payerId, amount, ...extra }, split.shares);
+  return makeExpense({ tripId: 't', payerIds, amount, ...extra }, split.shares);
 }
 
 const settlement = (fromId: string, toId: string, amount: number): Settlement => ({
@@ -54,6 +56,12 @@ describe('convertExpense', () => {
     expect(Object.fromEntries(converted.owed)).toEqual({ me: 3030, a: 3010, b: 3010 });
   });
 
+  it('divides what was paid equally among several payers, the remainder on the one sharing', () => {
+    const converted = convertExpense(expense(['a', 'me'], 10_001, ['me', 'b']), 'KRW')!;
+    expect(Object.fromEntries(converted.paid)).toEqual({ a: 5000, me: 5001 });
+    expect(Object.fromEntries(converted.owed)).toEqual({ me: 5001, b: 5000 });
+  });
+
   it('cannot convert with a rate for another currency', () => {
     const usdRate = expense('me', 1000, ['me'], {
       currency: 'JPY',
@@ -64,6 +72,14 @@ describe('convertExpense', () => {
 });
 
 describe('buildLedger', () => {
+  it('leaves nothing owed when one paid and the other gave them half: both paid', () => {
+    const ledger = buildLedger(trip, [me, a], [expense(['me', 'a'], 1_000_000, ['me', 'a'])], []);
+    expect(ledger.balances.map(({ paid, spent, balance }) => [paid, spent, balance])).toEqual([
+      [500_000, 500_000, 0],
+      [500_000, 500_000, 0],
+    ]);
+  });
+
   it('totals by category and date, and balances add up to zero', () => {
     const ledger = buildLedger(
       trip,

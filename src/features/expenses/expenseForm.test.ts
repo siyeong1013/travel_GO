@@ -11,7 +11,7 @@ import {
   toFormValues,
   validateExpenseForm,
   withCurrency,
-  withSplitMethod,
+  withSplit,
 } from '@/features/expenses/expenseForm';
 import { makeCompanion, makeExpense, makeItem, makeTrip } from '@/test/fixtures';
 
@@ -21,11 +21,13 @@ const chulsoo = makeCompanion({ tripId: trip.id, name: '철수', order: 1 });
 const younghee = makeCompanion({ tripId: trip.id, name: '영희', order: 2 });
 const companions = [me, chulsoo, younghee];
 
-const blank = () => newExpenseValues({ trip, companions, expenses: [], today: '2026-11-11' });
+const blank = () => newExpenseValues({ trip, expenses: [], today: '2026-11-11' });
 const filled = (overrides: Partial<ExpenseFormValues> = {}): ExpenseFormValues => ({
   ...blank(),
   amount: '10,000',
   category: 'food',
+  payerIds: [me.id],
+  participantIds: companions.map((c) => c.id),
   ...overrides,
 });
 
@@ -33,7 +35,7 @@ const jpy = (createdAt: string, rate: string, quote = 'KRW'): ExpenseWithShares 
   makeExpense(
     {
       tripId: trip.id,
-      payerId: me.id,
+      payerIds: [me.id],
       amount: 1_000,
       currency: 'JPY',
       paymentMethod: 'cash',
@@ -44,25 +46,25 @@ const jpy = (createdAt: string, rate: string, quote = 'KRW'): ExpenseWithShares 
   );
 
 describe('newExpenseValues', () => {
-  it('starts with "나" paying, everyone sharing equally, today during the trip', () => {
+  it('starts with nobody paying or sharing yet, today during the trip', () => {
     expect(blank()).toMatchObject({
       amount: '',
       currency: 'KRW',
       category: null,
       date: '2026-11-11',
       paymentMethod: 'card',
-      payerId: me.id,
+      payerIds: [],
       splitMethod: 'equal',
-      participantIds: [me.id, chulsoo.id, younghee.id],
+      participantIds: [],
       scheduleItemId: null,
     });
-    const before = newExpenseValues({ trip, companions, expenses: [], today: '2026-11-02' });
+    const before = newExpenseValues({ trip, expenses: [], today: '2026-11-02' });
     expect(before.date).toBe('2026-11-10');
   });
 
   it('follows the latest expense for currency, rate and payment method', () => {
     const expenses = [jpy('2026-11-10T02:00:00.000Z', '9.1'), jpy('2026-11-10T01:00:00.000Z', '9')];
-    const values = newExpenseValues({ trip, companions, expenses, today: '2026-11-11' });
+    const values = newExpenseValues({ trip, expenses, today: '2026-11-11' });
     expect(values).toMatchObject({
       currency: 'JPY',
       paymentMethod: 'cash',
@@ -74,7 +76,6 @@ describe('newExpenseValues', () => {
     const item = makeItem({ tripId: trip.id, date: '2026-11-12' });
     const values = newExpenseValues({
       trip,
-      companions,
       expenses: [],
       today: '2026-11-11',
       scheduleItem: item,
@@ -136,13 +137,23 @@ describe('rates', () => {
 describe('validateExpenseForm', () => {
   const validate = (values: ExpenseFormValues) => validateExpenseForm(values, companions, 'KRW');
 
-  it('requires an amount and a category; a rate for other currencies', () => {
-    expect(Object.keys(validate(blank()))).toEqual(['amount', 'category']);
+  it('requires an amount, a category, who paid and who shares; a rate for other currencies', () => {
+    expect(validate(blank())).toEqual({
+      amount: '금액을 입력해 주세요.',
+      category: '카테고리를 골라 주세요.',
+      payerIds: '결제한 사람을 한 명 이상 골라 주세요.',
+      participants: '함께 낼 사람을 한 명 이상 골라 주세요.',
+    });
     expect(Object.keys(validate({ ...blank(), currency: 'JPY' }))).toEqual([
       'amount',
       'rate',
       'category',
+      'payerIds',
+      'participants',
     ]);
+    expect(validate(filled({ payerIds: ['gone'] })).payerIds).toBe(
+      '결제한 사람을 한 명 이상 골라 주세요.',
+    );
     expect(validate(filled())).toEqual({});
   });
 
@@ -195,7 +206,7 @@ describe('previewSplit', () => {
 
   it('splits equally with the remainder on the payer', () => {
     expect(shares(filled())).toEqual({ 나: 3_334, 철수: 3_333, 영희: 3_333 });
-    expect(shares(filled({ payerId: chulsoo.id }))).toEqual({ 나: 3_333, 철수: 3_334, 영희: 3_333 });
+    expect(shares(filled({ payerIds: [chulsoo.id] }))).toEqual({ 나: 3_333, 철수: 3_334, 영희: 3_333 });
   });
 
   it('gives a payer who is not sharing only the remainder', () => {
@@ -229,14 +240,36 @@ describe('previewSplit', () => {
   });
 });
 
-describe('withSplitMethod', () => {
-  it('starts an amount split from the current shares, unless amounts were typed', () => {
-    const switched = withSplitMethod(filled(), 'amount', companions);
-    expect(switched.shareAmounts).toEqual({ [me.id]: '3334', [chulsoo.id]: '3333', [younghee.id]: '3333' });
-    expect(validateExpenseForm(switched, companions, 'KRW')).toEqual({});
+describe('withSplit', () => {
+  const opened = filled({
+    amount: '10000',
+    splitMethod: 'amount',
+    participantIds: [me.id, chulsoo.id],
+    shareAmounts: { [me.id]: '7000', [chulsoo.id]: '3000' },
+  });
+  const method = (changes: Partial<ExpenseFormValues>) =>
+    withSplit({ ...opened, ...changes }, opened).splitMethod;
 
-    const typed = filled({ shareAmounts: { [chulsoo.id]: '100' } });
-    expect(withSplitMethod(typed, 'amount', companions).shareAmounts).toEqual({ [chulsoo.id]: '100' });
+  it('keeps an amount or ratio split while its amount and people are as opened', () => {
+    expect(withSplit(opened, opened)).toBe(opened);
+    expect(method({ amount: '10,000', payerIds: [chulsoo.id], memo: '저녁' })).toBe('amount');
+    expect(method({ participantIds: [chulsoo.id, me.id] })).toBe('amount');
+    const ratio = filled({ splitMethod: 'ratio', shareWeights: { [me.id]: '2' } });
+    expect(withSplit({ ...ratio, category: 'shopping' }, ratio).splitMethod).toBe('ratio');
+  });
+
+  it('splits equally once they change', () => {
+    expect(method({ amount: '12000' })).toBe('equal');
+    expect(method({ currency: 'JPY' })).toBe('equal');
+    expect(method({ participantIds: [me.id] })).toBe('equal');
+    expect(method({ participantIds: [me.id, chulsoo.id, younghee.id] })).toBe('equal');
+    const changed = withSplit({ ...opened, amount: '12000' }, opened);
+    expect(previewSplit(changed, companions).shares).toEqual(
+      new Map([
+        [me.id, 6_000],
+        [chulsoo.id, 6_000],
+      ]),
+    );
   });
 });
 
@@ -258,7 +291,7 @@ describe('form ↔ input', () => {
       exchangeRate: { rate: '1380.5', source: 'manual', fetchedAt: null },
       category: 'food',
       paymentMethod: 'card',
-      payerId: me.id,
+      payerIds: [me.id],
       splitMethod: 'ratio',
       participants: [
         { companionId: me.id, value: 1 },
@@ -279,7 +312,7 @@ describe('form ↔ input', () => {
     const expense = makeExpense(
       {
         tripId: trip.id,
-        payerId: chulsoo.id,
+        payerIds: [chulsoo.id],
         amount: 1_234,
         currency: 'USD',
         splitMethod: 'amount',

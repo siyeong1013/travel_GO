@@ -49,17 +49,26 @@ export interface ExpenseFormValues {
   category: ExpenseCategory | null;
   date: string;
   paymentMethod: PaymentMethod;
-  payerId: ID;
+  /** Ticked as paying: several paid it in equal parts. */
+  payerIds: ID[];
+  /** `equal`, but for an expense split by amounts or ratios (as the form once could): `withSplit`. */
   splitMethod: SplitMethod;
   participantIds: ID[];
-  /** Typed per person, kept while switching methods: amounts for `amount`, weights for `ratio`. */
+  /** That expense's split, per person: amounts for `amount`, weights for `ratio`. */
   shareAmounts: Record<ID, string>;
   shareWeights: Record<ID, string>;
   memo: string;
   scheduleItemId: ID | null;
 }
 
-export type ExpenseFormField = 'amount' | 'rate' | 'category' | 'date' | 'participants' | 'shares';
+export type ExpenseFormField =
+  | 'amount'
+  | 'rate'
+  | 'category'
+  | 'date'
+  | 'payerIds'
+  | 'participants'
+  | 'shares';
 
 /** Fields in screen order, to focus the first invalid one. Also the inputs' `name`s. */
 export const EXPENSE_FORM_FIELDS: readonly ExpenseFormField[] = [
@@ -67,6 +76,7 @@ export const EXPENSE_FORM_FIELDS: readonly ExpenseFormField[] = [
   'rate',
   'category',
   'date',
+  'payerIds',
   'participants',
   'shares',
 ];
@@ -111,36 +121,30 @@ export function lastRates(
 
 interface NewExpenseContext {
   trip: Trip;
-  companions: Companion[];
   expenses: ExpenseWithShares[];
   today: LocalDate;
   /** Rates to start from (`lastRates`); this trip's own by default. */
   rates?: Map<CurrencyCode, RateDraft>;
   /** Prefills the link and the day. */
   scheduleItem?: ScheduleItem | null;
-  /** The person using the app (`myCompanion`), who pays; "나" otherwise. */
-  me?: Companion;
 }
 
 /**
- * Currency and payment method of the latest expense, "나" paying, split equally by everyone.
- * The date is the linked item's day, else today during the trip, else its first day.
+ * Currency and payment method of the latest expense; nobody paying or sharing until ticked in
+ * the form. The date is the linked item's day, else today during the trip, else its first day.
  */
 export function newExpenseValues({
   trip,
-  companions,
   expenses,
   today,
   rates = lastRates(expenses, trip.settlementCurrency),
   scheduleItem,
-  me = companions.find((c) => c.isMe),
 }: NewExpenseContext): ExpenseFormValues {
   const latest = expenses.reduce<ExpenseWithShares | null>(
     (last, expense) => (!last || expense.createdAt > last.createdAt ? expense : last),
     null,
   );
   const currency = latest?.currency ?? trip.settlementCurrency;
-  const payer = me ?? companions[0];
   return {
     amount: '',
     currency,
@@ -150,9 +154,9 @@ export function newExpenseValues({
       scheduleItem?.date ??
       (isDateInRange(today, trip.startDate, trip.endDate) ? today : trip.startDate),
     paymentMethod: latest?.paymentMethod ?? 'card',
-    payerId: payer?.id ?? '',
+    payerIds: [],
     splitMethod: 'equal',
-    participantIds: companions.map((c) => c.id),
+    participantIds: [],
     shareAmounts: {},
     shareWeights: {},
     memo: '',
@@ -191,7 +195,7 @@ export function toFormValues(
     category: expense.category,
     date: expense.date,
     paymentMethod: expense.paymentMethod,
-    payerId: expense.payerId,
+    payerIds: [...expense.payerIds],
     splitMethod: expense.splitMethod,
     participantIds: participants.map((p) => p.companionId),
     shareAmounts,
@@ -213,24 +217,19 @@ export function withCurrency(
 }
 
 /**
- * Switches the split method. Amount fields that are all empty start from the current split,
- * so they already add up and only need adjusting.
+ * The values with the split they are saved with. The form splits equally; an expense split by
+ * amounts or ratios (as the form once could) keeps its split while its amount and the people
+ * sharing it are the ones it was `opened` with.
  */
-export function withSplitMethod(
-  values: ExpenseFormValues,
-  method: SplitMethod,
-  companions: Companion[],
-): ExpenseFormValues {
-  const next = { ...values, splitMethod: method };
-  if (method !== 'amount') return next;
-  const typed = values.participantIds.some((id) => values.shareAmounts[id]?.trim());
-  const current = previewSplit(values, companions);
-  if (typed || !current.shares) return next;
-  const shareAmounts = { ...values.shareAmounts };
-  for (const id of values.participantIds) {
-    shareAmounts[id] = toDecimalString(current.shares.get(id) ?? 0, values.currency);
-  }
-  return { ...next, shareAmounts };
+export function withSplit(values: ExpenseFormValues, opened: ExpenseFormValues): ExpenseFormValues {
+  if (values.splitMethod === 'equal') return values;
+  const people = new Set(opened.participantIds);
+  const unchanged =
+    values.currency === opened.currency &&
+    parseAmount(values.amount, values.currency) === parseAmount(opened.amount, opened.currency) &&
+    values.participantIds.length === people.size &&
+    values.participantIds.every((id) => people.has(id));
+  return unchanged ? values : { ...values, splitMethod: 'equal' };
 }
 
 /** Normalized rate text (`"1,380.50"` → `"1380.50"`), or null when it isn't a positive number. */
@@ -248,6 +247,11 @@ export function amountError(text: string, currency: CurrencyCode): string | unde
   return digits === 0
     ? '금액을 숫자로 입력해 주세요. 소수점은 쓸 수 없어요.'
     : `금액을 숫자로 입력해 주세요. 소수점 아래 ${digits}자리까지 쓸 수 있어요.`;
+}
+
+/** Those ticked as paying, in companion order: the first one sharing carries the remainder. */
+function payersOf(values: ExpenseFormValues, companions: Companion[]): ID[] {
+  return companions.filter((c) => values.payerIds.includes(c.id)).map((c) => c.id);
 }
 
 /** Participants in companion order, with their typed values read. */
@@ -315,7 +319,7 @@ export function previewSplit(values: ExpenseFormValues, companions: Companion[])
   const total = parseAmount(values.amount, values.currency);
   if (total === null) return { ...empty, sum };
 
-  const result = splitExpense(total, values.payerId, values.splitMethod, participants);
+  const result = splitExpense(total, payersOf(values, companions), values.splitMethod, participants);
   if (!result.ok) {
     return {
       shares: null,
@@ -361,6 +365,9 @@ export function validateExpenseForm(
   }
   if (!values.category) errors.category = '카테고리를 골라 주세요.';
   if (!isLocalDate(values.date)) errors.date = '날짜를 선택해 주세요.';
+  if (payersOf(values, companions).length === 0) {
+    errors.payerIds = '결제한 사람을 한 명 이상 골라 주세요.';
+  }
   return { ...errors, ...previewSplit(values, companions).errors };
 }
 
@@ -382,7 +389,7 @@ export function toExpenseInput(
       : { ...values.rate, rate: cleanRateText(values.rate.rate)! },
     category: values.category!,
     paymentMethod: values.paymentMethod,
-    payerId: values.payerId,
+    payerIds: payersOf(values, companions),
     splitMethod: values.splitMethod,
     participants: read.participants,
     memo: values.memo.trim(),

@@ -39,7 +39,7 @@ const expense = (overrides: Partial<NewExpense>): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: me.id,
+  payerIds: [me.id],
   splitMethod: 'equal',
   participants: [{ companionId: me.id, value: null }],
   memo: '',
@@ -122,7 +122,7 @@ describe('budget and summary', () => {
         currency: 'JPY',
         exchangeRate: { rate: '9', source: 'manual', fetchedAt: null },
         category: 'transport',
-        payerId: chulsoo.id,
+        payerIds: [chulsoo.id],
         participants: both,
       }),
     );
@@ -167,7 +167,7 @@ describe('budget and summary', () => {
     const { shares, ...stray } = makeExpense(
       {
         tripId: merged.id,
-        payerId: data.companions[0]!.id,
+        payerIds: [data.companions[0]!.id],
         amount: 500,
         currency: 'JPY',
         memo: '자판기',

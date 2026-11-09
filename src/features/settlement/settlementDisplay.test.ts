@@ -21,12 +21,12 @@ const companions = [me, chulsoo, younghee];
 function shared(payer: typeof me, amount: number) {
   const split = splitExpense(
     amount,
-    payer.id,
+    [payer.id],
     'equal',
     companions.map((c) => ({ companionId: c.id, value: null })),
   );
   if (!split.ok) throw new Error('bad split');
-  return makeExpense({ tripId: trip.id, payerId: payer.id, amount }, split.shares);
+  return makeExpense({ tripId: trip.id, payerIds: [payer.id], amount }, split.shares);
 }
 
 const sent = (from: typeof me, to: typeof me, amount: number): Settlement => ({

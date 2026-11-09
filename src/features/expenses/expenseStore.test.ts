@@ -36,7 +36,7 @@ const expense = (overrides: Partial<NewExpense> = {}): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: me.id,
+  payerIds: [me.id],
   splitMethod: 'equal',
   participants: [{ companionId: me.id, value: null }],
   memo: '',
@@ -92,7 +92,7 @@ describe('expenseStore', () => {
   it('passes blocking errors through and keeps the data', async () => {
     await store.getState().load(trip.id);
     const chulsoo = await store.getState().addCompanion({ tripId: trip.id, name: '철수' });
-    await store.getState().addExpense(expense({ payerId: chulsoo.id }));
+    await store.getState().addExpense(expense({ payerIds: [chulsoo.id] }));
 
     expect((await store.getState().companionUsage(chulsoo.id)).blockingExpenseIds).toHaveLength(1);
     await expect(store.getState().removeCompanion(chulsoo.id)).rejects.toBeInstanceOf(

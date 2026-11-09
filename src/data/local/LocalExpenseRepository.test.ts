@@ -38,7 +38,7 @@ const input = (overrides: Partial<NewExpense> = {}): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: me.id,
+  payerIds: [me.id],
   splitMethod: 'equal',
   participants: [
     { companionId: me.id, value: null },
@@ -61,6 +61,12 @@ describe('LocalExpenseRepository', () => {
       [friend.id, 1, 5_000],
     ]);
     expect(await repos.expenses.listByTrip(trip.id)).toEqual([created]);
+  });
+
+  it('stores several payers as given', async () => {
+    const created = await repos.expenses.create(input({ payerIds: [friend.id, me.id] }));
+    expect(created.payerIds).toEqual([friend.id, me.id]);
+    expect((await repos.expenses.listByTrip(trip.id))[0]!.payerIds).toEqual([friend.id, me.id]);
   });
 
   it('keeps the rate snapshot for foreign currencies, quoted in the settlement currency', async () => {
@@ -94,9 +100,9 @@ describe('LocalExpenseRepository', () => {
     expect(error).toBeInstanceOf(InvalidSplitError);
     expect((error as InvalidSplitError).detail).toEqual({ kind: 'sum_mismatch', difference: 5_000 });
 
-    await expect(repos.expenses.create(input({ payerId: 'stranger' }))).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    for (const payerIds of [['stranger'], [], [me.id, me.id]]) {
+      await expect(repos.expenses.create(input({ payerIds }))).rejects.toBeInstanceOf(ValidationError);
+    }
     await expect(repos.expenses.create(input({ amount: 12.5 }))).rejects.toBeInstanceOf(
       ValidationError,
     );
@@ -113,7 +119,7 @@ describe('LocalExpenseRepository', () => {
 
     const updated = await repos.expenses.update(
       later.id,
-      input({ amount: 9_000, payerId: friend.id, participants: [{ companionId: friend.id, value: null }] }),
+      input({ amount: 9_000, payerIds: [friend.id], participants: [{ companionId: friend.id, value: null }] }),
     );
     expect(updated.shares.map((s) => [s.companionId, s.amount])).toEqual([[friend.id, 9_000]]);
     expect(await db.expenseShares.where('expenseId').equals(later.id).count()).toBe(1);
@@ -134,7 +140,7 @@ describe('LocalExpenseRepository', () => {
     const yen = (tripId: string, payerId: string, rate: string) =>
       input({
         tripId,
-        payerId,
+        payerIds: [payerId],
         participants: [{ companionId: payerId, value: null }],
         currency: 'JPY',
         exchangeRate: { rate, source: 'manual', fetchedAt: null },
@@ -161,7 +167,7 @@ describe('LocalExpenseRepository', () => {
     const won = await repos.expenses.create(
       input({
         tripId: yenTrip.id,
-        payerId: yenTripMe.id,
+        payerIds: [yenTripMe.id],
         participants: [{ companionId: yenTripMe.id, value: null }],
         exchangeRate: { rate: '0.11', source: 'manual', fetchedAt: null },
       }),

@@ -38,11 +38,20 @@ export function expenseTitle(expense: Pick<ExpenseWithShares, 'memo' | 'category
   return expense.memo.trim() || CATEGORY_LABELS[expense.category];
 }
 
+/** `철수 결제`, `철수, 영희 결제`, or `철수 외 2명 결제`. */
+export function payersText(expense: Pick<Expense, 'payerIds'>, companions: Companion[]): string {
+  const names = expense.payerIds.map((id) => companions.find((c) => c.id === id)?.name ?? '?');
+  const shown = names.length > 2 ? `${names[0]} 외 ${names.length - 1}명` : names.join(', ');
+  return `${shown} 결제`;
+}
+
 /** `개인 지출`, `철수 부담`, or `3명 균등`. */
 export function splitSummary(expense: ExpenseWithShares, companions: Companion[]): string {
   const participants = participantsFromShares(expense.splitMethod, expense.shares);
   const only = participants.length === 1 ? participants[0]!.companionId : null;
-  if (only === expense.payerId) return '개인 지출';
+  if (only !== null && expense.payerIds.length === 1 && only === expense.payerIds[0]) {
+    return '개인 지출';
+  }
   if (only) return `${companions.find((c) => c.id === only)?.name ?? '?'} 부담`;
   return `${participants.length}명 ${SPLIT_LABELS[expense.splitMethod]}`;
 }
@@ -139,7 +148,7 @@ export const BLOCK_REASON_LABELS: Record<BlockReason, string> = {
 
 /** Why an expense keeps `companionId` from being deleted (see `CompanionUsage`). */
 export function blockReason(expense: ExpenseWithShares, companionId: ID): BlockReason {
-  if (expense.payerId === companionId) return 'payer';
+  if (expense.payerIds.includes(companionId)) return 'payer';
   return expense.splitMethod === 'amount' ? 'amount' : 'only';
 }
 

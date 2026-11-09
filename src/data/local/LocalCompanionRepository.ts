@@ -49,7 +49,7 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
       const takesPart = participants.some((p) => p.companionId === companion.id);
       const rest = participants.filter((p) => p.companionId !== companion.id);
       if (
-        expense.payerId === companion.id ||
+        expense.payerIds.includes(companion.id) ||
         (takesPart && (expense.splitMethod === 'amount' || rest.length === 0))
       ) {
         usage.blockingExpenseIds.push(expense.id);
@@ -135,7 +135,7 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
 
         const timestamp = now();
         for (const { expense, participants } of resplits) {
-          const split = splitExpense(expense.amount, expense.payerId, expense.splitMethod, participants);
+          const split = splitExpense(expense.amount, expense.payerIds, expense.splitMethod, participants);
           if (!split.ok) throw new InvalidSplitError(split.error);
           await db.expenseShares.where('expenseId').equals(expense.id).delete();
           await db.expenseShares.bulkAdd(toShareRows(expense, split.shares, timestamp));

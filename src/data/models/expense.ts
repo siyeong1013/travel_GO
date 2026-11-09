@@ -53,7 +53,11 @@ export interface Expense {
   exchangeRate: ExchangeRateSnapshot;
   category: ExpenseCategory;
   paymentMethod: PaymentMethod;
-  payerId: ID;
+  /**
+   * Who paid: one or more, none twice. Several paid it in equal parts (what doesn't divide on
+   * `remainderHolder`), as when one paid and another later gave them their half.
+   */
+  payerIds: ID[];
   splitMethod: SplitMethod;
   memo: string;
   scheduleItemId: ID | null;

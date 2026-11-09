@@ -105,7 +105,7 @@ export function makeCompanion(
 
 /** An expense in KRW (unless overridden) with the given shares. */
 export function makeExpense(
-  overrides: Partial<Expense> & Pick<Expense, 'tripId' | 'payerId' | 'amount'>,
+  overrides: Partial<Expense> & Pick<Expense, 'tripId' | 'payerIds' | 'amount'>,
   shares: ShareDraft[],
 ): ExpenseWithShares {
   const expense: Expense = {

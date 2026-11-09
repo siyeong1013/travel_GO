@@ -38,7 +38,7 @@ const expense = (overrides: Partial<NewExpense>): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: me.id,
+  payerIds: [me.id],
   splitMethod: 'equal',
   participants: [],
   memo: '',
@@ -121,8 +121,9 @@ describe('LocalCompanionRepository', () => {
   it('refuses while they paid, are in an amount split or a settlement, and says where', async () => {
     const chulsoo = await add('철수');
     const younghee = await add('영희');
+    // One of two who paid it.
     const paid = await repos.expenses.create(
-      expense({ payerId: chulsoo.id, participants: everyone(me, chulsoo) }),
+      expense({ payerIds: [me.id, chulsoo.id], participants: everyone(me, chulsoo) }),
     );
     const byAmount = await repos.expenses.create(
       expense({

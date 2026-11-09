@@ -1,6 +1,7 @@
 import {
   type FormEvent,
   Fragment,
+  type InputHTMLAttributes,
   type ReactNode,
   useEffect,
   useEffectEvent,
@@ -12,8 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { SelectField, TextField } from '@/components/ui/Field';
-import { controlClass } from '@/components/ui/fieldClass';
-import { ChevronDownIcon, TrashIcon } from '@/components/ui/icons';
+import { CheckIcon, ChevronDownIcon, TrashIcon } from '@/components/ui/icons';
 import type {
   Companion,
   CurrencyCode,
@@ -21,11 +21,10 @@ import type {
   ID,
   PaymentMethod,
   ScheduleItem,
-  SplitMethod,
   Trip,
 } from '@/data/models';
 import type { ExpenseInput } from '@/data/repositories';
-import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules/expense';
+import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '@/data/rules/expense';
 import {
   CURRENCY_CODES,
   currencyDigits,
@@ -38,7 +37,6 @@ import {
   CATEGORY_LABELS,
   currencyOptionLabel,
   PAYMENT_LABELS,
-  SPLIT_LABELS,
 } from '@/features/expenses/expenseDisplay';
 import {
   EXPENSE_FORM_FIELDS,
@@ -50,7 +48,7 @@ import {
   toExpenseInput,
   validateExpenseForm,
   withCurrency,
-  withSplitMethod,
+  withSplit,
 } from '@/features/expenses/expenseForm';
 import { RateSourceLink } from '@/features/expenses/RateAttribution';
 import { useRateStore } from '@/features/expenses/rateStore';
@@ -87,11 +85,10 @@ const PAYMENT_OPTIONS = PAYMENT_METHODS.map((method) => ({
   value: method,
   label: PAYMENT_LABELS[method],
 }));
-const SPLIT_OPTIONS = SPLIT_METHODS.map((method) => ({ value: method, label: SPLIT_LABELS[method] }));
 
 type RateLookupStatus = 'loading' | 'failed';
 
-/** Full-screen form for one expense: amount, rate, category, payer and the split. */
+/** Full-screen form for one expense: amount, rate, category, who paid and who shares it equally. */
 export function ExpenseForm({
   trip,
   companions,
@@ -106,6 +103,8 @@ export function ExpenseForm({
   const settlement = trip.settlementCurrency;
   const fetchLatest = useRateStore((state) => state.fetchLatest);
   const [values, setValues] = useState(initialValues);
+  /** As opened: an amount or ratio split stays while its amount and people do (`withSplit`). */
+  const [opened] = useState(initialValues);
   const [lookup, setLookup] = useState<{ currency: CurrencyCode; status: RateLookupStatus } | null>(
     () =>
       fetchRateOnOpen && initialValues.currency !== settlement
@@ -117,7 +116,6 @@ export function ExpenseForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const splitErrorId = useId();
 
   /**
    * Puts the latest API rate for `currency` into the form, unless the currency or the rate has
@@ -158,11 +156,17 @@ export function ExpenseForm({
   }
 
   const rateLookup = lookup?.currency === values.currency ? lookup.status : null;
-  const errors = validateExpenseForm(values, companions, settlement);
+  const toSave = withSplit(values, opened);
+  const errors = validateExpenseForm(toSave, companions, settlement);
   const visibleErrors = showErrors ? errors : {};
   const amount = parseAmount(values.amount, values.currency);
-  const split = previewSplit(values, companions);
+  const split = previewSplit(toSave, companions);
   const converted = previewConverted(values, settlement);
+  // Under the people table: who paid, then who shares.
+  const peopleErrors = [
+    visibleErrors.payerIds,
+    visibleErrors.participants ?? visibleErrors.shares,
+  ].filter((error) => error !== undefined);
   const set = (patch: Partial<ExpenseFormValues>) =>
     setValues((current) => ({ ...current, ...patch }));
 
@@ -177,7 +181,7 @@ export function ExpenseForm({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await onSubmit(toExpenseInput(values, companions, settlement));
+      await onSubmit(toExpenseInput(toSave, companions, settlement));
     } catch (error) {
       console.error(error);
       setSubmitError(errorMessage(error));
@@ -195,15 +199,6 @@ export function ExpenseForm({
       setDeleteError(errorMessage(error));
       setSubmitting(false);
     }
-  }
-
-  function toggleParticipant(id: ID) {
-    const selected = values.participantIds.includes(id);
-    set({
-      participantIds: selected
-        ? values.participantIds.filter((other) => other !== id)
-        : [...values.participantIds, id],
-    });
   }
 
   const tabs = buildDayTabs(trip, scheduleItems);
@@ -296,76 +291,14 @@ export function ExpenseForm({
           />
         </div>
 
-        <ChoiceGroup<ID>
-          legend="결제한 사람"
-          name="payerId"
-          appearance="pills"
-          options={companions.map((c) => ({ value: c.id, label: c.name }))}
-          value={values.payerId}
-          onChange={(payerId) => set({ payerId })}
+        <PeopleField
+          companions={companions}
+          values={toSave}
+          shares={split.shares}
+          errors={peopleErrors}
+          onPayers={(payerIds) => set({ payerIds })}
+          onParticipants={(participantIds) => set({ participantIds })}
         />
-
-        <div className="flex flex-col gap-3">
-          <ChoiceGroup<SplitMethod>
-            legend="나누는 방법"
-            name="splitMethod"
-            appearance="segmented"
-            options={SPLIT_OPTIONS}
-            value={values.splitMethod}
-            onChange={(method) =>
-              setValues((current) => withSplitMethod(current, method, companions))
-            }
-          />
-          <fieldset
-            className="relative flex min-w-0 flex-col"
-            aria-describedby={
-              visibleErrors.participants || visibleErrors.shares ? splitErrorId : undefined
-            }
-          >
-            <legend className="float-left min-h-5 text-sm font-semibold text-gray-700">
-              함께 낼 사람
-            </legend>
-            <div className="absolute -top-3 right-0 flex">
-              <QuickButton onClick={() => set({ participantIds: companions.map((c) => c.id) })}>
-                모두
-              </QuickButton>
-              <QuickButton onClick={() => set({ participantIds: [values.payerId] })}>
-                결제한 사람만
-              </QuickButton>
-            </div>
-            <ul className="clear-left mt-1 divide-y divide-gray-100">
-              {companions.map((companion) => (
-                <ParticipantRow
-                  key={companion.id}
-                  companion={companion}
-                  values={values}
-                  share={split.shares?.get(companion.id)}
-                  invalid={Boolean(visibleErrors.shares)}
-                  onToggle={() => toggleParticipant(companion.id)}
-                  onValue={(text) =>
-                    set(
-                      values.splitMethod === 'amount'
-                        ? { shareAmounts: { ...values.shareAmounts, [companion.id]: text } }
-                        : { shareWeights: { ...values.shareWeights, [companion.id]: text } },
-                    )
-                  }
-                />
-              ))}
-            </ul>
-            {values.splitMethod === 'amount' && split.sum !== null && (
-              <AmountSplitTotal
-                currency={values.currency}
-                sum={split.sum}
-                total={amount}
-              />
-            )}
-            {(visibleErrors.participants ?? visibleErrors.shares) && (
-              <p id={splitErrorId} className="mt-1.5 text-sm text-red-500">
-                {visibleErrors.participants ?? visibleErrors.shares}
-              </p>
-            )}
-          </fieldset>
-        </div>
 
         <TextField
           label="메모"
@@ -545,115 +478,125 @@ function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }
   );
 }
 
-function QuickButton({ onClick, children }: { onClick: () => void; children: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="h-11 rounded-lg px-2 text-sm font-semibold text-brand-600 active:bg-brand-50"
-    >
-      {children}
-    </button>
-  );
-}
-
-interface ParticipantRowProps {
-  companion: Companion;
+interface PeopleFieldProps {
+  companions: Companion[];
+  /** As saved (`withSplit`): who paid, who shares, and how. */
   values: ExpenseFormValues;
-  /** Computed share in the expense currency (equal and ratio splits). */
-  share: number | undefined;
-  invalid: boolean;
-  onToggle: () => void;
-  onValue: (text: string) => void;
+  /** Each person's share in the expense currency, once the amount is valid. */
+  shares: Map<ID, number> | null;
+  /** Each on a line of its own. */
+  errors: string[];
+  onPayers: (ids: ID[]) => void;
+  onParticipants: (ids: ID[]) => void;
 }
 
-function ParticipantRow({ companion, values, share, invalid, onToggle, onValue }: ParticipantRowProps) {
-  const selected = values.participantIds.includes(companion.id);
-  const isPayer = values.payerId === companion.id;
-  const inputClass = `h-11 px-3 text-right tabular-nums ${controlClass}`;
+/** `ids` without `id`, or with it at the end. */
+const toggled = (ids: ID[], id: ID) =>
+  ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id];
+
+/**
+ * Who paid and who shares, as a table: a row per person with their share after the name, and a
+ * box in each column, "결제" (several paid it in equal parts) and "함께".
+ */
+function PeopleField({ companions, values, shares, errors, onPayers, onParticipants }: PeopleFieldProps) {
+  const id = useId();
+  const [labelId, paidId, sharingId, noteId] = ['label', 'paid', 'sharing', 'note'].map(
+    (part) => `${id}-${part}`,
+  );
+  const how = values.splitMethod === 'amount' ? '금액을 정해' : '비율로';
+  const notes = [
+    values.payerIds.length > 1 &&
+      `결제한 ${values.payerIds.length}명이 똑같이 나눠 낸 것으로 계산해요.`,
+    values.splitMethod !== 'equal' &&
+      `${how} 나눈 지출이에요. 금액이나 함께 낼 사람을 바꾸면 똑같이 나눠요.`,
+  ].filter((note) => note !== false);
+  // Errors take the notes' place while they show.
+  const lines = errors.length > 0 ? errors : notes;
+  const headClass = 'w-11 shrink-0 text-center text-sm font-semibold text-gray-700';
 
   return (
-    <li className="flex min-h-12 items-center gap-2">
-      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2.5">
-        <input
-          type="checkbox"
-          name="participants"
-          checked={selected}
-          onChange={onToggle}
-          className="size-5 shrink-0 accent-brand-500"
-        />
-        <span className="truncate text-base">{companion.name}</span>
-        {isPayer && (
-          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
-            결제
-          </span>
-        )}
-      </label>
-      {/* Fixed-width boxes: the inputs themselves are w-full. */}
-      {selected && values.splitMethod === 'amount' && (
-        <div className="w-32 shrink-0">
-          <input
-            name="shares"
-            aria-label={`${companion.name} 금액`}
-            aria-invalid={invalid || undefined}
-            inputMode={currencyDigits(values.currency) === 0 ? 'numeric' : 'decimal'}
-            autoComplete="off"
-            placeholder="0"
-            className={inputClass}
-            value={values.shareAmounts[companion.id] ?? ''}
-            onChange={(e) => onValue(e.target.value)}
-          />
-        </div>
-      )}
-      {selected && values.splitMethod === 'ratio' && (
-        <div className="w-16 shrink-0">
-          <input
-            name="shares"
-            aria-label={`${companion.name} 비율`}
-            aria-invalid={invalid || undefined}
-            inputMode="numeric"
-            autoComplete="off"
-            className={inputClass}
-            value={values.shareWeights[companion.id] ?? '1'}
-            onChange={(e) => onValue(e.target.value)}
-          />
-        </div>
-      )}
-      {values.splitMethod !== 'amount' && share !== undefined && (
-        <span
-          className={`w-24 shrink-0 text-right text-sm tabular-nums ${selected ? 'text-gray-700' : 'text-gray-400'}`}
-        >
-          {selected ? '' : '나머지 '}
-          {formatMoney(share, values.currency)}
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={lines.length > 0 ? noteId : undefined}
+      className="flex min-w-0 flex-col"
+    >
+      <div className="flex min-h-5 items-end">
+        <span id={labelId} className="min-w-0 flex-1 text-sm font-semibold text-gray-700">
+          동행자
         </span>
+        <span id={paidId} className={headClass}>
+          결제
+        </span>
+        <span id={sharingId} className={headClass}>
+          함께
+        </span>
+      </div>
+      <ul className="mt-1 divide-y divide-gray-100">
+        {companions.map((companion) => {
+          const nameId = `${id}-${companion.id}`;
+          const sharing = values.participantIds.includes(companion.id);
+          const share = shares?.get(companion.id);
+          return (
+            <li key={companion.id} className="flex min-h-12 items-center">
+              <span className="flex min-w-0 flex-1 items-baseline gap-2 py-2.5">
+                <span id={nameId} className="truncate text-base">
+                  {companion.name}
+                </span>
+                {share !== undefined && (
+                  <span className="shrink-0 text-sm text-gray-500 tabular-nums">
+                    {sharing ? '' : '나머지 '}
+                    {formatMoney(share, values.currency)}
+                  </span>
+                )}
+              </span>
+              <Box
+                name="payerIds"
+                aria-labelledby={`${nameId} ${paidId}`}
+                checked={values.payerIds.includes(companion.id)}
+                onChange={() => onPayers(toggled(values.payerIds, companion.id))}
+              />
+              <Box
+                name="participants"
+                aria-labelledby={`${nameId} ${sharingId}`}
+                checked={sharing}
+                onChange={() => onParticipants(toggled(values.participantIds, companion.id))}
+              />
+            </li>
+          );
+        })}
+      </ul>
+      {lines.length > 0 && (
+        <p
+          id={noteId}
+          className={`mt-1.5 text-sm break-keep ${errors.length > 0 ? 'text-red-500' : 'text-gray-500'}`}
+        >
+          {lines.map((line) => (
+            <span key={line} className="block">
+              {line}
+            </span>
+          ))}
+        </p>
       )}
-    </li>
+    </div>
   );
 }
 
-interface AmountSplitTotalProps {
-  currency: CurrencyCode;
-  /** What the typed amounts add up to. */
-  sum: number;
-  /** The expense amount; null while it isn't valid. */
-  total: number | null;
-}
-
-/** Live check of an amount split: how much is left to assign (or over). */
-function AmountSplitTotal({ currency, sum, total }: AmountSplitTotalProps) {
-  const difference = total === null ? null : total - sum;
+/** A checkbox drawn as a square in a 44px cell, the same in both columns on every phone. */
+function Box(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'className' | 'type'>) {
   return (
-    <p className="mt-2 flex justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-      <span className="tabular-nums">
-        합계 {formatMoney(sum, currency)}
-        {total !== null && ` / ${formatMoney(total, currency)}`}
-      </span>
-      {difference === 0 && <span className="font-semibold text-brand-600">총액과 같아요</span>}
-      {difference !== null && difference !== 0 && (
-        <span className="font-semibold text-red-500 tabular-nums">
-          {formatMoney(Math.abs(difference), currency)} {difference > 0 ? '남음' : '초과'}
-        </span>
-      )}
-    </p>
+    <label className="relative flex size-11 shrink-0 cursor-pointer items-center justify-center">
+      <input
+        type="checkbox"
+        className="peer size-5 cursor-pointer appearance-none rounded-[5px] border-2 border-gray-300 bg-white checked:border-brand-500 checked:bg-brand-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        {...props}
+      />
+      <CheckIcon
+        width={14}
+        height={14}
+        strokeWidth={3.5}
+        className="pointer-events-none absolute hidden text-white peer-checked:block"
+      />
+    </label>
   );
 }

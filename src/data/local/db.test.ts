@@ -4,7 +4,7 @@ import { createLocalRepositories, createTravelGoDB, type TravelGoDB } from '@/da
 import type { Trip } from '@/data/models';
 import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
 import { newId } from '@/lib/id';
-import { makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
+import { makeExpense, makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
 
 let db: TravelGoDB | undefined;
 
@@ -190,5 +190,33 @@ describe('schema migrations', () => {
 
     db = createTravelGoDB(name);
     expect(await db.trips.toArray()).toEqual([trip]);
+  });
+
+  it('v8 → v9: an expense has its one payer as its payers, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip();
+    const me = makeMeCompanion(trip.id, trip.createdAt);
+    const { shares, payerIds, ...expense } = makeExpense(
+      { tripId: trip.id, payerIds: [me.id], amount: 5_000, updatedAt: '2025-12-21T00:00:00.000Z' },
+      [{ companionId: me.id, weight: 1, amount: 5_000 }],
+    );
+
+    // A database as version 8 of the app left it.
+    const v8 = new Dexie(name);
+    v8.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v8.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v8.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    v8.version(7).stores({ visitedCountries: 'id' });
+    v8.version(8).stores({});
+    await v8.table('expenses').add({ ...expense, payerId: payerIds[0] });
+    v8.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.expenses.toArray()).toEqual([{ ...expense, payerIds }]);
   });
 });

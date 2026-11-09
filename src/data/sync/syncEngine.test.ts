@@ -80,7 +80,7 @@ function expenseOf(tripId: ID, amount: number): NewExpense {
     exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
     category: 'food',
     paymentMethod: 'card',
-    payerId: meCompanionId(tripId),
+    payerIds: [meCompanionId(tripId)],
     splitMethod: 'equal',
     participants: [{ companionId: meCompanionId(tripId), value: null }],
     memo: '',

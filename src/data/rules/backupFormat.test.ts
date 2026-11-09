@@ -5,6 +5,7 @@ import {
   BACKUP_SCHEMA_VERSION,
   createBackupFile,
   parseBackupFile,
+  parseRecord,
 } from '@/data/rules/backupFormat';
 import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
 import { newId } from '@/lib/id';
@@ -24,6 +25,14 @@ function beforeV7({ cities, countries, ...trip }: Trip) {
   return { ...trip, city: cities[0]! };
 }
 
+/** A file's expenses as before v9: one payer each. */
+function beforeV9<T extends Pick<BackupFile, 'expenses'>>(file: T) {
+  return {
+    ...file,
+    expenses: file.expenses.map(({ payerIds, ...expense }) => ({ ...expense, payerId: payerIds[0]! })),
+  };
+}
+
 function sampleFile(): BackupFile {
   const trip = makeTrip({
     cities: [{ name: '오사카', placeId: 'osaka', location: { lat: 34.7, lng: 135.5 }, fetchedAt: T0 }],
@@ -40,7 +49,7 @@ function sampleFile(): BackupFile {
   const { shares, ...expense } = makeExpense(
     {
       tripId: trip.id,
-      payerId: me.id,
+      payerIds: [me.id],
       amount: 1234,
       currency: 'JPY',
       exchangeRate: { rate: '9.0412', quote: 'KRW', source: 'api', fetchedAt: T0 },
@@ -145,8 +154,8 @@ describe('backup file format', () => {
     const duplicate = { ...file, trips: [file.trips[0], file.trips[0]] };
     expectInvalid(duplicate, 'backup_invalid', '$.trips[1].id');
 
-    const strangerPays = { ...file, expenses: [{ ...file.expenses[0], payerId: 'nope' }] };
-    expectInvalid(strangerPays, 'backup_invalid', '$.expenses[0].payerId');
+    const strangerPays = { ...file, expenses: [{ ...file.expenses[0], payerIds: ['nope'] }] };
+    expectInvalid(strangerPays, 'backup_invalid', '$.expenses[0].payerIds[0]');
 
     const toSelf = {
       ...file,
@@ -191,7 +200,7 @@ describe('backup file format', () => {
     const [google, typed] = file.scheduleItems;
     const withoutFetchedAt = <T extends { fetchedAt: unknown }>({ fetchedAt, ...rest }: T) => rest;
     const v2 = {
-      ...file,
+      ...beforeV9(file),
       schemaVersion: 2,
       trips: [{ ...beforeV7(trip!), city: withoutFetchedAt(trip!.cities[0]!) }],
       scheduleItems: file.scheduleItems.map((item) => ({ ...item, place: withoutFetchedAt(item.place) })),
@@ -209,7 +218,7 @@ describe('backup file format', () => {
   it('converts v3 files: trips have no cover photo', () => {
     const file = sampleFile();
     const { cover, ...v3Trip } = beforeV7(file.trips[0]!);
-    const parsed = roundTrip({ ...file, schemaVersion: 3, trips: [v3Trip] });
+    const parsed = roundTrip({ ...beforeV9(file), schemaVersion: 3, trips: [v3Trip] });
     expect(parsed.trips[0]).toEqual({ ...file.trips[0]!, cover: null });
   });
 
@@ -217,12 +226,12 @@ describe('backup file format', () => {
     const file = sampleFile();
     const v4Companions = file.companions.map(({ accountId, ...companion }) => companion);
     const trips = file.trips.map(beforeV7);
-    const parsed = roundTrip({ ...file, schemaVersion: 4, trips, companions: v4Companions });
+    const parsed = roundTrip({ ...beforeV9(file), schemaVersion: 4, trips, companions: v4Companions });
     expect(parsed.companions).toEqual(v4Companions.map((c) => ({ ...c, accountId: null })));
   });
 
   it('converts v5 files: no countries yet', () => {
-    const { visitedCountries, ...v5 } = sampleFile();
+    const { visitedCountries, ...v5 } = beforeV9(sampleFile());
     expect(visitedCountries.map((c) => c.id)).toEqual(['JP', 'TW']);
     const trips = v5.trips.map(beforeV7);
     expect(roundTrip({ ...v5, schemaVersion: 5, trips }).visitedCountries).toEqual([]);
@@ -230,12 +239,17 @@ describe('backup file format', () => {
 
   it('converts v6 files: a trip has its city as its cities and no countries', () => {
     const file = sampleFile();
-    const parsed = roundTrip({ ...file, schemaVersion: 6, trips: file.trips.map(beforeV7) });
+    const parsed = roundTrip({ ...beforeV9(file), schemaVersion: 6, trips: file.trips.map(beforeV7) });
     expect(parsed.trips).toEqual(file.trips.map((trip) => ({ ...trip, countries: [] })));
     // Regions came with v7.
     const regions = [{ id: 'JP-27', visited: true, updatedAt: file.exportedAt }];
     expectInvalid(
-      { ...file, schemaVersion: 6, trips: file.trips.map(beforeV7), visitedCountries: regions },
+      {
+        ...beforeV9(file),
+        schemaVersion: 6,
+        trips: file.trips.map(beforeV7),
+        visitedCountries: regions,
+      },
       'backup_invalid',
       '$.visitedCountries[0].id',
     );
@@ -246,9 +260,40 @@ describe('backup file format', () => {
     const file = sampleFile();
     const cities = [{ id: 'JP-01:삿포로', visited: true, updatedAt: file.exportedAt }];
     expect(roundTrip({ ...file, visitedCountries: cities }).visitedCountries).toEqual(cities);
-    expect(roundTrip({ ...file, schemaVersion: 7, visitedCountries: cities }).visitedCountries).toEqual(cities);
+    expect(roundTrip({ ...beforeV9(file), schemaVersion: 7, visitedCountries: cities }).visitedCountries).toEqual(cities);
     const broken = [{ id: 'JP-01:', visited: true, updatedAt: file.exportedAt }];
     expectInvalid({ ...file, visitedCountries: broken }, 'backup_invalid', '$.visitedCountries[0].id');
+  });
+
+  it('converts v8 files: an expense has its one payer as its payers', () => {
+    const file = sampleFile();
+    const parsed = roundTrip({ ...beforeV9(file), schemaVersion: 8 });
+    expect(parsed.expenses).toEqual(file.expenses);
+    expect(parsed.expenses[0]!.payerIds).toHaveLength(1);
+  });
+
+  it('takes several payers, each once, and one at least', () => {
+    const file = sampleFile();
+    const [me, friend] = file.companions;
+    const payers = (payerIds: unknown) => ({
+      ...file,
+      expenses: [{ ...file.expenses[0], payerIds }],
+    });
+    expect(roundTrip(payers([me!.id, friend!.id])).expenses[0]!.payerIds).toEqual([me!.id, friend!.id]);
+    expectInvalid(payers([]), 'backup_invalid', '$.expenses[0].payerIds');
+    expectInvalid(payers([me!.id, me!.id]), 'backup_invalid', '$.expenses[0].payerIds');
+    expectInvalid(payers(me!.id), 'backup_invalid', '$.expenses[0].payerIds');
+    // A v8 file has one, as `payerId`.
+    expectInvalid({ ...payers([me!.id]), schemaVersion: 8 }, 'backup_invalid', '$.expenses[0].payerId');
+  });
+
+  it('reads a server expense of the format before v9 (one payer) into the current shape', () => {
+    const file = sampleFile();
+    const [old] = beforeV9(file).expenses;
+    const shares = file.expenseShares.filter((share) => share.expenseId === old!.id);
+    const raw = JSON.parse(JSON.stringify({ ...old, shares }));
+    expect(parseRecord('expense', raw, 7)).toEqual({ ...file.expenses[0], shares });
+    expect(() => parseRecord('expense', raw, 9)).toThrow(BackupFormatError);
   });
 
   it("takes a trip's countries by code, each once, and one city at least", () => {

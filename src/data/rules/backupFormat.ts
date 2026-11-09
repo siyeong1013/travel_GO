@@ -46,15 +46,16 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  * v7: trips' countries, and several cities (`cities`, was `city`). Visited places can be regions
  *     of a country too (`JP-27`).
  * v8: visited places can be cities too (`JP-01:삿포로`). Records are as in v7.
+ * v9: expenses' payers (`payerIds`, was `payerId`): one or more, who paid it in equal parts.
  */
-export const BACKUP_SCHEMA_VERSION = 8;
+export const BACKUP_SCHEMA_VERSION = 9;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
  * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
  * the app before it keep syncing.
  */
-export const RECORD_SCHEMA_VERSION = 7;
+export const RECORD_SCHEMA_VERSION = 9;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -258,7 +259,15 @@ function readCompanion(value: unknown, path: string, version: number): Companion
   };
 }
 
-function readExpense(value: unknown, path: string): Expense {
+/** Companion ids: one or more, none twice. */
+function payerIds(value: unknown, path: string): ID[] {
+  const ids = array(value, path).map((v, i) => text(v, `${path}[${i}]`));
+  if (ids.length === 0) invalid(path, 'at least one payer');
+  if (new Set(ids).size !== ids.length) invalid(path, 'each payer once');
+  return ids;
+}
+
+function readExpense(value: unknown, path: string, version: number): Expense {
   const e = object(value, path);
   const r = object(e.exchangeRate, `${path}.exchangeRate`);
   return {
@@ -275,7 +284,10 @@ function readExpense(value: unknown, path: string): Expense {
     },
     category: oneOf(EXPENSE_CATEGORIES)(e.category, `${path}.category`),
     paymentMethod: oneOf(PAYMENT_METHODS)(e.paymentMethod, `${path}.paymentMethod`),
-    payerId: text(e.payerId, `${path}.payerId`),
+    payerIds:
+      version >= 9
+        ? payerIds(e.payerIds, `${path}.payerIds`)
+        : [text(e.payerId, `${path}.payerId`)],
     splitMethod: oneOf(SPLIT_METHODS)(e.splitMethod, `${path}.splitMethod`),
     memo: string(e.memo, `${path}.memo`),
     scheduleItemId: nullable(text)(e.scheduleItemId, `${path}.scheduleItemId`),
@@ -359,9 +371,11 @@ function assertConsistent(data: BackupData) {
 
   const sameTrip = (map: Map<ID, ID>, id: ID | null, tripId: ID) => id === null || map.get(id) === tripId;
   data.expenses.forEach((expense, i) => {
-    if (!sameTrip(companionTrips, expense.payerId, expense.tripId)) {
-      invalid(`$.expenses[${i}].payerId`, 'a companion of the same trip');
-    }
+    expense.payerIds.forEach((payerId, j) => {
+      if (!sameTrip(companionTrips, payerId, expense.tripId)) {
+        invalid(`$.expenses[${i}].payerIds[${j}]`, 'a companion of the same trip');
+      }
+    });
     if (!sameTrip(itemTrips, expense.scheduleItemId, expense.tripId)) {
       invalid(`$.expenses[${i}].scheduleItemId`, 'null or a schedule item of the same trip');
     }
@@ -410,7 +424,7 @@ export function parseRecord<K extends RecordKind>(
     companion: () => readCompanion(raw, path, version),
     settlement: () => readSettlement(raw, path),
     expense: () => {
-      const expense = readExpense(raw, path);
+      const expense = readExpense(raw, path, version);
       const shares = array(object(raw, path).shares, `${path}.shares`).map((v, i) =>
         readShare(v, `${path}.shares[${i}]`),
       );
@@ -467,7 +481,7 @@ export function parseBackupFile(raw: unknown): BackupFile {
           trips,
           scheduleItems: list('scheduleItems', (v, path) => readScheduleItem(v, path, version)),
           companions: list('companions', (v, path) => readCompanion(v, path, version)),
-          expenses: list('expenses', readExpense),
+          expenses: list('expenses', (v, path) => readExpense(v, path, version)),
           expenseShares: list('expenseShares', readShare),
           settlements: list('settlements', readSettlement),
         };

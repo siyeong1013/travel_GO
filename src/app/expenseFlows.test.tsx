@@ -34,7 +34,7 @@ const expense = (overrides: Partial<NewExpense>): NewExpense => ({
   exchangeRate: { rate: '1', source: 'same', fetchedAt: null },
   category: 'food',
   paymentMethod: 'card',
-  payerId: me.id,
+  payerIds: [me.id],
   splitMethod: 'equal',
   participants: [{ companionId: me.id, value: null }],
   memo: '',
@@ -47,6 +47,11 @@ const section = (title: string) => screen.getByRole('region', { name: title });
 /** Sets a native date input (user-event can't type into them). */
 const setDate = (date: string) =>
   fireEvent.change(screen.getByLabelText('날짜'), { target: { value: date } });
+/** Ticks who paid ("결제") and who shares ("함께"): a new expense starts with neither. */
+async function pick(user: ReturnType<typeof renderApp>['user'], payers: string[], sharing: string[]) {
+  for (const name of payers) await user.click(screen.getByRole('checkbox', { name: `${name} 결제` }));
+  for (const name of sharing) await user.click(screen.getByRole('checkbox', { name: `${name} 함께` }));
+}
 
 describe('expense flows', () => {
   it('adds companions, then records an expense split among everyone', async () => {
@@ -80,6 +85,8 @@ describe('expense flows', () => {
     await user.click(await screen.findByRole('button', { name: '저장' }));
     expect(screen.getByText('금액을 입력해 주세요.')).toBeInTheDocument();
     expect(screen.getByText('카테고리를 골라 주세요.')).toBeInTheDocument();
+    expect(screen.getByText('결제한 사람을 한 명 이상 골라 주세요.')).toBeInTheDocument();
+    expect(screen.getByText('함께 낼 사람을 한 명 이상 골라 주세요.')).toBeInTheDocument();
     expect(screen.getByLabelText('금액')).toHaveFocus();
 
     await user.type(screen.getByLabelText('금액'), '10000');
@@ -89,6 +96,7 @@ describe('expense flows', () => {
     await user.click(screen.getByRole('radio', { name: '식비' }));
     setDate('2026-11-11');
     await user.type(screen.getByLabelText('메모'), '타코야키');
+    await pick(user, ['나'], ['나', '철수', '영희']);
     // Equal split, the 1-won remainder on the payer
     expect(screen.getByText('3,334원')).toBeInTheDocument();
     expect(screen.getAllByText('3,333원')).toHaveLength(2);
@@ -108,40 +116,105 @@ describe('expense flows', () => {
     expect(saved!.shares.map((s) => s.amount)).toEqual([3_334, 3_333, 3_333]);
   });
 
-  it('only saves amount splits that add up to the total', async () => {
+  it('starts with nobody paying or sharing, then splits equally among those ticked', async () => {
+    const chulsoo = await addCompanion('철수');
+    await addCompanion('영희');
+    const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
+    await user.click(await screen.findByRole('link', { name: '지출 추가' }));
+
+    await user.type(await screen.findByLabelText('금액'), '9000');
+    await user.click(screen.getByRole('radio', { name: '식비' }));
+    // No ways of splitting, no shortcuts: only the boxes, all empty.
+    expect(screen.queryByRole('radio', { name: '금액 지정' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^모두/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '결제한 사람만' })).toBeNull();
+    const ticked = (column: string) =>
+      ['나', '철수', '영희'].filter(
+        (name) => (screen.getByRole('checkbox', { name: `${name} ${column}` }) as HTMLInputElement).checked,
+      );
+    expect(ticked('결제')).toEqual([]);
+    expect(ticked('함께')).toEqual([]);
+
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(screen.getByText('결제한 사람을 한 명 이상 골라 주세요.')).toBeInTheDocument();
+    expect(screen.getByText('함께 낼 사람을 한 명 이상 골라 주세요.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '나 결제' })).toHaveFocus();
+
+    await pick(user, ['철수'], ['나', '철수']);
+    expect(ticked('결제')).toEqual(['철수']);
+    expect(ticked('함께')).toEqual(['나', '철수']);
+    expect(screen.getAllByText('4,500원')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('link', { name: /^식비/ })).toHaveTextContent(
+      '철수 결제 · 2명 균등',
+    );
+    const [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved!.payerIds).toEqual([chulsoo.id]);
+    expect(saved!.shares.map((s) => s.amount)).toEqual([4_500, 4_500]);
+  });
+
+  it('takes several payers as paying in equal parts: one paid, the other gave half', async () => {
+    const chulsoo = await addCompanion('철수');
+    const { router, user } = renderApp(`/trips/${trip.id}/expenses/new`);
+
+    await user.type(await screen.findByLabelText('금액'), '1000000');
+    await user.click(screen.getByRole('radio', { name: '숙소' }));
+    await pick(user, ['나', '철수'], ['나', '철수']);
+    expect(screen.getByText('결제한 2명이 똑같이 나눠 낸 것으로 계산해요.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('link', { name: /^숙소/ })).toHaveTextContent(
+      '나, 철수 결제 · 2명 균등',
+    );
+    const [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved!.payerIds).toEqual([me.id, chulsoo.id]);
+
+    // Each paid half of it and owes half: nothing to send.
+    await router.navigate(`/trips/${trip.id}/expenses/settlement`);
+    expect(await screen.findByText('모두 정산했어요.')).toBeInTheDocument();
+  });
+
+  it('keeps an amount split until its amount or people change, then splits equally', async () => {
     const chulsoo = await addCompanion('철수');
     const created = await repositories.expenses.create(
       expense({
         memo: '오코노미야키',
-        participants: [me, chulsoo].map((c) => ({ companionId: c.id, value: null })),
+        splitMethod: 'amount',
+        participants: [
+          { companionId: me.id, value: 7_000 },
+          { companionId: chulsoo.id, value: 3_000 },
+        ],
       }),
     );
     const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
 
     await user.click(await screen.findByRole('link', { name: /오코노미야키/ }));
-    expect(await screen.findByRole('heading', { name: '지출 수정' })).toBeInTheDocument();
-    await user.click(await screen.findByRole('radio', { name: '금액 지정' }));
-    // Starts from the equal split, so it already adds up.
-    expect(screen.getByLabelText('나 금액')).toHaveValue('5000');
-    expect(screen.getByText('총액과 같아요')).toBeInTheDocument();
+    const note = '금액을 정해 나눈 지출이에요. 금액이나 함께 낼 사람을 바꾸면 똑같이 나눠요.';
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(screen.getByText('7,000원')).toBeInTheDocument();
+    expect(screen.getByText('3,000원')).toBeInTheDocument();
 
-    await user.clear(screen.getByLabelText('나 금액'));
-    await user.type(screen.getByLabelText('나 금액'), '7000');
-    expect(screen.getByText('2,000원 초과')).toBeInTheDocument();
+    // Anything else keeps it.
+    await user.type(screen.getByLabelText('메모'), ' 2인분');
     await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(screen.getByText('나눈 금액의 합이 총액보다 2,000원 많아요.')).toBeInTheDocument();
-    expect(screen.getByLabelText('나 금액')).toHaveFocus();
-
-    await user.clear(screen.getByLabelText('철수 금액'));
-    await user.type(screen.getByLabelText('철수 금액'), '3000');
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByRole('link', { name: /오코노미야키/ })).toHaveTextContent(
+    expect(await screen.findByRole('link', { name: /오코노미야키 2인분/ })).toHaveTextContent(
       '2명 금액 지정',
     );
-
-    const [saved] = await repositories.expenses.listByTrip(trip.id);
-    expect(saved).toMatchObject({ id: created.id, splitMethod: 'amount' });
+    let [saved] = await repositories.expenses.listByTrip(trip.id);
     expect(saved!.shares.map((s) => s.amount)).toEqual([7_000, 3_000]);
+
+    // A new amount splits it equally, as the rows show before saving.
+    await user.click(screen.getByRole('link', { name: /오코노미야키/ }));
+    const amount = await screen.findByLabelText('금액');
+    await user.clear(amount);
+    await user.type(amount, '12000');
+    expect(screen.queryByText(note)).toBeNull();
+    expect(screen.getAllByText('6,000원')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('link', { name: /오코노미야키/ })).toHaveTextContent('2명 균등');
+    [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved).toMatchObject({ id: created.id, splitMethod: 'equal', amount: 12_000 });
+    expect(saved!.shares.map((s) => s.amount)).toEqual([6_000, 6_000]);
   });
 
   it('converts other currencies with the entered rate, then offers it again', async () => {
@@ -150,6 +223,7 @@ describe('expense flows', () => {
     await user.selectOptions(await screen.findByLabelText('통화'), 'JPY · 엔');
     await user.type(screen.getByLabelText('금액'), '1200');
     await user.click(screen.getByRole('radio', { name: '교통' }));
+    await pick(user, ['나'], ['나']);
     await user.click(screen.getByRole('button', { name: '저장' }));
     expect(screen.getByText('환율을 입력해 주세요.')).toBeInTheDocument();
 
@@ -194,6 +268,7 @@ describe('expense flows', () => {
     await user.type(screen.getByLabelText('금액'), '1000');
     expect(screen.getByText('≈ 8,510원')).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: '교통' }));
+    await pick(user, ['나'], ['나']);
     await user.click(screen.getByRole('button', { name: '저장' }));
 
     // The ledger credits the API for its converted amounts.
@@ -238,7 +313,7 @@ describe('expense flows', () => {
     await repositories.expenses.create(
       expense({
         tripId: other.id,
-        payerId: otherMe.id,
+        payerIds: [otherMe.id],
         participants: [{ companionId: otherMe.id, value: null }],
         currency: 'USD',
         exchangeRate: { rate: '1380', source: 'manual', fetchedAt: null },
@@ -330,7 +405,7 @@ describe('expense flows', () => {
     await repositories.expenses.create(
       expense({
         memo: '택시',
-        payerId: chulsoo.id,
+        payerIds: [chulsoo.id],
         participants: [{ companionId: chulsoo.id, value: null }],
       }),
     );
@@ -451,6 +526,7 @@ describe('expenses from the schedule', () => {
     await user.type(screen.getByLabelText('금액'), '3000');
     await user.click(screen.getByRole('radio', { name: '식비' }));
     await user.type(screen.getByLabelText('메모'), '타코야키');
+    await pick(user, ['나'], ['나']);
     await user.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('link', { name: /타코야키/ })).toHaveTextContent('오사카성');
 

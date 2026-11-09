@@ -27,13 +27,22 @@ export const MAX_WEIGHT = 1000;
 const fail = (error: SplitError): SplitResult => ({ ok: false, error });
 
 /**
+ * Who carries what doesn't divide evenly: the first payer who shares the expense, else the first
+ * payer (with a share of the remainder alone), else, while nobody is ticked as paying yet (a form
+ * being filled in), the first person sharing it.
+ */
+export function remainderHolder(payerIds: readonly ID[], sharing: readonly ID[]): ID | undefined {
+  return payerIds.find((id) => sharing.includes(id)) ?? payerIds[0] ?? sharing[0];
+}
+
+/**
  * Splits `amount` among `participants`. Equal is ratio with every weight 1. What doesn't divide
- * evenly goes to the payer, who gets a weight-0 share for it when not a participant.
- * The shares always add up to `amount`.
+ * evenly goes to `remainderHolder`: a payer, who gets a weight-0 share for it when not a
+ * participant. The shares always add up to `amount`.
  */
 export function splitExpense(
   amount: number,
-  payerId: ID,
+  payerIds: readonly ID[],
   method: SplitMethod,
   participants: SplitParticipant[],
 ): SplitResult {
@@ -80,9 +89,10 @@ export function splitExpense(
 
   const remainder = amount - shares.reduce((sum, share) => sum + share.amount, 0);
   if (remainder > 0) {
-    const payer = shares.find((share) => share.companionId === payerId);
-    if (payer) payer.amount += remainder;
-    else shares.push({ companionId: payerId, weight: 0, amount: remainder });
+    const holder = remainderHolder(payerIds, [...seen])!;
+    const share = shares.find((s) => s.companionId === holder);
+    if (share) share.amount += remainder;
+    else shares.push({ companionId: holder, weight: 0, amount: remainder });
   }
   return { ok: true, shares };
 }

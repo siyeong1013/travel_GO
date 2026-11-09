@@ -8,6 +8,7 @@ import {
   type ExpenseSection,
   expenseTitle,
   PAYMENT_LABELS,
+  payersText,
   splitSummary,
 } from '@/features/expenses/expenseDisplay';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -82,12 +83,11 @@ export function ExpenseRowLink({
   place,
   onClick,
 }: ExpenseRowLinkProps) {
-  const payer = companions.find((c) => c.id === expense.payerId)?.name ?? '?';
   const meta = [
     // The title is the memo, or the category when there is none.
     expense.memo.trim() && CATEGORY_LABELS[expense.category],
     showDate && formatDate(expense.date),
-    `${payer} 결제`,
+    payersText(expense, companions),
     splitSummary(expense, companions),
     PAYMENT_LABELS[expense.paymentMethod],
   ]

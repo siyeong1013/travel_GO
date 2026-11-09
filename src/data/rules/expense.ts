@@ -61,7 +61,11 @@ export function cleanExpense(
     throw new ValidationError('invalid payment method');
   }
   if (!SPLIT_METHODS.includes(input.splitMethod)) throw new ValidationError('invalid split method');
-  if (!context.companionIds.has(input.payerId)) {
+  if (input.payerIds.length === 0) throw new ValidationError('someone has to have paid');
+  if (new Set(input.payerIds).size !== input.payerIds.length) {
+    throw new ValidationError('a payer is listed twice');
+  }
+  if (!input.payerIds.every((id) => context.companionIds.has(id))) {
     throw new ValidationError('payer is not on this trip');
   }
   for (const { companionId } of input.participants) {
@@ -73,7 +77,7 @@ export function cleanExpense(
     throw new ValidationError('linked schedule item is not in this trip');
   }
 
-  const split = splitExpense(input.amount, input.payerId, input.splitMethod, input.participants);
+  const split = splitExpense(input.amount, input.payerIds, input.splitMethod, input.participants);
   if (!split.ok) throw new InvalidSplitError(split.error);
 
   return {
@@ -84,7 +88,7 @@ export function cleanExpense(
       exchangeRate: cleanRate(input, context.settlementCurrency),
       category: input.category,
       paymentMethod: input.paymentMethod,
-      payerId: input.payerId,
+      payerIds: [...input.payerIds],
       splitMethod: input.splitMethod,
       memo: input.memo,
       scheduleItemId: input.scheduleItemId,

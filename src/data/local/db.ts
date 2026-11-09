@@ -147,5 +147,19 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
         });
     });
 
+  // v9: an expense can have several payers, who paid it in equal parts (`payerId` became
+  // `payerIds`). `updatedAt` stays: not an edit.
+  db.version(9)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<Omit<Expense, 'payerIds'> & { payerId?: ID; payerIds?: ID[] }, ID>('expenses')
+        .toCollection()
+        .modify((expense) => {
+          if (expense.payerId !== undefined) expense.payerIds = [expense.payerId];
+          delete expense.payerId;
+        });
+    });
+
   return db;
 }

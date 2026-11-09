@@ -23,7 +23,8 @@ export interface ExpenseInput {
   exchangeRate: Pick<ExchangeRateSnapshot, 'rate' | 'source' | 'fetchedAt'>;
   category: ExpenseCategory;
   paymentMethod: PaymentMethod;
-  payerId: ID;
+  /** One or more, none twice: several paid it in equal parts. */
+  payerIds: ID[];
   splitMethod: SplitMethod;
   /** Who shares it; shares are computed from these (see `splitExpense`). */
   participants: SplitParticipant[];

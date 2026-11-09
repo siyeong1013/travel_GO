@@ -60,7 +60,7 @@ async function seed(repos: Repositories, title: string) {
     exchangeRate: { rate: '9.0412', source: 'manual', fetchedAt: null },
     category: 'sightseeing',
     paymentMethod: 'cash',
-    payerId: me!.id,
+    payerIds: [me!.id],
     splitMethod: 'ratio',
     participants: [
       { companionId: me!.id, value: 2 },

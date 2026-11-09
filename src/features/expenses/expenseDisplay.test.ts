@@ -4,6 +4,7 @@ import {
   expenseTitle,
   groupExpenses,
   itemExpenses,
+  payersText,
   splitSummary,
 } from '@/features/expenses/expenseDisplay';
 import { makeCompanion, makeExpense, makeTrip } from '@/test/fixtures';
@@ -24,13 +25,13 @@ const equalShares = (amount: number, ...people: typeof companions) =>
 describe('groupExpenses', () => {
   it('groups by trip day, with before/after the trip at the ends, and totals each', () => {
     const flight = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 300_000, date: '2026-10-01' },
+      { tripId: trip.id, payerIds: [me.id], amount: 300_000, date: '2026-10-01' },
       equalShares(300_000, me),
     );
     const sushi = makeExpense(
       {
         tripId: trip.id,
-        payerId: me.id,
+        payerIds: [me.id],
         amount: 1_000,
         currency: 'JPY',
         date: '2026-11-11',
@@ -39,18 +40,18 @@ describe('groupExpenses', () => {
       equalShares(1_000, me),
     );
     const ramen = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 12_000, date: '2026-11-11' },
+      { tripId: trip.id, payerIds: [me.id], amount: 12_000, date: '2026-11-11' },
       equalShares(12_000, me),
     );
     const souvenir = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 5_000, date: '2026-11-13' },
+      { tripId: trip.id, payerIds: [me.id], amount: 5_000, date: '2026-11-13' },
       equalShares(5_000, me),
     );
     // Rate quoted in another currency (e.g. from a backup): listed, but not in the total.
     const stale = makeExpense(
       {
         tripId: trip.id,
-        payerId: me.id,
+        payerIds: [me.id],
         amount: 500,
         currency: 'JPY',
         date: '2026-11-11',
@@ -80,7 +81,7 @@ describe('itemExpenses', () => {
     const ticket = makeExpense(
       {
         tripId: trip.id,
-        payerId: me.id,
+        payerIds: [me.id],
         amount: 1_000,
         currency: 'JPY',
         exchangeRate: { rate: '9.5', quote: 'KRW', source: 'manual', fetchedAt: null },
@@ -89,18 +90,18 @@ describe('itemExpenses', () => {
       equalShares(1_000, me),
     );
     const lunch = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 12_000, scheduleItemId: castle },
+      { tripId: trip.id, payerIds: [me.id], amount: 12_000, scheduleItemId: castle },
       equalShares(12_000, me),
     );
     const elsewhere = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 5_000, scheduleItemId: 'item-other' },
+      { tripId: trip.id, payerIds: [me.id], amount: 5_000, scheduleItemId: 'item-other' },
       equalShares(5_000, me),
     );
     // Rate quoted in another currency: listed, but not in the total.
     const stale = makeExpense(
       {
         tripId: trip.id,
-        payerId: me.id,
+        payerIds: [me.id],
         amount: 500,
         currency: 'JPY',
         exchangeRate: { rate: '0.0067', quote: 'USD', source: 'manual', fetchedAt: null },
@@ -122,20 +123,20 @@ describe('itemExpenses', () => {
 
 describe('splitSummary', () => {
   it('names personal expenses, one-person splits and group splits', () => {
-    const personal = makeExpense({ tripId: trip.id, payerId: me.id, amount: 100 }, equalShares(100, me));
+    const personal = makeExpense({ tripId: trip.id, payerIds: [me.id], amount: 100 }, equalShares(100, me));
     const treat = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 100 },
+      { tripId: trip.id, payerIds: [me.id], amount: 100 },
       equalShares(100, chulsoo),
     );
     const group = makeExpense(
-      { tripId: trip.id, payerId: chulsoo.id, amount: 100, splitMethod: 'ratio' },
+      { tripId: trip.id, payerIds: [chulsoo.id], amount: 100, splitMethod: 'ratio' },
       [
         { companionId: me.id, weight: 2, amount: 67 },
         { companionId: chulsoo.id, weight: 1, amount: 33 },
       ],
     );
     // The payer only carries the remainder (weight 0): not a participant.
-    const forTwo = makeExpense({ tripId: trip.id, payerId: me.id, amount: 101 }, [
+    const forTwo = makeExpense({ tripId: trip.id, payerIds: [me.id], amount: 101 }, [
       { companionId: chulsoo.id, weight: 1, amount: 50 },
       { companionId: younghee.id, weight: 1, amount: 50 },
       { companionId: me.id, weight: 0, amount: 1 },
@@ -145,6 +146,16 @@ describe('splitSummary', () => {
     expect(splitSummary(treat, companions)).toBe('철수 부담');
     expect(splitSummary(group, companions)).toBe('2명 비율');
     expect(splitSummary(forTwo, companions)).toBe('2명 균등');
+    // Another paid half of it: theirs to get back, not personal.
+    expect(splitSummary({ ...personal, payerIds: [me.id, chulsoo.id] }, companions)).toBe('나 부담');
+  });
+
+  it('names who paid: one, two, or the first and how many more', () => {
+    const paidBy = (...people: typeof companions) =>
+      payersText({ payerIds: people.map((p) => p.id) }, companions);
+    expect(paidBy(chulsoo)).toBe('철수 결제');
+    expect(paidBy(me, chulsoo)).toBe('나, 철수 결제');
+    expect(paidBy(me, chulsoo, younghee)).toBe('나 외 2명 결제');
   });
 });
 
@@ -155,13 +166,14 @@ describe('labels', () => {
   });
 
   it('says why an expense keeps someone from being deleted', () => {
-    const paid = makeExpense({ tripId: trip.id, payerId: chulsoo.id, amount: 100 }, []);
+    const paid = makeExpense({ tripId: trip.id, payerIds: [chulsoo.id], amount: 100 }, []);
     const byAmount = makeExpense(
-      { tripId: trip.id, payerId: me.id, amount: 100, splitMethod: 'amount' },
+      { tripId: trip.id, payerIds: [me.id], amount: 100, splitMethod: 'amount' },
       [],
     );
-    const alone = makeExpense({ tripId: trip.id, payerId: me.id, amount: 100 }, []);
+    const alone = makeExpense({ tripId: trip.id, payerIds: [me.id], amount: 100 }, []);
     expect(blockReason(paid, chulsoo.id)).toBe('payer');
+    expect(blockReason({ ...alone, payerIds: [me.id, chulsoo.id] }, chulsoo.id)).toBe('payer');
     expect(blockReason(byAmount, chulsoo.id)).toBe('amount');
     expect(blockReason(alone, chulsoo.id)).toBe('only');
   });
