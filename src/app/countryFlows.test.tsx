@@ -2,6 +2,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
+import { WORLD_HEIGHT, WORLD_WIDTH } from '@/features/countries/worldMap';
 import { addDays, toLocalDate } from '@/lib/dates';
 import { renderApp, resetApp } from '@/test/app';
 import { typedCity } from '@/test/fixtures';
@@ -96,8 +97,54 @@ describe('visited countries', () => {
     ]);
     expect(within(list).getAllByRole('checkbox', { checked: true })).toHaveLength(2);
     expect(await visited()).toEqual(['MP', 'SG']);
-    // Too small to see: a dot once visited.
-    expect(document.querySelector('svg circle[data-code="SG"]')).not.toBeNull();
+    // Too small to see, still its own shape filled in, not a dot.
+    expect(onMap('SG')).toHaveClass('fill-brand-500');
+    expect(document.querySelector('svg circle')).toBeNull();
+  });
+
+  it('zooms the map by its buttons and the keys, and moves it about zoomed in', async () => {
+    const { user } = renderApp('/countries');
+    const map = await screen.findByRole('img', { name: /^다녀온 나라 지도/ });
+    const zoomIn = screen.getByRole('button', { name: '지도 확대' });
+    const zoomOut = screen.getByRole('button', { name: '지도 축소' });
+    const [width, height] = [WORLD_WIDTH, WORLD_HEIGHT];
+    /** What shows: its left top corner and how far in. */
+    const shows = (x: number, y: number, scale: number) =>
+      `${x} ${y} ${width / scale} ${height / scale}`;
+    expect(map.getAttribute('viewBox')).toBe(shows(0, 0, 1));
+    expect(zoomOut).toBeDisabled();
+    // At the whole world it takes no keys.
+    expect(map).not.toHaveAttribute('tabindex');
+
+    // Twice in, on the middle.
+    await user.click(zoomIn);
+    expect(map.getAttribute('viewBox')).toBe(shows(width / 4, height / 4, 2));
+    expect(zoomOut).toBeEnabled();
+    // Back past the - button to the map: the arrow keys move it a quarter of what shows.
+    await user.tab({ shift: true });
+    await user.tab({ shift: true });
+    expect(map).toHaveFocus();
+    await user.keyboard('{ArrowLeft}');
+    expect(map.getAttribute('viewBox')).toBe(shows(width / 8, height / 4, 2));
+
+    // As far in as it goes: 32 times.
+    for (const times of [4, 8, 16, 32]) {
+      await user.click(zoomIn);
+      const [, , shownWidth, shownHeight] = map.getAttribute('viewBox')!.split(' ').map(Number);
+      expect(shownWidth).toBe(width / times);
+      expect(shownHeight).toBeCloseTo(height / times, 1);
+    }
+    expect(zoomIn).toBeDisabled();
+
+    // And back out to the whole world, the - key too.
+    map.focus();
+    await user.keyboard('-');
+    await user.click(zoomOut);
+    await user.click(zoomOut);
+    await user.click(zoomOut);
+    await user.click(zoomOut);
+    expect(map.getAttribute('viewBox')).toBe(shows(0, 0, 1));
+    expect(zoomOut).toBeDisabled();
   });
 
   it('takes a country off its list by the checkbox only, with undo', async () => {
@@ -111,7 +158,7 @@ describe('visited countries', () => {
     await user.click(within(list).getByRole('checkbox', { name: '싱가포르' }));
     expect(await screen.findByRole('region', { name: '다녀온 나라 1곳' })).toBeInTheDocument();
     expect(screen.getByText('싱가포르를 다녀온 나라에서 뺐어요.')).toBeInTheDocument();
-    expect(document.querySelector('svg circle[data-code="SG"]')).toBeNull();
+    expect(onMap('SG')).toHaveClass('fill-gray-200');
     expect(await visited()).toEqual(['MP']);
 
     await user.click(screen.getByRole('button', { name: '되돌리기' }));
@@ -247,6 +294,17 @@ describe('cities of a country', () => {
     expect(within(list).getAllByRole('checkbox')).toHaveLength(2);
     await user.click(within(list).getByRole('checkbox', { name: /^이시가키 오키나와현/ }));
     await waitFor(() => expect(document.querySelector('svg circle[data-code="JP-47:이시가키"]')).not.toBeNull());
+
+    // The map zooms in, eight times at most; the dot keeps its size on screen.
+    const map = screen.getByRole('img', { name: /^일본 지도/ });
+    const dot = () => document.querySelector('svg circle[data-code="JP-47:이시가키"]')!;
+    expect(dot()).toHaveAttribute('r', '10');
+    await user.click(screen.getByRole('button', { name: '지도 확대' }));
+    expect(map).toHaveAttribute('viewBox', '25 25 50 50');
+    expect(dot()).toHaveAttribute('r', '5');
+    await user.click(screen.getByRole('button', { name: '지도 확대' }));
+    await user.click(screen.getByRole('button', { name: '지도 확대' }));
+    expect(screen.getByRole('button', { name: '지도 확대' })).toBeDisabled();
   });
 
   it("say when the map didn't come, and try again", async () => {

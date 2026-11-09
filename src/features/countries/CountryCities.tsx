@@ -93,6 +93,7 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
       <div className="mx-4 mt-4 rounded-2xl bg-gray-50 p-3">
         {map ? (
           <CityMap
+            key={country}
             map={map}
             visited={visited}
             label={[`${countryName(country)} 지도`, ...here.map(([name]) => name)].join(', ')}
