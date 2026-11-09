@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import { FLIGHT_MESSAGES, type FlightLookup } from '@/features/schedule/flightLookup';
-import { flightRoute } from '@/features/schedule/flightItem';
+import { airlineName, flightRoute } from '@/features/schedule/flightItem';
 import type { FlightLeg } from '@/lib/flights';
 
 /** Where a flight lookup stands: asked for `number`, and its answer once it came. */
@@ -63,7 +63,7 @@ export function FlightResults({
             >
               <span className="font-semibold">
                 {leg.number}
-                {leg.airline && <span className="font-normal text-gray-500"> · {leg.airline}</span>}
+                {airlineName(leg) && <span className="font-normal text-gray-500"> · {airlineName(leg)}</span>}
               </span>
               <FlightRoute leg={leg} className="text-sm text-gray-600" />
               <span className="text-sm font-semibold text-brand-600">

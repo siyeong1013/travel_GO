@@ -1,11 +1,16 @@
 import type { ReactNode } from 'react';
+import { PlaneIcon } from '@/components/ui/icons';
 import type { ScheduleItem } from '@/data/models';
 import { directionsUrl, distanceMeters, type RouteLeg } from '@/features/map/route';
+import { flightDetails, flightHeading, isFlightItem } from '@/features/schedule/flightItem';
 import { formatDistance } from '@/lib/format';
 
 interface ScheduleItemCardProps {
   item: ScheduleItem;
-  /** Position in the day (1-based); null in the inbox, which has no itinerary order. */
+  /**
+   * The place's number in the day (`itemNumbers`); null in the inbox, which has no itinerary
+   * order, and for a flight, which shows a plane instead.
+   */
   number: number | null;
   /** The day's timeline line to the item above, and to the one below. */
   joinedAbove?: boolean;
@@ -20,8 +25,10 @@ interface ScheduleItemCardProps {
 }
 
 /**
- * One item on the day's timeline: its number on a line through the day (a dot in the inbox),
- * the card, and under it the straight-line distance and directions to the next place.
+ * One item on the day's timeline: its number on a line through the day (a dot in the inbox, a
+ * plane for a flight), the card, and under it the straight-line distance and directions to the
+ * next place. A flight looked up heads its card with where and when it leaves and lands, then the
+ * airline and the number.
  */
 export function ScheduleItemCard({
   item,
@@ -39,7 +46,11 @@ export function ScheduleItemCard({
       <div aria-hidden="true" className="relative flex w-7 shrink-0 justify-center">
         {joinedAbove && <span className="absolute top-0 h-7 w-0.5 bg-gray-200" />}
         {joinedBelow && <span className="absolute top-7 bottom-0 w-0.5 bg-gray-200" />}
-        {number === null ? (
+        {isFlightItem(item) ? (
+          <span className="relative mt-3.5 flex size-7 items-center justify-center rounded-full bg-brand-500 text-white ring-4 ring-white">
+            <PlaneIcon width={15} height={15} />
+          </span>
+        ) : number === null ? (
           <span className="relative mt-[23px] size-2.5 rounded-full bg-gray-300" />
         ) : (
           <span className="relative mt-3.5 flex size-7 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white ring-4 ring-white">
@@ -54,18 +65,31 @@ export function ScheduleItemCard({
             onClick={onClick}
             className="min-w-0 flex-1 rounded-l-2xl p-3.5 text-left last:rounded-r-2xl active:bg-gray-50"
           >
-            <span className="flex items-baseline gap-2">
-              <span className="min-w-0 flex-1 truncate font-semibold">{item.place.name}</span>
-              {item.time && (
-                <span className="shrink-0 text-sm font-semibold text-brand-600 tabular-nums">
-                  {item.time}
+            {item.flight ? (
+              <>
+                <span className="block truncate font-semibold tabular-nums">
+                  {flightHeading(item.flight, item.time)}
                 </span>
-              )}
-            </span>
-            {item.place.address && (
-              <span className="mt-0.5 block truncate text-sm text-gray-500">
-                {item.place.address}
-              </span>
+                <span className="mt-0.5 block truncate text-sm text-gray-500">
+                  {flightDetails(item.flight)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate font-semibold">{item.place.name}</span>
+                  {item.time && (
+                    <span className="shrink-0 text-sm font-semibold text-brand-600 tabular-nums">
+                      {item.time}
+                    </span>
+                  )}
+                </span>
+                {item.place.address && (
+                  <span className="mt-0.5 block truncate text-sm text-gray-500">
+                    {item.place.address}
+                  </span>
+                )}
+              </>
             )}
             {item.memo && (
               <span className="mt-1 line-clamp-2 text-sm whitespace-pre-line text-gray-600">

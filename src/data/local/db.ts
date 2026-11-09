@@ -161,5 +161,20 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
         });
     });
 
+  // v10: a schedule item can hold the flight it is (`flight`); none has one yet. `updatedAt`
+  // stays: not an edit.
+  db.version(10)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<Omit<ScheduleItem, 'flight'> & { flight?: ScheduleItem['flight'] }, ID>(
+          'scheduleItems',
+        )
+        .toCollection()
+        .modify((item) => {
+          if (item.flight === undefined) item.flight = null;
+        });
+    });
+
   return db;
 }

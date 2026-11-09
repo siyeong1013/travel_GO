@@ -79,9 +79,9 @@ export function answered(
 
 /**
  * What flights put in a trip's schedule, in order: each one found, on the day it leaves, as the
- * airport it leaves from (the flight in its memo) and the one it lands at (`flightItems`; the leg
- * picked, of several); one not found by its number on its day; in the inbox when that day is
- * outside the trip. Rows without a flight number are left out.
+ * airport it leaves from, the flight, and the airport it lands at (`flightItems`; the leg picked,
+ * of several); one not found by its number on its day; in the inbox when that day is outside the
+ * trip. Rows without a flight number are left out.
  */
 export function flightScheduleItems(
   flights: FlightDraft[],

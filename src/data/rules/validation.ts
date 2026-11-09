@@ -1,12 +1,14 @@
 import type {
   CoverPhoto,
   CurrencyCode,
+  FlightStop,
   GeoPoint,
   ID,
   ISODateTime,
   LocalTime,
   PlaceData,
   PlaceSnapshot,
+  ScheduleFlight,
   Trip,
   TripCity,
 } from '@/data/models';
@@ -14,6 +16,7 @@ import { type NewTrip, ValidationError } from '@/data/repositories';
 import { isCountryCode } from '@/data/rules/country';
 import { isCurrency, MAX_AMOUNT } from '@/data/rules/money';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
+import { parseFlightNumber } from '@/lib/flights';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -146,6 +149,42 @@ export function cleanPlaceData(data: PlaceData): PlaceData {
     address: data.address?.trim() || null,
     location: cleanLocation(data.location, 'location'),
     fetchedAt: data.fetchedAt,
+  };
+}
+
+/** IATA airport code. */
+export const AIRPORT_CODE = /^[A-Z0-9]{3}$/;
+/** At most this many days between when a flight leaves and lands, either way. */
+export const MAX_FLIGHT_DAYS = 3;
+
+/** The flight an item is, or null (a place). Throws `ValidationError`. */
+export function cleanFlight(flight: ScheduleFlight | null): ScheduleFlight | null {
+  if (flight === null) return null;
+  const number = parseFlightNumber(flight.number);
+  if (!number) throw new ValidationError(`flight.number is not a flight number: ${flight.number}`);
+  const { dayOffset } = flight.arrival;
+  if (!Number.isInteger(dayOffset) || Math.abs(dayOffset) > MAX_FLIGHT_DAYS) {
+    throw new ValidationError('flight.arrival.dayOffset must be a whole number of days');
+  }
+  return {
+    number,
+    airline: flight.airline?.trim() || null,
+    departure: cleanFlightStop(flight.departure, 'flight.departure'),
+    arrival: { ...cleanFlightStop(flight.arrival, 'flight.arrival'), dayOffset },
+  };
+}
+
+function cleanFlightStop(stop: FlightStop, field: string): FlightStop {
+  const name = stop.name.trim();
+  if (!name) throw new ValidationError(`${field}.name is required`);
+  if (stop.code !== null && !AIRPORT_CODE.test(stop.code)) {
+    throw new ValidationError(`${field}.code is not an airport code: ${stop.code}`);
+  }
+  return {
+    code: stop.code,
+    name,
+    time: cleanTime(stop.time),
+    terminal: stop.terminal?.trim() || null,
   };
 }
 

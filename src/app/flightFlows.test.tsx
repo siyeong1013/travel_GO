@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { Trip } from '@/data/models';
 import type { FlightAnswer, FlightLeg } from '@/lib/flights';
+import { flightItems } from '@/features/schedule/flightItem';
 import { pickTripDates, renderApp, resetApp, stubPlacesApi, stubSupabase } from '@/test/app';
 import { namedPlace, typedCity } from '@/test/fixtures';
 import { kakaoUser, supabaseFake } from '@/test/supabase';
@@ -103,6 +104,12 @@ const schedule = async () =>
     item.place.name,
   ]);
 
+/** The cards of the day on screen, as they read. */
+const cards = () =>
+  within(screen.getByRole('tabpanel'))
+    .queryAllByRole('listitem')
+    .map((li) => li.textContent);
+
 /** Text as it reads, though split among elements (a flight's route, broken between its ends). */
 const reads = (text: string) => (_: string, element: Element | null) => element?.textContent === text;
 
@@ -132,23 +139,37 @@ describe('adding flights', () => {
       '/api/flight?number=KE724&date=2026-12-03',
     ]);
     expect(new Headers(fetch.mock.calls[0]![1]?.headers).get('Authorization')).toBe('Bearer access');
-    expect(within(out).getByRole('radio', { name: /^KE723 · Korean Air/ })).toBeChecked();
+    // The airline by its Korean name.
+    expect(within(out).getByRole('radio', { name: /^KE723 · 대한항공/ })).toBeChecked();
     expect(within(out).getByRole('link', { name: 'AeroDataBox' })).toHaveAttribute('rel', 'noopener');
 
     await user.click(within(sheet).getByRole('button', { name: '일정에 넣기' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '항공편 추가' })).toBeNull());
     expect(await screen.findByText('KE723을 Day 1에, KE724를 Day 3에 넣었어요.')).toBeInTheDocument();
-    // Each: the airport it leaves from, with the flight in its memo, then the one it lands at.
+    // Each: the airport it leaves from, the flight, then the airport it lands at.
     expect(await schedule()).toEqual([
       ['2026-12-01', '09:00', '인천 공항 (ICN)'],
+      ['2026-12-01', '09:00', 'KE723 인천 → 간사이'],
       ['2026-12-01', '10:55', '간사이 공항 (KIX)'],
       ['2026-12-03', '12:00', '간사이 공항 (KIX)'],
+      ['2026-12-03', '12:00', 'KE724 간사이 → 인천'],
       ['2026-12-03', '14:00', '인천 공항 (ICN)'],
     ]);
-    const [there, landed] = await repositories.schedule.listByTrip(trip.id);
+    const [there, flight, landed] = await repositories.schedule.listByTrip(trip.id);
     expect(there).toMatchObject({
       place: { placeId: null, address: null, location: INCHEON },
-      memo: 'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55',
+      memo: '',
+      flight: null,
+    });
+    expect(flight).toMatchObject({
+      place: { placeId: null, address: null, location: null },
+      memo: '',
+      flight: {
+        number: 'KE723',
+        airline: 'Korean Air',
+        departure: { code: 'ICN', name: '인천', time: '09:00', terminal: '2' },
+        arrival: { code: 'KIX', name: '간사이', time: '10:55', terminal: '1', dayOffset: 0 },
+      },
     });
     expect(landed).toMatchObject({ place: { placeId: null, location: KANSAI }, memo: '' });
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -177,13 +198,16 @@ describe('adding flights', () => {
     expect(
       await screen.findByText('KE723을 Day 1에, MM101을 Day 2에, KE724를 Day 3에 넣었어요.'),
     ).toBeInTheDocument();
-    expect(await schedule()).toEqual([
-      ['2026-12-01', '09:00', '인천 공항 (ICN)'],
-      ['2026-12-01', '10:55', '간사이 공항 (KIX)'],
-      ['2026-12-02', '07:00', '간사이 공항 (KIX)'],
-      ['2026-12-02', '09:20', '오키나와 공항 (OKA)'],
-      ['2026-12-03', '12:00', '간사이 공항 (KIX)'],
-      ['2026-12-03', '14:00', '인천 공항 (ICN)'],
+    expect((await schedule()).map(([date, , name]) => [date, name])).toEqual([
+      ['2026-12-01', '인천 공항 (ICN)'],
+      ['2026-12-01', 'KE723 인천 → 간사이'],
+      ['2026-12-01', '간사이 공항 (KIX)'],
+      ['2026-12-02', '간사이 공항 (KIX)'],
+      ['2026-12-02', 'MM101 간사이 → 오키나와'],
+      ['2026-12-02', '오키나와 공항 (OKA)'],
+      ['2026-12-03', '간사이 공항 (KIX)'],
+      ['2026-12-03', 'KE724 간사이 → 인천'],
+      ['2026-12-03', '인천 공항 (ICN)'],
     ]);
   });
 
@@ -214,6 +238,7 @@ describe('adding flights', () => {
     expect(await screen.findByText('KE001을 Day 1에 넣었어요.')).toBeInTheDocument();
     expect(await schedule()).toEqual([
       ['2026-12-01', '12:30', '간사이 공항 (KIX)'],
+      ['2026-12-01', '12:30', 'KE001 간사이 → 오키나와'],
       ['2026-12-01', '14:50', '오키나와 공항 (OKA)'],
     ]);
   });
@@ -345,7 +370,7 @@ describe('a flight number only in the schedule', () => {
     return screen.getByRole('dialog', { name: '일정 편집' });
   }
 
-  it('is filled in from the flight leaving that day, where it is', async () => {
+  it('is filled in from the flight leaving that day, between its airports', async () => {
     supabaseFake.signedIn(kakaoUser());
     const fetch = stubFlightApi(KE723);
     const item = { tripId: trip.id, date: '2026-12-01' } as const;
@@ -359,33 +384,37 @@ describe('a flight number only in the schedule', () => {
     await user.click(within(sheet).getByRole('button', { name: /^KE723 항공편 정보 불러오기/ }));
     expect(String(fetch.mock.calls[0]![0])).toBe('/api/flight?number=KE723&date=2026-12-01');
     await user.click(await within(sheet).findByRole('button', { name: /이 항공편으로 채우기$/ }));
-    // The airport it leaves from, at its time.
-    expect(within(sheet).getByLabelText('장소 이름')).toHaveValue('인천 공항 (ICN)');
+    // The flight in place of its name, at the time it leaves; the memo as written.
+    expect(within(sheet).getByText('ICN 09:00 → KIX 10:55')).toBeInTheDocument();
+    expect(within(sheet).getByText('대한항공 · KE723')).toBeInTheDocument();
+    expect(within(sheet).getByText('인천 T2 출발 → 간사이 T1 도착')).toBeInTheDocument();
+    expect(within(sheet).queryByLabelText('장소 이름')).toBeNull();
     expect(within(sheet).getByLabelText('시간')).toHaveValue('09:00');
-    expect(within(sheet).getByText('항공편 정보의 공항 위치예요.')).toBeInTheDocument();
-    expect(within(sheet).queryByRole('button', { name: /항공편 정보 불러오기/ })).toBeNull();
-    // The flight in the memo, what was written under it.
-    expect(within(sheet).getByLabelText('메모')).toHaveValue(
-      'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55\n좌석 32A',
-    );
+    expect(within(sheet).getByLabelText('메모')).toHaveValue('좌석 32A');
+    // Picked again, the airports still go in on saving.
+    expect(
+      within(sheet).getByRole('button', { name: /^KE723 항공편 정보 불러오기.*앞뒤 일정으로 넣어요$/ }),
+    ).toBeInTheDocument();
     // Saved with the rest only.
     expect((await repositories.schedule.listByTrip(trip.id))[0]!.place.name).toBe('KE723');
 
     await user.click(within(sheet).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '일정 편집' })).toBeNull());
-    // The airport it lands at, right after it.
-    await waitFor(async () => expect(await repositories.schedule.listByTrip(trip.id)).toHaveLength(3));
+    // The airports it leaves from and lands at, right before and after it.
+    await waitFor(async () => expect(await repositories.schedule.listByTrip(trip.id)).toHaveLength(4));
     const items = await repositories.schedule.listByTrip(trip.id);
     expect(items.map(({ order, time, place, memo }) => [order, time, place.name, memo])).toEqual([
-      [0, '09:00', '인천 공항 (ICN)', 'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55\n좌석 32A'],
-      [1, '10:55', '간사이 공항 (KIX)', ''],
-      [2, null, '호텔 체크인', ''],
+      [0, '09:00', '인천 공항 (ICN)', ''],
+      [1, '09:00', 'KE723 인천 → 간사이', '좌석 32A'],
+      [2, '10:55', '간사이 공항 (KIX)', ''],
+      [3, null, '호텔 체크인', ''],
     ]);
     expect(items[0]!.place).toMatchObject({ placeId: null, address: null, location: INCHEON });
-    expect(items[1]!.place).toMatchObject({ placeId: null, address: null, location: KANSAI });
+    expect(items[1]!.flight).toMatchObject({ number: 'KE723', arrival: { time: '10:55' } });
+    expect(items[2]!.place).toMatchObject({ placeId: null, address: null, location: KANSAI });
   });
 
-  it('becomes its airports when it was filled in before they came along', async () => {
+  it('drops what was written of it before, once it is the flight between its airports', async () => {
     supabaseFake.signedIn(kakaoUser());
     stubFlightApi(KE723);
     await repositories.schedule.create({
@@ -400,21 +429,21 @@ describe('a flight number only in the schedule', () => {
 
     await user.click(within(sheet).getByRole('button', { name: /^KE723 항공편 정보 불러오기/ }));
     await user.click(await within(sheet).findByRole('button', { name: /이 항공편으로 채우기$/ }));
-    // The memo has the flight once: the way it was written before gives way.
-    const memo = 'KE723 인천 → 간사이 · Korean Air\n인천 T2 출발 → 간사이 T1 도착 10:55';
-    expect(within(sheet).getByLabelText('메모')).toHaveValue(memo);
+    // The flight shows it now.
+    expect(within(sheet).getByLabelText('메모')).toHaveValue('');
 
     await user.click(within(sheet).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '일정 편집' })).toBeNull());
-    await waitFor(async () => expect(await schedule()).toHaveLength(2));
+    await waitFor(async () => expect(await schedule()).toHaveLength(3));
     expect(await schedule()).toEqual([
       ['2026-12-01', '09:00', '인천 공항 (ICN)'],
+      ['2026-12-01', '09:00', 'KE723 인천 → 간사이'],
       ['2026-12-01', '10:55', '간사이 공항 (KIX)'],
     ]);
-    expect((await repositories.schedule.listByTrip(trip.id))[0]!.memo).toBe(memo);
+    expect((await repositories.schedule.listByTrip(trip.id))[1]!.memo).toBe('');
   });
 
-  it('writes when it lands the next day as the route does, over the memo written before', async () => {
+  it('heads it with when it lands the next day, what else was written staying', async () => {
     supabaseFake.signedIn(kakaoUser());
     const late: FlightLeg = {
       number: 'KE724',
@@ -434,9 +463,8 @@ describe('a flight number only in the schedule', () => {
 
     await user.click(within(sheet).getByRole('button', { name: /^KE724 항공편 정보 불러오기/ }));
     await user.click(await within(sheet).findByRole('button', { name: /이 항공편으로 채우기$/ }));
-    expect(within(sheet).getByLabelText('메모')).toHaveValue(
-      'KE724 간사이 → 인천 · Korean Air\n간사이 T1 출발 → 인천 T2 도착 00:40(+1일)\n좌석 32A',
-    );
+    expect(within(sheet).getByText('KIX 22:30 → ICN 00:40(+1일)')).toBeInTheDocument();
+    expect(within(sheet).getByLabelText('메모')).toHaveValue('좌석 32A');
   });
 
   it('is a place like any other once it has its airport', async () => {
@@ -466,6 +494,68 @@ describe('a flight number only in the schedule', () => {
     // Another day, another lookup.
     await user.selectOptions(within(sheet).getByLabelText('날짜'), '2026-12-02');
     expect(within(sheet).getByRole('button', { name: /^KE724 항공편 정보 불러오기 Day 2/ })).toBeInTheDocument();
+  });
+});
+
+describe('a flight in the schedule', () => {
+  /** KE723 as the flight sheet puts it in, on the first day between two other items. */
+  async function putIn() {
+    const day = { tripId: trip.id, date: '2026-12-01' } as const;
+    await repositories.schedule.create({ ...day, place: namedPlace('호텔 체크아웃') });
+    for (const made of flightItems((KE723 as { flights: FlightLeg[] }).flights[0]!)) {
+      await repositories.schedule.create({ ...day, ...made });
+    }
+    await repositories.schedule.create({ ...day, place: namedPlace('호텔 체크인') });
+  }
+
+  it('is between its airports with a plane for a number, headed by where and when', async () => {
+    await putIn();
+    renderApp(`/trips/${trip.id}?day=2026-12-01`);
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    // The places go on numbering around it.
+    expect(cards()).toEqual([
+      '1호텔 체크아웃',
+      '2인천 공항 (ICN)09:00',
+      'ICN 09:00 → KIX 10:55대한항공 · KE723 · T2 출발',
+      '3간사이 공항 (KIX)10:55',
+      '4호텔 체크인',
+    ]);
+    // Where its data comes from, as their terms ask.
+    expect(screen.getByRole('link', { name: 'AeroDataBox' })).toBeInTheDocument();
+  });
+
+  it('is looked up again in its sheet, setting its airports’ times, not adding them', async () => {
+    supabaseFake.signedIn(kakaoUser());
+    const [found] = (KE723 as { flights: FlightLeg[] }).flights;
+    const later: FlightLeg = {
+      ...found!,
+      departure: { ...found!.departure, time: '09:30' },
+      arrival: { ...found!.arrival, time: '11:20' },
+    };
+    stubFlightApi({ status: 'ok', flights: [later] });
+    await putIn();
+    const { user } = renderApp(`/trips/${trip.id}?day=2026-12-01`);
+    await user.click(await screen.findByRole('button', { name: /^ICN 09:00 → KIX 10:55/ }));
+    const sheet = screen.getByRole('dialog', { name: '일정 편집' });
+    expect(within(sheet).getByText('ICN 09:00 → KIX 10:55')).toBeInTheDocument();
+    expect(within(sheet).queryByLabelText('장소 이름')).toBeNull();
+
+    await user.click(within(sheet).getByRole('button', { name: /^KE723 항공편 정보 다시 불러오기/ }));
+    await user.click(await within(sheet).findByRole('button', { name: /이 항공편으로 채우기$/ }));
+    expect(within(sheet).getByText('ICN 09:30 → KIX 11:20')).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '일정 편집' })).toBeNull());
+
+    await waitFor(async () =>
+      expect(await schedule()).toEqual([
+        ['2026-12-01', null, '호텔 체크아웃'],
+        ['2026-12-01', '09:30', '인천 공항 (ICN)'],
+        ['2026-12-01', '09:30', 'KE723 인천 → 간사이'],
+        ['2026-12-01', '11:20', '간사이 공항 (KIX)'],
+        ['2026-12-01', null, '호텔 체크인'],
+      ]),
+    );
+    expect((await repositories.schedule.listByTrip(trip.id))[2]!.flight?.arrival.time).toBe('11:20');
   });
 });
 
@@ -505,9 +595,11 @@ describe("a new trip's flights", () => {
     const items = await repositories.schedule.listByTrip(created.id);
     expect(items.map((item) => [item.date, item.time, item.place.name])).toEqual([
       ['2026-12-01', '09:00', '인천 공항 (ICN)'],
+      ['2026-12-01', '09:00', 'KE723 인천 → 간사이'],
       ['2026-12-01', '10:55', '간사이 공항 (KIX)'],
       ['2026-12-03', null, 'KE724'],
     ]);
-    expect(items[1]!.place.location).toEqual(KANSAI);
+    expect(items[1]!.flight?.number).toBe('KE723');
+    expect(items[2]!.place.location).toEqual(KANSAI);
   });
 });

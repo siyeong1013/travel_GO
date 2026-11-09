@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BackupFile, Settlement, Trip } from '@/data/models';
+import type { BackupFile, ScheduleFlight, Settlement, Trip } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
 import {
   BACKUP_SCHEMA_VERSION,
@@ -294,6 +294,41 @@ describe('backup file format', () => {
     const raw = JSON.parse(JSON.stringify({ ...old, shares }));
     expect(parseRecord('expense', raw, 7)).toEqual({ ...file.expenses[0], shares });
     expect(() => parseRecord('expense', raw, 9)).toThrow(BackupFormatError);
+  });
+
+  it('takes the flight an item is, checked; files before v10 have none', () => {
+    const file = sampleFile();
+    const flight: ScheduleFlight = {
+      number: 'KE723',
+      airline: 'Korean Air',
+      departure: { code: 'ICN', name: '인천', time: '09:00', terminal: '2' },
+      arrival: { code: null, name: 'Somewhere', time: null, terminal: null, dayOffset: 1 },
+    };
+    const [place, typed] = file.scheduleItems;
+    const withFlight = (value: unknown) => ({
+      ...file,
+      scheduleItems: [place, { ...typed, flight: value }],
+    });
+    expect(roundTrip(withFlight(flight)).scheduleItems[1]!.flight).toEqual(flight);
+    expect(roundTrip({ ...withFlight(flight), schemaVersion: 9 }).scheduleItems[1]!.flight).toBeNull();
+
+    const broken = (patch: Partial<ScheduleFlight>, at: string) =>
+      expectInvalid(withFlight({ ...flight, ...patch }), 'backup_invalid', `$.scheduleItems[1].flight${at}`);
+    broken({ number: '오사카' }, '.number');
+    broken({ departure: { ...flight.departure, code: 'icn' } }, '.departure.code');
+    broken({ departure: { ...flight.departure, name: ' ' } }, '.departure.name');
+    broken({ arrival: { ...flight.arrival, time: '9:00' } }, '.arrival.time');
+    broken({ arrival: { ...flight.arrival, dayOffset: 5 } }, '.arrival.dayOffset');
+    expectInvalid(withFlight('KE723'), 'backup_invalid', '$.scheduleItems[1].flight');
+  });
+
+  it('reads a server schedule item of the format before v10 as no flight', () => {
+    const [item] = sampleFile().scheduleItems;
+    const { flight, ...old } = item!;
+    const raw = JSON.parse(JSON.stringify(old));
+    expect(parseRecord('scheduleItem', raw, 9)).toEqual({ ...old, flight: null });
+    expect(flight).toBeNull();
+    expect(() => parseRecord('scheduleItem', raw, 10)).toThrow(BackupFormatError);
   });
 
   it("takes a trip's countries by code, each once, and one city at least", () => {

@@ -23,10 +23,11 @@ import {
 import { CSS, getEventCoordinates } from '@dnd-kit/utilities';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { GripIcon } from '@/components/ui/icons';
+import { GripIcon, PlaneIcon } from '@/components/ui/icons';
 import type { ID, ScheduleItem } from '@/data/models';
-import { legsAbove, type RouteLeg } from '@/features/map/route';
+import { itemNumbers, legsAbove, type RouteLeg } from '@/features/map/route';
 import type { DayTab, GroupKey } from '@/features/schedule/dayTabs';
+import { isFlightItem } from '@/features/schedule/flightItem';
 import { MoveDock } from '@/features/schedule/MoveDock';
 import { ScheduleItemCard } from '@/features/schedule/ScheduleItemCard';
 import { josa } from '@/lib/format';
@@ -174,6 +175,7 @@ export function ScheduleBoard({
 
   const activeIndex = active ? items.findIndex((item) => item.id === active.id) : -1;
   const activeItem = items[activeIndex];
+  const numbers = numbered ? itemNumbers(items) : null;
   const legs = numbered ? legsAbove(items) : null;
 
   return (
@@ -193,7 +195,7 @@ export function ScheduleBoard({
             <SortableItem
               key={item.id}
               item={item}
-              number={numbered ? index + 1 : null}
+              number={numbers?.[index] ?? null}
               joinedAbove={numbered && index > 0}
               joinedBelow={numbered && index < items.length - 1}
               leg={legs?.get(item.id)}
@@ -216,7 +218,7 @@ export function ScheduleBoard({
           style={{ width: 'auto', height: 'auto' }}
         >
           {activeItem && (
-            <DragPreview item={activeItem} number={numbered ? activeIndex + 1 : null} />
+            <DragPreview item={activeItem} number={numbers?.[activeIndex] ?? null} />
           )}
         </DragOverlay>,
         document.body,
@@ -287,7 +289,11 @@ function SortableItem({
 function DragPreview({ item, number }: { item: ScheduleItem; number: number | null }) {
   return (
     <div className="pointer-events-none flex max-w-[240px] items-center gap-2 rounded-full bg-gray-900/90 py-2 pr-4 pl-2 text-sm font-semibold text-white shadow-xl">
-      {number !== null ? (
+      {isFlightItem(item) ? (
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-500">
+          <PlaneIcon width={13} height={13} />
+        </span>
+      ) : number !== null ? (
         <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs">
           {number}
         </span>

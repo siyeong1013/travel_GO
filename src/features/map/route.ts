@@ -1,4 +1,5 @@
 import type { GeoPoint, ID, ScheduleItem } from '@/data/models';
+import { isFlightItem } from '@/features/schedule/flightItem';
 
 /** A place of the day on the map, with the number of its card. */
 export interface RouteStop {
@@ -15,18 +16,31 @@ export interface RouteLeg {
   to: RouteStop;
 }
 
-/** The day's items that have a location, in order, numbered like the list (from 1). */
-export function routeStops(items: ScheduleItem[]): RouteStop[] {
-  return items.flatMap(({ id, place }, index) =>
-    place.location
-      ? [{ id, number: index + 1, name: place.name, placeId: place.placeId, location: place.location }]
-      : [],
-  );
+/**
+ * The numbers of the day's items, as the list and the map show them: places from 1, in order; a
+ * flight has none (the list shows a plane), so the airports on either side of it go on.
+ */
+export function itemNumbers(items: ScheduleItem[]): (number | null)[] {
+  let last = 0;
+  return items.map((item) => (isFlightItem(item) ? null : ++last));
 }
 
-/** Numbers of the day's items without a location, which the map leaves out. */
+/** The day's items that have a location, in order, numbered like the list (`itemNumbers`). */
+export function routeStops(items: ScheduleItem[]): RouteStop[] {
+  const numbers = itemNumbers(items);
+  return items.flatMap(({ id, place }, index) => {
+    const number = numbers[index];
+    return place.location && number != null
+      ? [{ id, number, name: place.name, placeId: place.placeId, location: place.location }]
+      : [];
+  });
+}
+
+/** Numbers of the day's places without a location, which the map leaves out. */
 export function unplacedNumbers(items: ScheduleItem[]): number[] {
-  return items.flatMap((item, index) => (item.place.location ? [] : [index + 1]));
+  return itemNumbers(items).flatMap((number, index) =>
+    number === null || items[index]!.place.location ? [] : [number],
+  );
 }
 
 /**
@@ -44,11 +58,18 @@ export function routeLegs(stops: RouteStop[]): RouteLeg[] {
 
 /**
  * Each leg, keyed by the item listed right above its destination: the list shows it there,
- * between the two places, or under the items without a location that it passes.
+ * between the two places, or under the items without a location that it passes. None goes across
+ * a flight: there's no way to look up from before it to after it.
  */
 export function legsAbove(items: ScheduleItem[]): Map<ID, RouteLeg> {
+  const indexOf = new Map(items.map((item, index) => [item.id, index]));
   const legs = new Map<ID, RouteLeg>();
-  for (const leg of routeLegs(routeStops(items))) legs.set(items[leg.to.number - 2]!.id, leg);
+  for (const leg of routeLegs(routeStops(items))) {
+    const from = indexOf.get(leg.from.id)!;
+    const to = indexOf.get(leg.to.id)!;
+    if (items.slice(from + 1, to).some(isFlightItem)) continue;
+    legs.set(items[to - 1]!.id, leg);
+  }
   return legs;
 }
 

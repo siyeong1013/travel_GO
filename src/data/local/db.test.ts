@@ -219,4 +219,33 @@ describe('schema migrations', () => {
     db = createTravelGoDB(name);
     expect(await db.expenses.toArray()).toEqual([{ ...expense, payerIds }]);
   });
+
+  it('v9 → v10: schedule items are no flights, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip();
+    const { flight, ...item } = makeItem({
+      tripId: trip.id,
+      place: namedPlace('KE723'),
+      updatedAt: '2025-12-21T00:00:00.000Z',
+    });
+
+    // A database as version 9 of the app left it.
+    const v9 = new Dexie(name);
+    v9.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v9.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v9.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    v9.version(7).stores({ visitedCountries: 'id' });
+    v9.version(9).stores({});
+    await v9.table('scheduleItems').add(item);
+    v9.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.scheduleItems.toArray()).toEqual([{ ...item, flight: null }]);
+    expect(flight).toBeNull();
+  });
 });

@@ -7,6 +7,7 @@ import {
   type FlightDraft,
   foundLegs,
 } from '@/features/schedule/flightDrafts';
+import { airlineName } from '@/features/schedule/flightItem';
 import { FLIGHT_MESSAGES } from '@/features/schedule/flightLookup';
 import { FlightDataCredit, FlightRoute } from '@/features/schedule/FlightResults';
 import { isLocalDate } from '@/lib/dates';
@@ -126,7 +127,7 @@ export function FlightDraftRow({
                   <span className="min-w-0">
                     <span className="font-semibold">
                       {leg.number}
-                      {leg.airline && <span className="font-normal text-gray-500"> · {leg.airline}</span>}
+                      {airlineName(leg) && <span className="font-normal text-gray-500"> · {airlineName(leg)}</span>}
                     </span>
                     <FlightRoute leg={leg} className="block text-gray-600" />
                   </span>

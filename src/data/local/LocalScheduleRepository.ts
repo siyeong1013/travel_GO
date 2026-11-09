@@ -4,7 +4,7 @@ import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { EntityNotFoundError, type ScheduleRepository, ValidationError } from '@/data/repositories';
 import { expireItem, expirePlace, withPlaceData } from '@/data/rules/placeData';
 import { compareItems, planAppend, planMove, planRemove } from '@/data/rules/schedule';
-import { cleanPlace, cleanPlaceData, cleanTime } from '@/data/rules/validation';
+import { cleanFlight, cleanPlace, cleanPlaceData, cleanTime } from '@/data/rules/validation';
 import { type Clock, isDateInRange, isLocalDate } from '@/lib/dates';
 import { newId } from '@/lib/id';
 
@@ -57,6 +57,7 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
           place: expirePlace(cleanPlace(input.place), timestamp),
           time: cleanTime(input.time),
           memo: input.memo ?? '',
+          flight: cleanFlight(input.flight ?? null),
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -77,6 +78,7 @@ export function createLocalScheduleRepository(db: TravelGoDB, now: Clock): Sched
           place: expirePlace(patch.place ? cleanPlace(patch.place) : current.place, timestamp),
           time: patch.time !== undefined ? cleanTime(patch.time) : current.time,
           memo: patch.memo ?? current.memo,
+          flight: patch.flight !== undefined ? cleanFlight(patch.flight) : current.flight,
           updatedAt: timestamp,
         };
         await db.scheduleItems.put(next);

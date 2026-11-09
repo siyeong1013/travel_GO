@@ -1,4 +1,12 @@
-import type { LocalDate, LocalTime, PlaceSnapshot } from '@/data/models';
+import type {
+  FlightStop,
+  LocalDate,
+  LocalTime,
+  PlaceSnapshot,
+  ScheduleFlight,
+  ScheduleItem,
+} from '@/data/models';
+import { AIRPORT_CODE } from '@/data/rules/validation';
 import { diffDays } from '@/lib/dates';
 import { type FlightEnd, type FlightLeg, parseFlightNumber } from '@/lib/flights';
 
@@ -34,26 +42,60 @@ export function airportName(end: FlightEnd): string {
   return (end.iata && AIRPORTS[end.iata]) || end.name;
 }
 
+// Korean names of airlines people from Korea often fly, by the code their flight numbers start
+// with. Others go by the flight data's (English) name.
+const AIRLINES: Record<string, string> = {
+  KE: '대한항공', OZ: '아시아나항공', '7C': '제주항공', LJ: '진에어', TW: '티웨이항공',
+  BX: '에어부산', RS: '에어서울', ZE: '이스타항공', YP: '에어프레미아', RF: '에어로케이',
+  JL: '일본항공', NH: '전일본공수', MM: '피치항공', GK: '젯스타 재팬', CA: '중국국제항공',
+  MU: '중국동방항공', CZ: '중국남방항공', FM: '상하이항공', SC: '산둥항공', CX: '캐세이퍼시픽',
+  UO: '홍콩익스프레스', HX: '홍콩항공', NX: '마카오항공', CI: '중화항공', BR: '에바항공',
+  JX: '스타럭스항공', IT: '타이거에어 타이완', SQ: '싱가포르항공', TR: '스쿠트', TG: '타이항공',
+  VZ: '타이 비엣젯', FD: '타이 에어아시아', VN: '베트남항공', VJ: '비엣젯항공', QH: '뱀부항공',
+  PR: '필리핀항공', '5J': '세부퍼시픽', MH: '말레이시아항공', AK: '에어아시아',
+  D7: '에어아시아 X', GA: '가루다인도네시아', OM: '몽골항공', TK: '터키항공', PC: '페가수스항공',
+  EK: '에미레이트항공', QR: '카타르항공', EY: '에티하드항공', LH: '루프트한자',
+  AF: '에어프랑스', KL: 'KLM 네덜란드항공', BA: '영국항공', AY: '핀에어', LO: 'LOT 폴란드항공',
+  LX: '스위스항공', OS: '오스트리아항공', AZ: 'ITA 항공', DL: '델타항공', UA: '유나이티드항공',
+  AA: '아메리칸항공', AC: '에어캐나다', HA: '하와이안항공', QF: '콴타스항공', JQ: '젯스타',
+  NZ: '에어뉴질랜드', ET: '에티오피아항공',
+};
+
+/** `대한항공` for KE723, or the flight data's name (`Korean Air`); null when there is none. */
+export function airlineName({
+  number,
+  airline,
+}: Pick<FlightLeg, 'number' | 'airline'>): string | null {
+  const code = /^([A-Z\d]{2})\d/.exec(number)?.[1];
+  return (code && AIRLINES[code]) || airline;
+}
+
 /**
- * The flight, as its memo starts: `KE723 인천 → 간사이` (a flight's item was named so before its
- * airports were items).
+ * The flight by name, as its item is named: `KE723 인천 → 간사이` (it was the name of a flight's
+ * item before its airports were items, then the top of the memo of the one it left from).
  */
 export function flightTitle(leg: FlightLeg): string {
   return `${leg.number} ${airportName(leg.departure)} → ${airportName(leg.arrival)}`;
 }
 
+/** The days after it leaves (local dates) that a flight lands; 0 when the data doesn't say. */
+function landingDays({ departure, arrival }: FlightLeg): number {
+  return departure.date && arrival.date
+    ? diffDays(departure.date as LocalDate, arrival.date as LocalDate)
+    : 0;
+}
+
 /**
- * When it lands, local, as airlines write it: `10:55`, and on another day than it leaves
- * `06:30(+1일)`; '' when the data doesn't say.
+ * A landing time as airlines write it: `10:55`, and on another day than it leaves `06:30(+1일)`
+ * (over the date line eastward, the day before: `(-1일)`).
  */
+const withDays = (time: string, days: number) =>
+  days === 0 ? time : `${time}(${days > 0 ? '+' : ''}${days}일)`;
+
+/** When it lands, local, as airlines write it (`withDays`); '' when the data doesn't say. */
 function landingTime(leg: FlightLeg): string {
-  const { date, time } = leg.arrival;
-  if (!time) return '';
-  const from = leg.departure.date;
-  if (!date || !from || date === from) return time;
-  const days = diffDays(from as LocalDate, date as LocalDate);
-  // Over the date line eastward, it lands the day before.
-  return `${time}(${days > 0 ? '+' : ''}${days}일)`;
+  const { time } = leg.arrival;
+  return time ? withDays(time, landingDays(leg)) : '';
 }
 
 /**
@@ -77,17 +119,6 @@ function routeHead(leg: FlightLeg): string {
   return `${at(leg.departure)} 출발 → ${at(leg.arrival)} 도착`;
 }
 
-/**
- * The memo of the airport a flight leaves from, two lines to fit its card: the flight
- * (`KE723 인천 → 간사이 · Korean Air`), then where it leaves and lands
- * (`인천 T2 출발 → 간사이 T1 도착 10:55`, `… 도착 06:30(+1일)` on another day).
- */
-export function flightMemo(leg: FlightLeg): string {
-  const title = leg.airline ? `${flightTitle(leg)} · ${leg.airline}` : flightTitle(leg);
-  const landing = landingTime(leg);
-  return `${title}\n${landing ? `${routeHead(leg)} ${landing}` : routeHead(leg)}`;
-}
-
 /** The airport as its item's place shows it: `간사이 공항 (KIX)`. */
 export function airportPlaceName(end: FlightEnd): string {
   const name = `${airportName(end)} 공항`;
@@ -99,6 +130,7 @@ export interface FlightItem {
   place: PlaceSnapshot;
   time: LocalTime | null;
   memo: string;
+  flight: ScheduleFlight | null;
 }
 
 /**
@@ -110,15 +142,44 @@ function airportPlace(end: FlightEnd): PlaceSnapshot {
   return { placeId: null, name: airportPlaceName(end), address: null, location, fetchedAt: null };
 }
 
+/** A flight found, as its item keeps it (`ScheduleItem.flight`). */
+export function scheduleFlight(leg: FlightLeg): ScheduleFlight {
+  const stop = (end: FlightEnd): FlightStop => ({
+    code: end.iata && AIRPORT_CODE.test(end.iata) ? end.iata : null,
+    name: airportName(end),
+    time: end.time,
+    terminal: end.terminal,
+  });
+  return {
+    number: leg.number,
+    airline: leg.airline,
+    departure: stop(leg.departure),
+    arrival: { ...stop(leg.arrival), dayOffset: landingDays(leg) },
+  };
+}
+
+/** The flight's own item, between its airports: named by it, at its departure time. */
+export function flightItem(leg: FlightLeg): FlightItem {
+  const name = flightTitle(leg);
+  return {
+    place: { placeId: null, name, address: null, location: null, fetchedAt: null },
+    time: leg.departure.time,
+    memo: '',
+    flight: scheduleFlight(leg),
+  };
+}
+
 /**
  * The items a flight adds, one after the other on its day: the airport it leaves from, at its
- * departure time, with the flight in its memo (`flightMemo`); then the airport it lands at, at its
- * landing time.
+ * departure time; the flight (`flightItem`); then the airport it lands at, at its landing time.
  */
-export function flightItems(leg: FlightLeg): [departure: FlightItem, arrival: FlightItem] {
+export function flightItems(
+  leg: FlightLeg,
+): [departure: FlightItem, flight: FlightItem, arrival: FlightItem] {
   return [
-    { place: airportPlace(leg.departure), time: leg.departure.time, memo: flightMemo(leg) },
-    { place: airportPlace(leg.arrival), time: leg.arrival.time, memo: '' },
+    { place: airportPlace(leg.departure), time: leg.departure.time, memo: '', flight: null },
+    flightItem(leg),
+    { place: airportPlace(leg.arrival), time: leg.arrival.time, memo: '', flight: null },
   ];
 }
 
@@ -128,6 +189,7 @@ export function flightNumberItem(number: string): FlightItem {
     place: { placeId: null, name: number, address: null, location: null, fetchedAt: null },
     time: null,
     memo: '',
+    flight: null,
   };
 }
 
@@ -141,25 +203,63 @@ export function flightNumberOf(name: string): string | null {
 }
 
 /**
- * An item's memo with a found flight's memo on top: what was written stays under it, but the same
- * flight's memo from before gives way to it: landing at another time, or the one line it was
- * before (`Korean Air · 인천 T2 출발 → 간사이 T1 도착 다음 날 06:30`).
+ * Whether an item is a flight rather than a place: one looked up (`flight`), or named by its
+ * flight alone (`KE723`, `KE723 인천 → 간사이`) with no place found for it. The list shows a plane
+ * for it instead of a number.
  */
-export function withFlightMemo(memo: string, leg: FlightLeg): string {
-  const flight = flightMemo(leg);
-  if (memo.includes(flight)) return memo;
+export function isFlightItem({ place, flight }: Pick<ScheduleItem, 'place' | 'flight'>): boolean {
+  return (
+    flight !== null || (!place.placeId && !place.location && flightNumberOf(place.name) !== null)
+  );
+}
+
+/**
+ * The flight as its card heads it, with the time it leaves (the item's, which can be edited):
+ * `ICN 09:00 → KIX 10:55`, `… ICN 00:40(+1일)`. Airports without a code go by name.
+ */
+export function flightHeading(flight: ScheduleFlight, time: LocalTime | null): string {
+  const end = (stop: FlightStop, at: string | null) =>
+    [stop.code ?? stop.name, at].filter(Boolean).join(' ');
+  const { arrival } = flight;
+  const landing = arrival.time && withDays(arrival.time, arrival.dayOffset);
+  return `${end(flight.departure, time)} → ${end(arrival, landing)}`;
+}
+
+/** Under the heading: the airline, the number, and where to go: `대한항공 · KE723 · T2 출발`. */
+export function flightDetails(flight: ScheduleFlight): string {
+  const terminal = flight.departure.terminal;
+  return [airlineName(flight), flight.number, terminal && `${terminalText(terminal)} 출발`]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** `T2` for the data's `2` or `T2`. */
+const terminalText = (terminal: string) => `T${terminal.replace(/^T/i, '')}`;
+
+/** Where it leaves from and lands, with the terminals: `인천 T2 출발 → 간사이 T1 도착`. */
+export function flightWay({ departure, arrival }: ScheduleFlight): string {
+  const at = (stop: FlightStop) =>
+    stop.terminal ? `${stop.name} ${terminalText(stop.terminal)}` : stop.name;
+  return `${at(departure)} 출발 → ${at(arrival)} 도착`;
+}
+
+/**
+ * An item's memo without what the app wrote in it about this flight before the flight was an item
+ * of its own: the memo of the airport it left from (`KE723 인천 → 간사이 · Korean Air` and the line
+ * under it), or the one line before that (`Korean Air · 인천 T2 출발 → 간사이 T1 도착 다음 날 06:30`).
+ * What else was written stays.
+ */
+export function withoutFlightMemo(memo: string, leg: FlightLeg): string {
   const title = flightTitle(leg);
   const route = routeHead(leg);
   const oneLine = leg.airline ? `${leg.airline} · ${route}` : route;
   const lines = memo.split('\n');
-  const rest = lines
-    .filter(
-      (line, i) =>
-        !line.startsWith(title) &&
-        !line.startsWith(oneLine) &&
-        // Where it leaves and lands, under its name.
-        !(i > 0 && lines[i - 1]!.startsWith(title) && line.startsWith(route)),
-    )
-    .join('\n');
-  return rest.trim() ? `${flight}\n${rest}` : flight;
+  const rest = lines.filter(
+    (line, i) =>
+      !line.startsWith(title) &&
+      !line.startsWith(oneLine) &&
+      // Where it leaves and lands, under its name.
+      !(i > 0 && lines[i - 1]!.startsWith(title) && line.startsWith(route)),
+  );
+  return rest.length === lines.length ? memo : rest.join('\n').trim();
 }

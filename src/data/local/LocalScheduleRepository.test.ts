@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { TravelGoDB } from '@/data/local';
-import type { ScheduleItem, Trip } from '@/data/models';
+import type { ScheduleFlight, ScheduleItem, Trip } from '@/data/models';
 import { EntityNotFoundError, type Repositories, ValidationError } from '@/data/repositories';
 import { newId } from '@/lib/id';
-import { createTestRepositories, makeItem, makePlace } from '@/test/fixtures';
+import { createTestRepositories, makeItem, makePlace, namedPlace } from '@/test/fixtures';
 
 let db: TravelGoDB;
 let repos: Repositories;
@@ -68,6 +68,44 @@ describe('LocalScheduleRepository', () => {
     await expect(repos.schedule.update(item.id, { time: '9:30' })).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+
+  it('keeps the flight an item is, checked; places have none', async () => {
+    const flight: ScheduleFlight = {
+      number: 'KE723',
+      airline: ' Korean Air ',
+      departure: { code: 'ICN', name: '인천', time: '09:00', terminal: '2' },
+      arrival: { code: 'KIX', name: '간사이', time: '10:55', terminal: '', dayOffset: 0 },
+    };
+    const place = namedPlace('KE723 인천 → 간사이');
+    const item = await repos.schedule.create({ tripId: trip.id, date: DAY1, place, flight });
+    expect(item.flight).toEqual({
+      ...flight,
+      airline: 'Korean Air',
+      arrival: { ...flight.arrival, terminal: null },
+    });
+    expect((await repos.schedule.listByTrip(trip.id))[0]!.flight).toEqual(item.flight);
+    expect((await add(DAY1, 'a')).flight).toBeNull();
+
+    const later = { ...flight, arrival: { ...flight.arrival, time: '11:20' } };
+    expect((await repos.schedule.update(item.id, { flight: later })).flight?.arrival.time).toBe(
+      '11:20',
+    );
+    // Left alone unless given.
+    expect((await repos.schedule.update(item.id, { memo: '좌석 32A' })).flight).not.toBeNull();
+    expect((await repos.schedule.update(item.id, { flight: null })).flight).toBeNull();
+
+    for (const wrong of [
+      { ...flight, number: '오사카' },
+      { ...flight, departure: { ...flight.departure, code: 'icn' } },
+      { ...flight, departure: { ...flight.departure, name: ' ' } },
+      { ...flight, arrival: { ...flight.arrival, time: '9:00' } },
+      { ...flight, arrival: { ...flight.arrival, dayOffset: 0.5 } },
+    ]) {
+      await expect(repos.schedule.update(item.id, { flight: wrong })).rejects.toBeInstanceOf(
+        ValidationError,
+      );
+    }
   });
 
   it('moves within a day, across days and through the inbox', async () => {

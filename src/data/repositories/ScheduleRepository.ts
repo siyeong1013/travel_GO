@@ -1,4 +1,12 @@
-import type { ID, LocalDate, LocalTime, PlaceData, PlaceSnapshot, ScheduleItem } from '@/data/models';
+import type {
+  ID,
+  LocalDate,
+  LocalTime,
+  PlaceData,
+  PlaceSnapshot,
+  ScheduleFlight,
+  ScheduleItem,
+} from '@/data/models';
 
 export interface NewScheduleItem {
   tripId: ID;
@@ -7,9 +15,10 @@ export interface NewScheduleItem {
   place: PlaceSnapshot;
   time?: LocalTime | null;
   memo?: string;
+  flight?: ScheduleFlight | null;
 }
 
-export type ScheduleItemPatch = Partial<Pick<ScheduleItem, 'place' | 'time' | 'memo'>>;
+export type ScheduleItemPatch = Partial<Pick<ScheduleItem, 'place' | 'time' | 'memo' | 'flight'>>;
 
 export interface ScheduleMoveTarget {
   /** Destination day, or null for the inbox. */

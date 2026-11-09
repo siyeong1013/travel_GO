@@ -3,12 +3,15 @@ import {
   CLOSE_ZOOM,
   directionsUrl,
   distanceMeters,
+  itemNumbers,
   legsAbove,
   routeFrame,
   routeLegs,
   routeStops,
   unplacedNumbers,
 } from '@/features/map/route';
+import { flightItems } from '@/features/schedule/flightItem';
+import type { FlightLeg } from '@/lib/flights';
 import { makeItem, makePlace, namedPlace } from '@/test/fixtures';
 
 const CASTLE = { lat: 34.6873, lng: 135.5262 };
@@ -21,6 +24,27 @@ const item = (name: string, location: { lat: number; lng: number } | null) =>
     place: location ? makePlace(name, { location }) : namedPlace(name),
   });
 
+const INCHEON = { lat: 37.4691, lng: 126.451 };
+const KANSAI = { lat: 34.4347, lng: 135.244 };
+const end = (iata: string, location: { lat: number; lng: number }, time: string) => ({
+  iata,
+  name: iata,
+  countryCode: null,
+  location,
+  date: '2026-11-10',
+  time,
+  terminal: null,
+});
+const KE723: FlightLeg = {
+  number: 'KE723',
+  airline: 'Korean Air',
+  departure: end('ICN', INCHEON, '09:00'),
+  arrival: end('KIX', KANSAI, '10:55'),
+};
+/** The airport it leaves from, the flight, the airport it lands at: as items. */
+const flight = (leg: FlightLeg) =>
+  flightItems(leg).map((made) => makeItem({ tripId: 'trip', ...made }));
+
 describe('route stops', () => {
   it('numbers places like the list and leaves out the ones without a location', () => {
     const items = [item('오사카성', CASTLE), item('호텔 체크인', null), item('도톤보리', DOTONBORI)];
@@ -29,6 +53,19 @@ describe('route stops', () => {
       [3, '도톤보리'],
     ]);
     expect(unplacedNumbers(items)).toEqual([2]);
+  });
+
+  it('numbers places only: a flight has none, the airports on either side of it go on', () => {
+    const items = [item('호텔 체크아웃', CASTLE), ...flight(KE723), item('공항 가기', null)];
+    expect(itemNumbers(items)).toEqual([1, 2, null, 3, 4]);
+    // A flight known by its number alone is a flight too.
+    expect(itemNumbers([item('KE723', null), item('도톤보리', DOTONBORI)])).toEqual([null, 1]);
+    expect(routeStops(items).map(({ number, name }) => [number, name])).toEqual([
+      [1, '호텔 체크아웃'],
+      [2, '인천 공항 (ICN)'],
+      [3, '간사이 공항 (KIX)'],
+    ]);
+    expect(unplacedNumbers(items)).toEqual([4]);
   });
 
   it('makes a leg of each stop to the next, except to the same spot', () => {
@@ -80,6 +117,19 @@ describe('legs in the list', () => {
       [2, 1, 3],
       [3, 3, 4],
     ]);
+  });
+
+  it('don’t go across a flight', () => {
+    const [airport, plane] = flight(KE723);
+    // Its airport landed at left out: no way from the one it left from to where it went.
+    const items = [airport!, plane!, item('도톤보리', DOTONBORI), item('우메다', UMEDA)];
+    const legs = legsAbove(items);
+    expect([...legs].map(([id, leg]) => [id, leg.from.name, leg.to.name])).toEqual([
+      [items[2]!.id, '도톤보리', '우메다'],
+    ]);
+    // A flight known by its number alone too.
+    const typed = [item('오사카성', CASTLE), item('KE723', null), item('도톤보리', DOTONBORI)];
+    expect(legsAbove(typed).size).toBe(0);
   });
 
   it('measure the straight-line distance', () => {

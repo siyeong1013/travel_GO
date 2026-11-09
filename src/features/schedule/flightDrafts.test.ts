@@ -57,24 +57,34 @@ describe('flights', () => {
     const junk: FlightDraft = { key: 5, number: '여권 챙기기', date: '2026-11-11', lookup: null, leg: 0 };
 
     const items = flightScheduleItems([OUT, early, typed, junk], trip);
-    // Each found: the airport it leaves from, then the one it lands at.
+    // Each found: the airport it leaves from, the flight, then the airport it lands at.
     expect(items.map((item) => [item.date, item.place.name, item.time])).toEqual([
       ['2026-11-10', '인천 공항 (ICN)', '09:00'],
+      ['2026-11-10', 'KE723 인천 → 간사이', '09:00'],
       ['2026-11-10', '간사이 공항 (KIX)', '11:00'],
       [null, '인천 공항 (ICN)', '09:00'],
+      [null, 'KE721 인천 → 나리타', '09:00'],
       [null, '나리타 공항 (NRT)', '11:00'],
       ['2026-11-11', 'OZ112', null],
     ]);
-    expect(items[0]!.memo).toBe('KE723 인천 → 간사이 · Korean Air\n인천 출발 → 간사이 도착 11:00');
-    expect(items[1]!.place).toEqual({
+    expect(items.map((item) => item.flight?.number ?? null)).toEqual([
+      null,
+      'KE723',
+      null,
+      null,
+      'KE721',
+      null,
+      null,
+    ]);
+    expect(items.map((item) => item.memo)).toEqual(['', '', '', '', '', '', '']);
+    expect(items[2]!.place).toEqual({
       placeId: null,
       name: '간사이 공항 (KIX)',
       address: null,
       location: POINTS.KIX,
       fetchedAt: null,
     });
-    expect(items[1]!.memo).toBe('');
-    expect(items[4]!.place).toEqual({
+    expect(items[6]!.place).toEqual({
       placeId: null,
       name: 'OZ112',
       address: null,
@@ -88,8 +98,10 @@ describe('flights', () => {
     const items = flightScheduleItems([OUT, BACK], trip);
     expect(items.map((item) => [item.date, item.place.name, item.place.location])).toEqual([
       ['2026-11-10', '인천 공항 (ICN)', POINTS.ICN],
+      ['2026-11-10', 'KE723 인천 → 간사이', null],
       ['2026-11-10', '간사이 공항 (KIX)', POINTS.KIX],
       ['2026-11-12', '간사이 공항 (KIX)', POINTS.KIX],
+      ['2026-11-12', 'KE724 간사이 → 인천', null],
       ['2026-11-12', '인천 공항 (ICN)', POINTS.ICN],
     ]);
   });
@@ -108,6 +120,7 @@ describe('a flight of several legs', () => {
     expect(chosenLeg({ ...through, leg: 1 })?.arrival.iata).toBe('HNL');
     expect(flightScheduleItems([{ ...through, leg: 1 }], trip).map((item) => item.place.name)).toEqual([
       '나리타 공항 (NRT)',
+      'KE001 나리타 → 호놀룰루',
       '호놀룰루 공항 (HNL)',
     ]);
     // A pick from an answer since replaced.

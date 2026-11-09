@@ -22,6 +22,7 @@ import {
   tabElementId,
 } from '@/features/schedule/dayTabs';
 import { EditItemSheet } from '@/features/schedule/EditItemSheet';
+import { FlightDataCredit } from '@/features/schedule/FlightResults';
 import { ScheduleBoard } from '@/features/schedule/ScheduleBoard';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { useSchedule } from '@/features/schedule/useSchedule';
@@ -56,6 +57,9 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const selectedTab = tabs.find((tab) => tab.key === selected)!;
   const selectedDate = dateOf(selected);
   const groupItems = itemsOn(items, selectedDate);
+  // Where their data shows, Google and the flight data ask to be named.
+  const hasGooglePlaces = groupItems.some((item) => item.place.placeId);
+  const hasFlights = groupItems.some((item) => item.flight);
   const editing = items.find((item) => item.id === editingId);
   const bias = searchBias(trip, items);
 
@@ -154,8 +158,11 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
           onReorder={(item, index) => dropItem(item, item.date, index)}
           onMoveToGroup={(item, target) => dropItem(item, target.date)}
         />
-        {groupItems.some((item) => item.place.placeId) && (
-          <GoogleMapsAttribution className="-mt-2 px-4 pb-4 text-right" />
+        {(hasGooglePlaces || hasFlights) && (
+          <div className="-mt-2 flex flex-col items-end gap-1 px-4 pb-4">
+            {hasGooglePlaces && <GoogleMapsAttribution />}
+            {hasFlights && <FlightDataCredit />}
+          </div>
         )}
       </>
     );

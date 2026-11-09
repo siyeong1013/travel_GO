@@ -12,6 +12,7 @@ import type {
   LocalTime,
   RecordKind,
   RecordsByKind,
+  ScheduleFlight,
   ScheduleItem,
   Settlement,
   Trip,
@@ -26,14 +27,17 @@ import { DEFAULT_SETTLEMENT_CURRENCY, isAmount, isCurrency, isRate, MAX_AMOUNT }
 import { compareItems } from '@/data/rules/schedule';
 import { compareTrips } from '@/data/rules/trip';
 import {
+  AIRPORT_CODE,
   COVER_IMAGE_MAX_LENGTH,
   COVER_THUMBNAIL_MAX_LENGTH,
   isGeoPoint,
   isImageDataUrl,
+  MAX_FLIGHT_DAYS,
   MAX_TRIP_CITIES,
   MAX_TRIP_COUNTRIES,
 } from '@/data/rules/validation';
 import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
+import { parseFlightNumber } from '@/lib/flights';
 
 /**
  * Bump when the shape of `BackupFile` changes, and teach `parseBackupFile` to convert
@@ -47,15 +51,16 @@ import { isIsoDateTime, isLocalDate, isLocalTime } from '@/lib/dates';
  *     of a country too (`JP-27`).
  * v8: visited places can be cities too (`JP-01:삿포로`). Records are as in v7.
  * v9: expenses' payers (`payerIds`, was `payerId`): one or more, who paid it in equal parts.
+ * v10: schedule items' flight (`flight`): an item can be a flight, between its airports.
  */
-export const BACKUP_SCHEMA_VERSION = 9;
+export const BACKUP_SCHEMA_VERSION = 10;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
  * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
  * the app before it keep syncing.
  */
-export const RECORD_SCHEMA_VERSION = 9;
+export const RECORD_SCHEMA_VERSION = 10;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -213,6 +218,38 @@ function readTrip(value: unknown, path: string, version: number): Trip {
   return trip;
 }
 
+const airportCode: Reader<string> = (v, path) =>
+  typeof v === 'string' && AIRPORT_CODE.test(v) ? v : invalid(path, 'IATA airport code');
+const flightNumber: Reader<string> = (v, path) =>
+  typeof v === 'string' && parseFlightNumber(v) === v ? v : invalid(path, 'flight number');
+const dayOffset: Reader<number> = (v, path) =>
+  Number.isInteger(v) && Math.abs(v as number) <= MAX_FLIGHT_DAYS
+    ? (v as number)
+    : invalid(path, `whole number of days, ${MAX_FLIGHT_DAYS} at most either way`);
+
+function readFlightStop(stop: Json, path: string) {
+  return {
+    code: nullable(airportCode)(stop.code, `${path}.code`),
+    name: text(stop.name, `${path}.name`),
+    time: nullable(localTime)(stop.time, `${path}.time`),
+    terminal: nullable(string)(stop.terminal, `${path}.terminal`),
+  };
+}
+
+const flight: Reader<ScheduleFlight> = (v, path) => {
+  const f = object(v, path);
+  const arrival = object(f.arrival, `${path}.arrival`);
+  return {
+    number: flightNumber(f.number, `${path}.number`),
+    airline: nullable(string)(f.airline, `${path}.airline`),
+    departure: readFlightStop(object(f.departure, `${path}.departure`), `${path}.departure`),
+    arrival: {
+      ...readFlightStop(arrival, `${path}.arrival`),
+      dayOffset: dayOffset(arrival.dayOffset, `${path}.arrival.dayOffset`),
+    },
+  };
+};
+
 function readScheduleItem(value: unknown, path: string, version: number): ScheduleItem {
   const s = object(value, path);
   const place = object(s.place, `${path}.place`);
@@ -240,6 +277,7 @@ function readScheduleItem(value: unknown, path: string, version: number): Schedu
     },
     time: nullable(localTime)(s.time, `${path}.time`),
     memo: string(s.memo, `${path}.memo`),
+    flight: version >= 10 ? nullable(flight)(s.flight, `${path}.flight`) : null,
     createdAt,
     updatedAt: timestamp(s.updatedAt, `${path}.updatedAt`),
   };

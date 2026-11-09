@@ -83,6 +83,7 @@ export function makeItem(
     place: makePlace('장소'),
     time: null,
     memo: '',
+    flight: null,
     createdAt: T0,
     updatedAt: T0,
     ...overrides,
