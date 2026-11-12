@@ -6,20 +6,29 @@ import {
   useEffect,
   useEffectEvent,
   useId,
+  useLayoutEffect,
+  useRef,
   useState,
 } from 'react';
 import { BottomActionBar } from '@/components/ui/BottomActionBar';
 import { Button } from '@/components/ui/Button';
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
-import { SelectField, TextField } from '@/components/ui/Field';
-import { CheckIcon, ChevronDownIcon, TrashIcon } from '@/components/ui/icons';
+import { ButtonField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  MapPinIcon,
+  TrashIcon,
+} from '@/components/ui/icons';
 import type {
   Companion,
   CurrencyCode,
   ExpenseCategory,
   ID,
   PaymentMethod,
+  PlaceSnapshot,
   ScheduleItem,
   Trip,
 } from '@/data/models';
@@ -41,10 +50,13 @@ import {
 import {
   EXPENSE_FORM_FIELDS,
   type ExpenseFormValues,
+  groupedAmount,
   MEMO_MAX_LENGTH,
+  newPlaceDate,
   previewConverted,
   previewSplit,
   type RateDraft,
+  TITLE_MAX_LENGTH,
   toExpenseInput,
   validateExpenseForm,
   withCurrency,
@@ -52,10 +64,15 @@ import {
 } from '@/features/expenses/expenseForm';
 import { RateSourceLink } from '@/features/expenses/RateAttribution';
 import { useRateStore } from '@/features/expenses/rateStore';
-import { buildDayTabs, tabLabel } from '@/features/schedule/dayTabs';
+import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
+import { searchBias } from '@/features/places/placeSearch';
+import { PlaceSearchSheet } from '@/features/places/PlaceSearchSheet';
+import { buildDayTabs, type DayTab, tabLabel } from '@/features/schedule/dayTabs';
+import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { errorMessage } from '@/lib/errorMessage';
 import type { LatestRates } from '@/lib/exchangeRateApi';
 import { formatDateTime, formatMoney } from '@/lib/format';
+import { googleMapsApiKey } from '@/lib/googleMaps';
 
 interface ExpenseFormProps {
   trip: Trip;
@@ -88,7 +105,11 @@ const PAYMENT_OPTIONS = PAYMENT_METHODS.map((method) => ({
 
 type RateLookupStatus = 'loading' | 'failed';
 
-/** Full-screen form for one expense: amount, rate, category, who paid and who shares it equally. */
+/**
+ * Full-screen form for one expense: amount, rate, category, title, who paid and who shares it
+ * equally, a memo, and the schedule item it was spent at (or a place found for it, which saving
+ * adds to the schedule).
+ */
 export function ExpenseForm({
   trip,
   companions,
@@ -102,6 +123,7 @@ export function ExpenseForm({
 }: ExpenseFormProps) {
   const settlement = trip.settlementCurrency;
   const fetchLatest = useRateStore((state) => state.fetchLatest);
+  const addScheduleItem = useScheduleStore((state) => state.add);
   const [values, setValues] = useState(initialValues);
   /** As opened: an amount or ratio split stays while its amount and people do (`withSplit`). */
   const [opened] = useState(initialValues);
@@ -116,6 +138,7 @@ export function ExpenseForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [findingPlace, setFindingPlace] = useState(false);
 
   /**
    * Puts the latest API rate for `currency` into the form, unless the currency or the rate has
@@ -181,7 +204,19 @@ export function ExpenseForm({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await onSubmit(toExpenseInput(toSave, companions, settlement));
+      let linked = toSave;
+      if (toSave.newPlace) {
+        // Into the schedule first, to link to. Linked from then on: trying again after the
+        // expense failed to save doesn't add the place twice.
+        const item = await addScheduleItem({
+          tripId: trip.id,
+          date: newPlaceDate(toSave.date, trip),
+          place: toSave.newPlace,
+        });
+        linked = { ...toSave, scheduleItemId: item.id, newPlace: null };
+        set({ scheduleItemId: item.id, newPlace: null });
+      }
+      await onSubmit(toExpenseInput(linked, companions, settlement));
     } catch (error) {
       console.error(error);
       setSubmitError(errorMessage(error));
@@ -202,178 +237,189 @@ export function ExpenseForm({
   }
 
   const tabs = buildDayTabs(trip, scheduleItems);
+  // Where a place found for the link goes: its day's tab, or none (the inbox) outside the trip.
+  const placeDate = newPlaceDate(values.date, trip);
+  const placeDay = placeDate === null ? null : (tabs.find((tab) => tab.date === placeDate) ?? null);
 
   return (
-    <form noValidate onSubmit={handleSubmit} className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-5 px-4 py-5">
-        {notice && (
-          <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {notice}
-          </p>
-        )}
+    <>
+      <form noValidate onSubmit={handleSubmit} className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col gap-5 px-4 py-5">
+          {notice && (
+            <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {notice}
+            </p>
+          )}
 
-        <div className="flex flex-col gap-4">
-          <AmountField
-            amount={values.amount}
-            currency={values.currency}
-            error={visibleErrors.amount}
-            readBack={
-              amount !== null && (
-                <>
-                  <span>{formatMoney(amount, values.currency)}</span>
-                  {converted !== null && values.currency !== settlement && (
-                    <>
-                      {' · '}
-                      <span>≈ {formatMoney(converted, settlement)}</span>
-                    </>
-                  )}
-                </>
-              )
-            }
-            onAmount={(text) => set({ amount: text })}
-            onCurrency={changeCurrency}
-          />
-
-          {values.currency !== settlement && (
-            <TextField
-              label={`환율 (1 ${values.currency}당 ${currencyInfo(settlement).label})`}
-              name="rate"
-              inputMode="decimal"
-              placeholder="예: 9.04"
-              autoComplete="off"
-              value={values.rate.rate}
-              onChange={(e) =>
-                set({ rate: { rate: e.target.value, source: 'manual', fetchedAt: null } })
+          <div className="flex flex-col gap-4">
+            <AmountField
+              amount={values.amount}
+              currency={values.currency}
+              error={visibleErrors.amount}
+              readBack={
+                amount !== null && (
+                  <>
+                    <span>{formatMoney(amount, values.currency)}</span>
+                    {converted !== null && values.currency !== settlement && (
+                      <>
+                        {' · '}
+                        <span>≈ {formatMoney(converted, settlement)}</span>
+                      </>
+                    )}
+                  </>
+                )
               }
-              error={visibleErrors.rate}
-              hint={rateHint(values.rate, rateLookup)}
-              action={
-                <button
-                  type="button"
-                  disabled={rateLookup === 'loading'}
-                  onClick={() => lookUpRate(values.currency, values.rate)}
-                  className="-my-3 -mr-2 h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-brand-600 active:bg-brand-50 disabled:text-gray-400"
-                >
-                  최신 환율 불러오기
-                </button>
-              }
+              onAmount={(text) => set({ amount: text })}
+              onCurrency={changeCurrency}
             />
-          )}
-        </div>
 
-        <ChoiceGroup<ExpenseCategory>
-          legend="카테고리"
-          name="category"
-          columns={6}
-          appearance="pills"
-          options={CATEGORY_OPTIONS}
-          value={values.category}
-          onChange={(category) => set({ category })}
-          error={visibleErrors.category}
-        />
+            {values.currency !== settlement && (
+              <TextField
+                label={`환율 (1 ${values.currency}당 ${currencyInfo(settlement).label})`}
+                name="rate"
+                inputMode="decimal"
+                placeholder="예: 9.04"
+                autoComplete="off"
+                value={values.rate.rate}
+                onChange={(e) =>
+                  set({ rate: { rate: e.target.value, source: 'manual', fetchedAt: null } })
+                }
+                error={visibleErrors.rate}
+                hint={rateHint(values.rate, rateLookup)}
+                action={
+                  <button
+                    type="button"
+                    disabled={rateLookup === 'loading'}
+                    onClick={() => lookUpRate(values.currency, values.rate)}
+                    className="-my-3 -mr-2 h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-brand-600 active:bg-brand-50 disabled:text-gray-400"
+                  >
+                    최신 환율 불러오기
+                  </button>
+                }
+              />
+            )}
+          </div>
 
-        <div className="grid grid-cols-2 gap-3">
+          <ChoiceGroup<ExpenseCategory>
+            legend="카테고리"
+            name="category"
+            columns={7}
+            appearance="pills"
+            options={CATEGORY_OPTIONS}
+            value={values.category}
+            onChange={(category) => set({ category })}
+            error={visibleErrors.category}
+          />
+
           <TextField
-            label="날짜"
-            name="date"
-            type="date"
-            value={values.date}
-            onChange={(e) => set({ date: e.target.value })}
-            error={visibleErrors.date}
+            label="제목"
+            name="title"
+            placeholder="예: 타코야키"
+            autoComplete="off"
+            maxLength={TITLE_MAX_LENGTH}
+            value={values.title}
+            onChange={(e) => set({ title: e.target.value })}
           />
-          <ChoiceGroup<PaymentMethod>
-            legend="결제 수단"
-            name="paymentMethod"
-            appearance="segmented"
-            options={PAYMENT_OPTIONS}
-            value={values.paymentMethod}
-            onChange={(paymentMethod) => set({ paymentMethod })}
+
+          <div className="grid grid-cols-2 gap-3">
+            <TextField
+              label="날짜"
+              name="date"
+              type="date"
+              value={values.date}
+              onChange={(e) => set({ date: e.target.value })}
+              error={visibleErrors.date}
+            />
+            <ChoiceGroup<PaymentMethod>
+              legend="결제 수단"
+              name="paymentMethod"
+              appearance="segmented"
+              options={PAYMENT_OPTIONS}
+              value={values.paymentMethod}
+              onChange={(paymentMethod) => set({ paymentMethod })}
+            />
+          </div>
+
+          <PeopleField
+            companions={companions}
+            values={toSave}
+            shares={split.shares}
+            errors={peopleErrors}
+            onPayers={(payerIds) => set({ payerIds })}
+            onParticipants={(participantIds) => set({ participantIds })}
+          />
+
+          <TextAreaField
+            label="메모"
+            name="memo"
+            rows={2}
+            placeholder="예: 2인 세트, 팁 포함"
+            maxLength={MEMO_MAX_LENGTH}
+            value={values.memo}
+            onChange={(e) => set({ memo: e.target.value })}
+          />
+
+          <ScheduleLinkField
+            tabs={tabs}
+            scheduleItems={scheduleItems}
+            value={values.scheduleItemId}
+            newPlace={values.newPlace}
+            newPlaceDay={placeDay}
+            onFind={googleMapsApiKey() ? () => setFindingPlace(true) : null}
+            onLink={(scheduleItemId) => set({ scheduleItemId })}
+            onDropPlace={() => set({ newPlace: null })}
           />
         </div>
 
-        <PeopleField
-          companions={companions}
-          values={toSave}
-          shares={split.shares}
-          errors={peopleErrors}
-          onPayers={(payerIds) => set({ payerIds })}
-          onParticipants={(participantIds) => set({ participantIds })}
-        />
-
-        <TextField
-          label="메모"
-          name="memo"
-          placeholder="예: 타코야키"
-          autoComplete="off"
-          maxLength={MEMO_MAX_LENGTH}
-          value={values.memo}
-          onChange={(e) => set({ memo: e.target.value })}
-        />
-
-        {scheduleItems.length > 0 && (
-          <SelectField
-            label="일정 연결"
-            name="scheduleItemId"
-            value={values.scheduleItemId ?? ''}
-            onChange={(e) => set({ scheduleItemId: e.target.value || null })}
-            hint="어느 장소에서 쓴 돈인지 남겨 둘 수 있어요."
-          >
-            <option value="">연결 안 함</option>
-            {tabs.map((tab) => {
-              const items = itemsOn(scheduleItems, tab.date);
-              return items.length === 0 ? null : (
-                <optgroup key={tab.key} label={tabLabel(tab)}>
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.place.name}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
-          </SelectField>
-        )}
-      </div>
-
-      <BottomActionBar>
-        {submitError && (
-          <p role="alert" className="mb-2 text-center text-sm text-red-500">
-            {submitError}
-          </p>
-        )}
-        <div className="flex gap-2">
-          {onDelete && (
-            <Button
-              variant="secondary"
-              aria-label="지출 삭제"
-              className="shrink-0 px-4 text-red-500"
-              disabled={submitting}
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <TrashIcon width={20} height={20} />
-            </Button>
+        <BottomActionBar>
+          {submitError && (
+            <p role="alert" className="mb-2 text-center text-sm text-red-500">
+              {submitError}
+            </p>
           )}
-          <Button type="submit" block disabled={submitting}>
-            저장
-          </Button>
-        </div>
-      </BottomActionBar>
+          <div className="flex gap-2">
+            {onDelete && (
+              <Button
+                variant="secondary"
+                aria-label="지출 삭제"
+                className="shrink-0 px-4 text-red-500"
+                disabled={submitting}
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <TrashIcon width={20} height={20} />
+              </Button>
+            )}
+            <Button type="submit" block disabled={submitting}>
+              저장
+            </Button>
+          </div>
+        </BottomActionBar>
 
-      <ConfirmSheet
-        open={confirmingDelete}
-        title="이 지출을 삭제할까요?"
-        description="되돌릴 수 없어요."
-        confirmLabel="삭제"
-        tone="danger"
-        busy={submitting}
-        error={deleteError}
-        onConfirm={() => void handleDelete()}
-        onClose={() => {
-          setConfirmingDelete(false);
-          setDeleteError(null);
-        }}
-      />
-    </form>
+        <ConfirmSheet
+          open={confirmingDelete}
+          title="이 지출을 삭제할까요?"
+          description="되돌릴 수 없어요."
+          confirmLabel="삭제"
+          tone="danger"
+          busy={submitting}
+          error={deleteError}
+          onConfirm={() => void handleDelete()}
+          onClose={() => {
+            setConfirmingDelete(false);
+            setDeleteError(null);
+          }}
+        />
+      </form>
+      {/* Beside the form, not in it: the sheet has a form of its own. */}
+      {findingPlace && (
+        <PlaceSearchSheet
+          initialText={values.title.trim()}
+          bias={searchBias(trip, scheduleItems)}
+          onPick={(newPlace) => set({ newPlace, scheduleItemId: null })}
+          onClose={() => setFindingPlace(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -426,6 +472,18 @@ interface AmountFieldProps {
 function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }: AmountFieldProps) {
   const id = useId();
   const noteId = `${id}-note`;
+  const input = useRef<HTMLInputElement>(null);
+  /** Where the caret goes once the amount is drawn again with its commas. */
+  const caret = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const at = caret.current;
+    caret.current = null;
+    if (at !== null && document.activeElement === input.current) {
+      input.current?.setSelectionRange(at, at);
+    }
+  });
+
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-semibold text-gray-700">
@@ -433,6 +491,7 @@ function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }
       </label>
       <div className="flex items-center gap-3 border-b-2 border-gray-200 transition-colors focus-within:border-brand-500 has-[[aria-invalid=true]]:border-red-400">
         <input
+          ref={input}
           id={id}
           name="amount"
           inputMode={currencyDigits(currency) === 0 ? 'numeric' : 'decimal'}
@@ -442,7 +501,11 @@ function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }
           aria-invalid={error ? true : undefined}
           aria-describedby={error || readBack ? noteId : undefined}
           value={amount}
-          onChange={(e) => onAmount(e.target.value)}
+          onChange={(e) => {
+            const typed = groupedAmount(e.target.value, e.target.selectionStart ?? undefined);
+            caret.current = typed.caret;
+            onAmount(typed.text);
+          }}
           className="h-14 min-w-0 flex-1 bg-transparent text-3xl font-bold tabular-nums outline-none placeholder:text-gray-300"
         />
         <div className="relative flex h-9 shrink-0 items-center gap-0.5 rounded-full bg-gray-100 pr-2 pl-3.5 text-[15px] font-semibold text-gray-700 has-focus-visible:ring-2 has-focus-visible:ring-brand-100">
@@ -475,6 +538,128 @@ function AmountField({ amount, currency, error, readBack, onAmount, onCurrency }
         )
       )}
     </div>
+  );
+}
+
+interface ScheduleLinkFieldProps {
+  tabs: DayTab[];
+  scheduleItems: ScheduleItem[];
+  value: ID | null;
+  newPlace: PlaceSnapshot | null;
+  /** The day the new place goes into; null for the inbox (an expense outside the trip). */
+  newPlaceDay: DayTab | null;
+  /** Opens the place search; null without one (no map key). */
+  onFind: (() => void) | null;
+  onLink: (id: ID | null) => void;
+  onDropPlace: () => void;
+}
+
+/**
+ * The schedule item it was spent at: one in the schedule, or a place found here (one that isn't),
+ * which saving adds to the schedule.
+ */
+function ScheduleLinkField({
+  tabs,
+  scheduleItems,
+  value,
+  newPlace,
+  newPlaceDay,
+  onFind,
+  onLink,
+  onDropPlace,
+}: ScheduleLinkFieldProps) {
+  const labelId = useId();
+  const find = onFind && (
+    <button
+      type="button"
+      onClick={onFind}
+      className="-my-3 -mr-2 h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-brand-600 active:bg-brand-50"
+    >
+      {newPlace ? '다시 찾기' : '장소 찾기'}
+    </button>
+  );
+  const hint = '어느 장소에서 쓴 돈인지 남겨 둘 수 있어요.';
+
+  if (newPlace) {
+    return (
+      <div role="group" aria-labelledby={labelId} className="flex flex-col gap-1.5">
+        <div className="flex min-h-5 items-center justify-between gap-2">
+          <p id={labelId} className="text-sm font-semibold text-gray-700">
+            일정 연결
+          </p>
+          {find}
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-gray-200 py-1 pr-1 pl-3.5">
+          <MapPinIcon
+            aria-hidden="true"
+            width={16}
+            height={16}
+            className="shrink-0 text-brand-500"
+          />
+          <div className="min-w-0 flex-1 py-1.5">
+            <p className="truncate font-medium">{newPlace.name}</p>
+            {newPlace.address && (
+              <p className="truncate text-sm text-gray-500">{newPlace.address}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label={`${newPlace.name} 연결 빼기`}
+            onClick={onDropPlace}
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-gray-400 active:bg-gray-100"
+          >
+            <CloseIcon width={18} height={18} />
+          </button>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm break-keep text-gray-500">
+            {newPlaceDay
+              ? `저장하면 ${newPlaceDay.title} 일정에도 들어가요.`
+              : '여행 기간 밖의 지출이라, 저장하면 일정의 보관함에 들어가요.'}
+          </p>
+          <GoogleMapsAttribution className="mt-0.5" />
+        </div>
+      </div>
+    );
+  }
+
+  if (scheduleItems.length === 0) {
+    return (
+      onFind && (
+        <ButtonField
+          label="일정 연결"
+          value={null}
+          placeholder="장소 찾기"
+          onClick={onFind}
+          hint={`${hint} 고른 장소는 일정에도 들어가요.`}
+        />
+      )
+    );
+  }
+
+  return (
+    <SelectField
+      label="일정 연결"
+      name="scheduleItemId"
+      value={value ?? ''}
+      onChange={(e) => onLink(e.target.value || null)}
+      action={find}
+      hint={onFind ? `${hint} 일정에 없는 곳은 ‘장소 찾기’로 찾아요.` : hint}
+    >
+      <option value="">연결 안 함</option>
+      {tabs.map((tab) => {
+        const items = itemsOn(scheduleItems, tab.date);
+        return items.length === 0 ? null : (
+          <optgroup key={tab.key} label={tabLabel(tab)}>
+            {items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.place.name}
+              </option>
+            ))}
+          </optgroup>
+        );
+      })}
+    </SelectField>
   );
 }
 

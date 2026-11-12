@@ -52,15 +52,17 @@ import { parseFlightNumber } from '@/lib/flights';
  * v8: visited places can be cities too (`JP-01:삿포로`). Records are as in v7.
  * v9: expenses' payers (`payerIds`, was `payerId`): one or more, who paid it in equal parts.
  * v10: schedule items' flight (`flight`): an item can be a flight, between its airports.
+ * v11: expenses' title (`title`) besides the memo: the memo was shown as the title, so in older
+ *     files it is the title. And the category `flight` (항공).
  */
-export const BACKUP_SCHEMA_VERSION = 10;
+export const BACKUP_SCHEMA_VERSION = 11;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
  * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
  * the app before it keep syncing.
  */
-export const RECORD_SCHEMA_VERSION = 10;
+export const RECORD_SCHEMA_VERSION = 11;
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -327,7 +329,10 @@ function readExpense(value: unknown, path: string, version: number): Expense {
         ? payerIds(e.payerIds, `${path}.payerIds`)
         : [text(e.payerId, `${path}.payerId`)],
     splitMethod: oneOf(SPLIT_METHODS)(e.splitMethod, `${path}.splitMethod`),
-    memo: string(e.memo, `${path}.memo`),
+    // Before v11 the memo was the expense's title.
+    ...(version >= 11
+      ? { title: string(e.title, `${path}.title`), memo: string(e.memo, `${path}.memo`) }
+      : { title: string(e.memo, `${path}.memo`), memo: '' }),
     scheduleItemId: nullable(text)(e.scheduleItemId, `${path}.scheduleItemId`),
     createdAt: timestamp(e.createdAt, `${path}.createdAt`),
     updatedAt: timestamp(e.updatedAt, `${path}.updatedAt`),

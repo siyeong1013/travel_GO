@@ -42,6 +42,7 @@ const expense = (payer: Companion, amount: number): NewExpense => ({
   payerIds: [payer.id],
   splitMethod: 'equal',
   participants: [me, chulsoo, younghee].map((c) => ({ companionId: c.id, value: null })),
+  title: '',
   memo: '',
   scheduleItemId: null,
 });

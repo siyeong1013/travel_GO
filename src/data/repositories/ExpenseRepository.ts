@@ -28,6 +28,7 @@ export interface ExpenseInput {
   splitMethod: SplitMethod;
   /** Who shares it; shares are computed from these (see `splitExpense`). */
   participants: SplitParticipant[];
+  title: string;
   memo: string;
   scheduleItemId: ID | null;
 }

@@ -15,6 +15,7 @@ import { isIsoDateTime, isLocalDate } from '@/lib/dates';
 export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
   'food',
   'transport',
+  'flight',
   'lodging',
   'shopping',
   'sightseeing',
@@ -90,6 +91,7 @@ export function cleanExpense(
       paymentMethod: input.paymentMethod,
       payerIds: [...input.payerIds],
       splitMethod: input.splitMethod,
+      title: input.title,
       memo: input.memo,
       scheduleItemId: input.scheduleItemId,
     },

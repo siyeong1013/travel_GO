@@ -9,6 +9,7 @@ import type {
   ISODateTime,
   LocalDate,
   PaymentMethod,
+  PlaceSnapshot,
   ScheduleItem,
   SplitMethod,
   Trip,
@@ -41,7 +42,7 @@ export interface RateDraft {
 }
 
 export interface ExpenseFormValues {
-  /** As typed, e.g. `"1,200"` or `"12.5"`. */
+  /** As typed, grouped by thousands as it is typed (`groupedAmount`): `"1,200"`, `"12.5"`. */
   amount: string;
   currency: CurrencyCode;
   /** Used only when `currency` isn't the trip's settlement currency. */
@@ -57,8 +58,14 @@ export interface ExpenseFormValues {
   /** That expense's split, per person: amounts for `amount`, weights for `ratio`. */
   shareAmounts: Record<ID, string>;
   shareWeights: Record<ID, string>;
+  title: string;
   memo: string;
   scheduleItemId: ID | null;
+  /**
+   * A place found for the link that isn't in the schedule: saving adds it there (the expense's
+   * day, `newPlaceDate`) and links to it.
+   */
+  newPlace: PlaceSnapshot | null;
 }
 
 export type ExpenseFormField =
@@ -83,7 +90,8 @@ export const EXPENSE_FORM_FIELDS: readonly ExpenseFormField[] = [
 
 export type ExpenseFormErrors = Partial<Record<ExpenseFormField, string>>;
 
-export const MEMO_MAX_LENGTH = 100;
+export const TITLE_MAX_LENGTH = 100;
+export const MEMO_MAX_LENGTH = 500;
 
 const EMPTY_RATE: RateDraft = { rate: '', source: 'manual', fetchedAt: null };
 
@@ -159,8 +167,10 @@ export function newExpenseValues({
     participantIds: [],
     shareAmounts: {},
     shareWeights: {},
+    title: '',
     memo: '',
     scheduleItemId: scheduleItem?.id ?? null,
+    newPlace: null,
   };
 }
 
@@ -185,7 +195,7 @@ export function toFormValues(
     if (expense.splitMethod === 'ratio') shareWeights[companionId] = String(value);
   }
   return {
-    amount: toDecimalString(expense.amount, expense.currency),
+    amount: groupedAmount(toDecimalString(expense.amount, expense.currency)).text,
     currency: expense.currency,
     // A rate quoted in another currency (from a backup) has to be entered again.
     rate:
@@ -200,10 +210,12 @@ export function toFormValues(
     participantIds: participants.map((p) => p.companionId),
     shareAmounts,
     shareWeights,
+    title: expense.title,
     memo: expense.memo,
     scheduleItemId: scheduleItems.some((item) => item.id === expense.scheduleItemId)
       ? expense.scheduleItemId
       : null,
+    newPlace: null,
   };
 }
 
@@ -230,6 +242,36 @@ export function withSplit(values: ExpenseFormValues, opened: ExpenseFormValues):
     values.participantIds.length === people.size &&
     values.participantIds.every((id) => people.has(id));
   return unchanged ? values : { ...values, splitMethod: 'equal' };
+}
+
+/**
+ * An amount as typed, its whole part grouped by thousands (`4863400` → `4,863,400`): digits and
+ * the first point are what was typed, the rest is redrawn. And where the caret goes in it (from
+ * `caret` in `text`): after as many of those as were before it.
+ */
+export function groupedAmount(text: string, caret = text.length): { text: string; caret: number } {
+  const typed = (part: string) => {
+    let point = false;
+    return [...part]
+      .filter((char) => /\d/.test(char) || (char === '.' && !point && (point = true)))
+      .join('');
+  };
+  const [whole = '', fraction] = typed(text).split('.');
+  const grouped =
+    whole.replace(/\B(?=(\d{3})+$)/g, ',') + (fraction === undefined ? '' : `.${fraction}`);
+  let at = 0;
+  for (let seen = typed(text.slice(0, caret)).length; seen > 0; at++) {
+    if (grouped[at] !== ',') seen--;
+  }
+  return { text: grouped, caret: at };
+}
+
+/** Where the expense's new place goes in the schedule: its day, or the inbox outside the trip. */
+export function newPlaceDate(
+  date: string,
+  trip: Pick<Trip, 'startDate' | 'endDate'>,
+): LocalDate | null {
+  return isLocalDate(date) && isDateInRange(date, trip.startDate, trip.endDate) ? date : null;
 }
 
 /** Normalized rate text (`"1,380.50"` → `"1380.50"`), or null when it isn't a positive number. */
@@ -392,6 +434,7 @@ export function toExpenseInput(
     payerIds: payersOf(values, companions),
     splitMethod: values.splitMethod,
     participants: read.participants,
+    title: values.title.trim(),
     memo: values.memo.trim(),
     scheduleItemId: values.scheduleItemId,
   };

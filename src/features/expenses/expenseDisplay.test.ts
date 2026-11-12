@@ -160,9 +160,10 @@ describe('splitSummary', () => {
 });
 
 describe('labels', () => {
-  it('titles an expense by its memo, else its category', () => {
-    expect(expenseTitle({ memo: ' 타코야키 ', category: 'food' })).toBe('타코야키');
-    expect(expenseTitle({ memo: '', category: 'transport' })).toBe('교통');
+  it('titles an expense by its title, else its category', () => {
+    expect(expenseTitle({ title: ' 타코야키 ', category: 'food' })).toBe('타코야키');
+    expect(expenseTitle({ title: '', category: 'transport' })).toBe('교통');
+    expect(expenseTitle({ title: '', category: 'flight' })).toBe('항공');
   });
 
   it('says why an expense keeps someone from being deleted', () => {

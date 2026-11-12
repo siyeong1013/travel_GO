@@ -19,6 +19,7 @@ import { formatDate } from '@/lib/format';
 export const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   food: '식비',
   transport: '교통',
+  flight: '항공',
   lodging: '숙소',
   shopping: '쇼핑',
   sightseeing: '관광',
@@ -33,9 +34,9 @@ export const SPLIT_LABELS: Record<SplitMethod, string> = {
   ratio: '비율',
 };
 
-/** The memo, or the category name when there is none. */
-export function expenseTitle(expense: Pick<ExpenseWithShares, 'memo' | 'category'>): string {
-  return expense.memo.trim() || CATEGORY_LABELS[expense.category];
+/** The title, or the category name when there is none. */
+export function expenseTitle(expense: Pick<ExpenseWithShares, 'title' | 'category'>): string {
+  return expense.title.trim() || CATEGORY_LABELS[expense.category];
 }
 
 /** `철수 결제`, `철수, 영희 결제`, or `철수 외 2명 결제`. */

@@ -5,8 +5,9 @@ import { repositories } from '@/data';
 import type { Companion, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
 import { formatDateTime } from '@/lib/format';
-import { renderApp, resetApp, resetStores, stubRatesApi } from '@/test/app';
+import { renderApp, resetApp, resetStores, stubPlacesApi, stubRatesApi } from '@/test/app';
 import { latestRatesBody, namedPlace, RATES_PUBLISHED_AT } from '@/test/fixtures';
+import { DOTONBORI } from '@/test/places';
 
 vi.mock('@/data', async () => (await import('@/test/fixtures')).createTestData());
 
@@ -37,6 +38,7 @@ const expense = (overrides: Partial<NewExpense>): NewExpense => ({
   payerIds: [me.id],
   splitMethod: 'equal',
   participants: [{ companionId: me.id, value: null }],
+  title: '',
   memo: '',
   scheduleItemId: null,
   ...overrides,
@@ -90,12 +92,15 @@ describe('expense flows', () => {
     expect(screen.getByLabelText('금액')).toHaveFocus();
 
     await user.type(screen.getByLabelText('금액'), '10000');
-    expect(screen.getByText('10,000원')).toBeInTheDocument(); // read back under the input
+    // Grouped by thousands as it is typed, and read back under it.
+    expect(screen.getByLabelText('금액')).toHaveValue('10,000');
+    expect(screen.getByText('10,000원')).toBeInTheDocument();
     // In the settlement currency already: nothing to convert.
     expect(screen.queryByText(/^≈/)).toBeNull();
     await user.click(screen.getByRole('radio', { name: '식비' }));
     setDate('2026-11-11');
-    await user.type(screen.getByLabelText('메모'), '타코야키');
+    await user.type(screen.getByLabelText('제목'), '타코야키');
+    await user.type(screen.getByLabelText('메모'), '8개 세트');
     await pick(user, ['나'], ['나', '철수', '영희']);
     // Equal split, the 1-won remainder on the payer
     expect(screen.getByText('3,334원')).toBeInTheDocument();
@@ -103,7 +108,7 @@ describe('expense flows', () => {
     await user.click(screen.getByRole('button', { name: '저장' }));
 
     // Back on the ledger, under its day
-    // The memo is the title, so the category leads the line under it.
+    // A title leads, so the category starts the line under it. The memo stays in the form.
     expect(await screen.findByRole('link', { name: /타코야키/ })).toHaveTextContent(
       /^타코야키식비 · 나 결제 · 3명 균등 · 카드10,000원$/,
     );
@@ -113,6 +118,7 @@ describe('expense flows', () => {
     expect(overview()).toHaveTextContent('총 지출10,000원');
 
     const [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved).toMatchObject({ title: '타코야키', memo: '8개 세트' });
     expect(saved!.shares.map((s) => s.amount)).toEqual([3_334, 3_333, 3_333]);
   });
 
@@ -174,11 +180,52 @@ describe('expense flows', () => {
     expect(await screen.findByText('모두 정산했어요.')).toBeInTheDocument();
   });
 
+  it('groups the amount by thousands wherever it is typed, and files flights under 항공', async () => {
+    const { user } = renderApp(`/trips/${trip.id}/expenses/new`);
+    const amount = await screen.findByLabelText('금액');
+    await user.type(amount, '100');
+    // Typed in front: the comma comes in, and the caret stays after what was typed.
+    await user.type(amount, '1', { initialSelectionStart: 0, initialSelectionEnd: 0 });
+    expect(amount).toHaveValue('1,100');
+    await user.keyboard('2');
+    expect(amount).toHaveValue('12,100');
+    // Deleting a comma only steps over it.
+    await user.keyboard('{ArrowRight}{Backspace}');
+    expect(amount).toHaveValue('12,100');
+    await user.keyboard('3');
+    expect(amount).toHaveValue('123,100');
+
+    const categories = within(screen.getByRole('group', { name: '카테고리' })).getAllByRole('radio');
+    expect(categories.map((radio) => radio.closest('label')!.textContent)).toEqual([
+      '식비',
+      '교통',
+      '항공',
+      '숙소',
+      '쇼핑',
+      '관광',
+      '기타',
+    ]);
+    await user.click(screen.getByRole('radio', { name: '항공' }));
+    await user.type(screen.getByLabelText('제목'), '왕복 항공권');
+    await pick(user, ['나'], ['나']);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    expect(await screen.findByRole('link', { name: /왕복 항공권/ })).toHaveTextContent(
+      /^왕복 항공권항공 · 나 결제 · 개인 지출 · 카드123,100원$/,
+    );
+    const [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved).toMatchObject({ amount: 123_100, category: 'flight', title: '왕복 항공권' });
+
+    // Opened again: grouped from the start.
+    await user.click(screen.getByRole('link', { name: /왕복 항공권/ }));
+    expect(await screen.findByLabelText('금액')).toHaveValue('123,100');
+  });
+
   it('keeps an amount split until its amount or people change, then splits equally', async () => {
     const chulsoo = await addCompanion('철수');
     const created = await repositories.expenses.create(
       expense({
-        memo: '오코노미야키',
+        title: '오코노미야키',
         splitMethod: 'amount',
         participants: [
           { companionId: me.id, value: 7_000 },
@@ -195,7 +242,7 @@ describe('expense flows', () => {
     expect(screen.getByText('3,000원')).toBeInTheDocument();
 
     // Anything else keeps it.
-    await user.type(screen.getByLabelText('메모'), ' 2인분');
+    await user.type(screen.getByLabelText('제목'), ' 2인분');
     await user.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('link', { name: /오코노미야키 2인분/ })).toHaveTextContent(
       '2명 금액 지정',
@@ -375,7 +422,7 @@ describe('expense flows', () => {
     const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
 
     const row = await screen.findByRole('link', { name: /관광/ });
-    // No memo: the category is the title, and is not repeated under it.
+    // No title: the category is the title, and is not repeated under it.
     expect(row).toHaveTextContent(/^관광11\.1 \(일\) · 나 결제 · 개인 지출 · 카드오사카성¥600≈ 5,400원$/);
     expect(section('여행 전')).toContainElement(row);
 
@@ -388,7 +435,7 @@ describe('expense flows', () => {
   });
 
   it('deletes an expense after confirming', async () => {
-    await repositories.expenses.create(expense({ memo: '편의점' }));
+    await repositories.expenses.create(expense({ title: '편의점' }));
     const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
 
     await user.click(await screen.findByRole('link', { name: /편의점/ }));
@@ -404,14 +451,14 @@ describe('expense flows', () => {
     const younghee = await addCompanion('영희');
     await repositories.expenses.create(
       expense({
-        memo: '택시',
+        title: '택시',
         payerIds: [chulsoo.id],
         participants: [{ companionId: chulsoo.id, value: null }],
       }),
     );
     await repositories.expenses.create(
       expense({
-        memo: '저녁',
+        title: '저녁',
         amount: 9_000,
         participants: [me, younghee].map((c) => ({ companionId: c.id, value: null })),
       }),
@@ -436,7 +483,7 @@ describe('expense flows', () => {
     await user.click(screen.getByRole('button', { name: '빼고 다시 나누기' }));
 
     await waitFor(() => expect(overview()).toHaveTextContent('2명 · 나, 철수'));
-    const dinner = (await repositories.expenses.listByTrip(trip.id)).find((e) => e.memo === '저녁');
+    const dinner = (await repositories.expenses.listByTrip(trip.id)).find((e) => e.title === '저녁');
     expect(dinner!.shares.map((s) => [s.companionId, s.amount])).toEqual([[me.id, 9_000]]);
   });
 
@@ -504,11 +551,11 @@ describe('expenses from the schedule', () => {
         currency: 'JPY',
         exchangeRate: { rate: '9', source: 'manual', fetchedAt: null },
         category: 'sightseeing',
-        memo: '천수각 입장권',
+        title: '천수각 입장권',
         scheduleItemId: castle.id,
       }),
     );
-    await repositories.expenses.create(expense({ date: DAY2, memo: '라멘' }));
+    await repositories.expenses.create(expense({ date: DAY2, title: '라멘' }));
     const { router, user } = renderApp(`/trips/${trip.id}?day=${DAY2}`);
 
     // Only what is linked to the place, with the total in the settlement currency.
@@ -525,7 +572,7 @@ describe('expenses from the schedule', () => {
     expect(screen.getByLabelText('날짜')).toHaveValue(DAY2);
     await user.type(screen.getByLabelText('금액'), '3000');
     await user.click(screen.getByRole('radio', { name: '식비' }));
-    await user.type(screen.getByLabelText('메모'), '타코야키');
+    await user.type(screen.getByLabelText('제목'), '타코야키');
     await pick(user, ['나'], ['나']);
     await user.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('link', { name: /타코야키/ })).toHaveTextContent('오사카성');
@@ -540,10 +587,82 @@ describe('expenses from the schedule', () => {
     expect(spent()).toHaveTextContent('이 일정에 연결된 지출이 없어요.');
   });
 
+  it("links a place not in the schedule, which saving adds to the expense's day", async () => {
+    const api = stubPlacesApi([DOTONBORI]);
+    await addPlace('오사카성');
+    const { router, user } = renderApp(`/trips/${trip.id}/expenses/new`);
+
+    await user.type(await screen.findByLabelText('금액'), '3000');
+    await user.click(screen.getByRole('radio', { name: '식비' }));
+    await user.type(screen.getByLabelText('제목'), '도톤보리');
+    setDate(DAY2);
+    await pick(user, ['나'], ['나']);
+
+    // Searches the title right away.
+    await user.click(screen.getByRole('button', { name: '장소 찾기' }));
+    const finder = await screen.findByRole('dialog', { name: '장소 찾기' });
+    expect(within(finder).getByLabelText('장소 이름')).toHaveValue('도톤보리');
+    await user.click(await within(finder).findByRole('button', { name: /^도톤보리/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '장소 찾기' })).toBeNull());
+
+    const link = screen.getByRole('group', { name: '일정 연결' });
+    expect(link).toHaveTextContent(DOTONBORI.address);
+    expect(link).toHaveTextContent('저장하면 Day 2 일정에도 들어가요.');
+    expect(link).toHaveTextContent('Google Maps');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    // In the ledger with its place, and in the schedule at the end of that day.
+    expect(await screen.findByRole('link', { name: /^도톤보리/ })).toHaveTextContent(
+      /^도톤보리식비 · 나 결제 · 개인 지출 · 카드도톤보리3,000원$/,
+    );
+    const items = await repositories.schedule.listByTrip(trip.id);
+    expect(items.map((item) => [item.date, item.order, item.place.name])).toEqual([
+      [DAY2, 0, '오사카성'],
+      [DAY2, 1, '도톤보리'],
+    ]);
+    expect(items[1]!.place).toMatchObject({ placeId: DOTONBORI.placeId, address: DOTONBORI.address });
+    const [saved] = await repositories.expenses.listByTrip(trip.id);
+    expect(saved!.scheduleItemId).toBe(items[1]!.id);
+    expect(api.fetched).toHaveLength(1);
+
+    await router.navigate(`/trips/${trip.id}?day=${DAY2}`);
+    await user.click(await findCard('도톤보리'));
+    expect(spent()).toHaveTextContent('도톤보리');
+  });
+
+  it('puts a place found for an expense outside the trip into the inbox, until taken off', async () => {
+    stubPlacesApi([DOTONBORI]);
+    const { user } = renderApp(`/trips/${trip.id}/expenses/new`);
+
+    // Nothing in the schedule yet: a button to find one.
+    await user.click(await screen.findByRole('button', { name: '일정 연결 장소 찾기' }));
+    const finder = await screen.findByRole('dialog', { name: '장소 찾기' });
+    await user.type(within(finder).getByLabelText('장소 이름'), '도톤보리');
+    await user.click(await within(finder).findByRole('button', { name: /^도톤보리/ }));
+    setDate('2026-11-01');
+    expect(await screen.findByText('여행 기간 밖의 지출이라, 저장하면 일정의 보관함에 들어가요.')).toBeInTheDocument();
+
+    // Taken off: nothing is added.
+    await user.click(screen.getByRole('button', { name: '도톤보리 연결 빼기' }));
+    expect(screen.getByRole('button', { name: '일정 연결 장소 찾기' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '일정 연결 장소 찾기' }));
+    const again = await screen.findByRole('dialog', { name: '장소 찾기' });
+    await user.type(within(again).getByLabelText('장소 이름'), '도톤보리');
+    await user.click(await within(again).findByRole('button', { name: /^도톤보리/ }));
+
+    await user.type(screen.getByLabelText('금액'), '50000');
+    await user.click(screen.getByRole('radio', { name: '숙소' }));
+    await pick(user, ['나'], ['나']);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(async () => expect(await repositories.expenses.listByTrip(trip.id)).toHaveLength(1));
+    const items = await repositories.schedule.listByTrip(trip.id);
+    expect(items.map((item) => [item.date, item.place.name])).toEqual([[null, '도톤보리']]);
+  });
+
   it('saves what was changed in the sheet before going to an expense', async () => {
     const castle = await addPlace('오사카성');
     await repositories.expenses.create(
-      expense({ date: DAY2, memo: '천수각 입장권', scheduleItemId: castle.id }),
+      expense({ date: DAY2, title: '천수각 입장권', scheduleItemId: castle.id }),
     );
     const { router, user } = renderApp(`/trips/${trip.id}?day=${DAY2}`);
 

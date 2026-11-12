@@ -248,4 +248,40 @@ describe('schema migrations', () => {
     expect(await db.scheduleItems.toArray()).toEqual([{ ...item, flight: null }]);
     expect(flight).toBeNull();
   });
+
+  it('v10 → v11: an expense has its memo (shown as its title) as its title, updatedAt untouched', async () => {
+    const name = `test-${newId()}`;
+    const trip = makeTrip();
+    const me = makeMeCompanion(trip.id, trip.createdAt);
+    const { shares, title, ...expense } = makeExpense(
+      {
+        tripId: trip.id,
+        payerIds: [me.id],
+        amount: 5_000,
+        memo: '타코야키',
+        updatedAt: '2025-12-21T00:00:00.000Z',
+      },
+      [{ companionId: me.id, weight: 1, amount: 5_000 }],
+    );
+
+    // A database as version 10 of the app left it.
+    const v10 = new Dexie(name);
+    v10.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v10.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v10.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    v10.version(7).stores({ visitedCountries: 'id' });
+    v10.version(10).stores({});
+    await v10.table('expenses').add(expense);
+    v10.close();
+
+    db = createTravelGoDB(name);
+    expect(await db.expenses.toArray()).toEqual([{ ...expense, title: '타코야키', memo: '' }]);
+    expect(title).toBe('');
+    expect(shares).toHaveLength(1);
+  });
 });

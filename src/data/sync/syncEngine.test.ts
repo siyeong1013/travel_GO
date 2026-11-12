@@ -83,6 +83,7 @@ function expenseOf(tripId: ID, amount: number): NewExpense {
     payerIds: [meCompanionId(tripId)],
     splitMethod: 'equal',
     participants: [{ companionId: meCompanionId(tripId), value: null }],
+    title: '',
     memo: '',
     scheduleItemId: null,
   };

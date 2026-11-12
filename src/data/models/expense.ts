@@ -3,6 +3,7 @@ import type { CurrencyCode, ID, ISODateTime, LocalDate } from '@/data/models/com
 export type ExpenseCategory =
   | 'food'
   | 'transport'
+  | 'flight'
   | 'lodging'
   | 'shopping'
   | 'sightseeing'
@@ -59,6 +60,9 @@ export interface Expense {
    */
   payerIds: ID[];
   splitMethod: SplitMethod;
+  /** What it was, its name in the ledger (`타코야키`); '' when none (the category stands in). */
+  title: string;
+  /** Notes; '' when none. */
   memo: string;
   scheduleItemId: ID | null;
   createdAt: ISODateTime;

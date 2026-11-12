@@ -117,6 +117,7 @@ export function makeExpense(
     category: 'food',
     paymentMethod: 'card',
     splitMethod: 'equal',
+    title: '',
     memo: '',
     scheduleItemId: null,
     createdAt: T0,

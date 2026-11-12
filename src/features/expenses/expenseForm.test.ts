@@ -3,8 +3,10 @@ import type { ExpenseWithShares } from '@/data/models';
 import {
   cleanRateText,
   type ExpenseFormValues,
+  groupedAmount,
   lastRates,
   newExpenseValues,
+  newPlaceDate,
   previewConverted,
   previewSplit,
   toExpenseInput,
@@ -82,6 +84,12 @@ describe('newExpenseValues', () => {
     });
     expect(values).toMatchObject({ scheduleItemId: item.id, date: '2026-11-12' });
   });
+
+  it("puts a place found for it on the expense's day, or in the inbox outside the trip", () => {
+    expect(newPlaceDate('2026-11-12', trip)).toBe('2026-11-12');
+    expect(newPlaceDate('2026-11-01', trip)).toBeNull();
+    expect(newPlaceDate('', trip)).toBeNull();
+  });
 });
 
 describe('rates', () => {
@@ -131,6 +139,37 @@ describe('rates', () => {
     const withRate = { ...values, rate: { rate: '9.0412', source: 'manual' as const, fetchedAt: null } };
     expect(previewConverted(withRate, 'KRW')).toBe(10_849); // 10,849.44
     expect(previewConverted(filled(), 'KRW')).toBe(10_000);
+  });
+});
+
+describe('groupedAmount', () => {
+  /** `text` with `|` for the caret, as typed → as drawn. */
+  const typing = (text: string) => {
+    const typed = groupedAmount(text.replace('|', ''), text.indexOf('|'));
+    return `${typed.text.slice(0, typed.caret)}|${typed.text.slice(typed.caret)}`;
+  };
+
+  it('groups the whole part by thousands as it is typed, keeping the caret among the digits', () => {
+    expect(groupedAmount('4863400').text).toBe('4,863,400');
+    expect(typing('999|')).toBe('999|');
+    expect(typing('9999|')).toBe('9,999|');
+    expect(typing('1,5|234')).toBe('15|,234'); // typed in the middle
+    expect(typing('1,23|,456')).toBe('123|,456');
+    // Deleting a comma only moves past it; deleting a digit regroups.
+    expect(typing('4|863,400')).toBe('4|,863,400');
+    expect(typing('4,|63,400')).toBe('4|63,400');
+    // Zeros left in front stay, so typing over a deleted first digit gives what was meant.
+    expect(typing('|,000')).toBe('|000');
+    expect(typing('2|000')).toBe('2|,000');
+  });
+
+  it('leaves decimals as they are, and drops what is not a digit or the first point', () => {
+    expect(groupedAmount('1234.567').text).toBe('1,234.567');
+    expect(groupedAmount('12.').text).toBe('12.');
+    expect(groupedAmount('1.2.3').text).toBe('1.23');
+    expect(groupedAmount(' 1a2b3 4 ').text).toBe('1,234');
+    expect(groupedAmount('').text).toBe('');
+    expect(typing('1.2.|3')).toBe('1.2|3');
   });
 });
 
@@ -282,7 +321,8 @@ describe('form ↔ input', () => {
       splitMethod: 'ratio',
       participantIds: [younghee.id, me.id],
       shareWeights: { [younghee.id]: '3' },
-      memo: '  택시 ',
+      title: '  택시 ',
+      memo: ' 공항에서 호텔까지\n',
     });
     expect(toExpenseInput(values, companions, 'KRW')).toEqual({
       date: '2026-11-11',
@@ -297,7 +337,8 @@ describe('form ↔ input', () => {
         { companionId: me.id, value: 1 },
         { companionId: younghee.id, value: 3 },
       ],
-      memo: '택시',
+      title: '택시',
+      memo: '공항에서 호텔까지',
       scheduleItemId: null,
     });
     expect(toExpenseInput(filled(), companions, 'KRW').exchangeRate).toEqual({
@@ -325,9 +366,11 @@ describe('form ↔ input', () => {
       ],
     );
 
-    const values = toFormValues(expense, 'KRW', [item]);
+    const values = toFormValues({ ...expense, title: '택시', memo: '공항에서' }, 'KRW', [item]);
     expect(values).toMatchObject({
       amount: '12.34',
+      title: '택시',
+      memo: '공항에서',
       rate: { rate: '1380.50', source: 'api', fetchedAt: '2026-11-10T00:00:00.000Z' },
       participantIds: [me.id, chulsoo.id],
       shareAmounts: { [me.id]: '10.00', [chulsoo.id]: '2.34' },

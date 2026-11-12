@@ -44,6 +44,7 @@ const input = (overrides: Partial<NewExpense> = {}): NewExpense => ({
     { companionId: me.id, value: null },
     { companionId: friend.id, value: null },
   ],
+  title: '',
   memo: '',
   scheduleItemId: null,
   ...overrides,

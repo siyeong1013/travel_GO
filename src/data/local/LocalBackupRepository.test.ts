@@ -66,7 +66,8 @@ async function seed(repos: Repositories, title: string) {
       { companionId: me!.id, value: 2 },
       { companionId: friend.id, value: 1 },
     ],
-    memo: '천수각 입장권',
+    title: '천수각 입장권',
+    memo: '현금으로 냄',
     scheduleItemId: castle.id,
   });
   await repos.settlements.create({ tripId: trip.id, fromId: friend.id, toId: me!.id, amount: 3_000 });

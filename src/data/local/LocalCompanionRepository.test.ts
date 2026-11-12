@@ -41,6 +41,7 @@ const expense = (overrides: Partial<NewExpense>): NewExpense => ({
   payerIds: [me.id],
   splitMethod: 'equal',
   participants: [],
+  title: '',
   memo: '',
   scheduleItemId: null,
   ...overrides,

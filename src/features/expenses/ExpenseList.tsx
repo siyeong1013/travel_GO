@@ -84,8 +84,8 @@ export function ExpenseRowLink({
   onClick,
 }: ExpenseRowLinkProps) {
   const meta = [
-    // The title is the memo, or the category when there is none.
-    expense.memo.trim() && CATEGORY_LABELS[expense.category],
+    // The title is the category when there is none.
+    expense.title.trim() && CATEGORY_LABELS[expense.category],
     showDate && formatDate(expense.date),
     payersText(expense, companions),
     splitSummary(expense, companions),

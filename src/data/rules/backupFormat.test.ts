@@ -25,11 +25,20 @@ function beforeV7({ cities, countries, ...trip }: Trip) {
   return { ...trip, city: cities[0]! };
 }
 
-/** A file's expenses as before v9: one payer each. */
-function beforeV9<T extends Pick<BackupFile, 'expenses'>>(file: T) {
+/** A file's expenses as before v11: the memo was the title. */
+function beforeV11<T extends Pick<BackupFile, 'expenses'>>(file: T) {
   return {
     ...file,
-    expenses: file.expenses.map(({ payerIds, ...expense }) => ({ ...expense, payerId: payerIds[0]! })),
+    expenses: file.expenses.map(({ title, memo, ...expense }) => ({ ...expense, memo: title })),
+  };
+}
+
+/** A file's expenses as before v9: one payer each (and as before v11). */
+function beforeV9<T extends Pick<BackupFile, 'expenses'>>(file: T) {
+  const old = beforeV11(file);
+  return {
+    ...old,
+    expenses: old.expenses.map(({ payerIds, ...expense }) => ({ ...expense, payerId: payerIds[0]! })),
   };
 }
 
@@ -53,6 +62,7 @@ function sampleFile(): BackupFile {
       amount: 1234,
       currency: 'JPY',
       exchangeRate: { rate: '9.0412', quote: 'KRW', source: 'api', fetchedAt: T0 },
+      title: '천수각 입장권',
       scheduleItemId: item.id,
     },
     [
@@ -329,6 +339,29 @@ describe('backup file format', () => {
     expect(parseRecord('scheduleItem', raw, 9)).toEqual({ ...old, flight: null });
     expect(flight).toBeNull();
     expect(() => parseRecord('scheduleItem', raw, 10)).toThrow(BackupFormatError);
+  });
+
+  it("converts v10 files: an expense's memo was its title", () => {
+    const file = sampleFile();
+    const parsed = roundTrip({ ...beforeV11(file), schemaVersion: 10 });
+    expect(parsed.expenses).toEqual(file.expenses);
+    expect(parsed.expenses[0]).toMatchObject({ title: '천수각 입장권', memo: '' });
+  });
+
+  it('takes a title and a memo, and the category 항공 (flight)', () => {
+    const file = sampleFile();
+    const expense = { ...file.expenses[0]!, title: '항공권', memo: '왕복, 수하물 포함', category: 'flight' };
+    expect(roundTrip({ ...file, expenses: [expense] }).expenses).toEqual([expense]);
+    expectInvalid({ ...file, expenses: [{ ...expense, title: 3 }] }, 'backup_invalid', '$.expenses[0].title');
+  });
+
+  it('reads a server expense of the format before v11 with its memo as the title', () => {
+    const file = sampleFile();
+    const [old] = beforeV11(file).expenses;
+    const shares = file.expenseShares.filter((share) => share.expenseId === old!.id);
+    const raw = JSON.parse(JSON.stringify({ ...old, shares }));
+    expect(parseRecord('expense', raw, 10)).toEqual({ ...file.expenses[0], shares });
+    expect(() => parseRecord('expense', raw, 11)).toThrow(BackupFormatError);
   });
 
   it("takes a trip's countries by code, each once, and one city at least", () => {

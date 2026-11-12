@@ -176,5 +176,20 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
         });
     });
 
+  // v11: an expense has a title besides its memo (`title`). The memo was shown as its title, so
+  // it becomes the title. `updatedAt` stays: not an edit.
+  db.version(11)
+    .stores({})
+    .upgrade(async (tx) => {
+      await tx
+        .table<Omit<Expense, 'title'> & { title?: string }, ID>('expenses')
+        .toCollection()
+        .modify((expense) => {
+          if (expense.title !== undefined) return;
+          expense.title = expense.memo;
+          expense.memo = '';
+        });
+    });
+
   return db;
 }
