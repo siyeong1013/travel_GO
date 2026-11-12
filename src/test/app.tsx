@@ -14,6 +14,7 @@ import { loadPlaces } from '@/features/countries/usePlaces';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { rateStore } from '@/features/expenses/rateStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
+import { weatherStore } from '@/features/schedule/weatherStore';
 import { sharingStore } from '@/features/sharing/sharingStore';
 import { syncStore } from '@/features/sync/syncStore';
 import { tripStore } from '@/features/trips/tripStore';
@@ -46,6 +47,9 @@ export function resetStores() {
   syncStore.setState(syncStore.getInitialState(), true);
   sharingStore.setState(sharingStore.getInitialState(), true);
   countryStore.setState(countryStore.getInitialState(), true);
+  // The weather asks Google whenever a map key is set: off unless a test turns it on
+  // (`stubWeatherApi`), so its requests don't mix with the ones a test counts.
+  weatherStore.setState({ ...weatherStore.getInitialState(), stopped: true }, true);
 }
 
 /**
@@ -62,6 +66,23 @@ export async function resetApp() {
   resetStores();
   localStorage.clear();
   await repositories.backup.importAll(createBackupFile(emptyData(), T0), 'overwrite');
+}
+
+/**
+ * Turns the weather on for this test (off in tests, see `resetStores`): Google's Weather API
+ * answers `respond(url)` with a `forecastBody`, or a `Response` (e.g. a refusal). Needs a map
+ * key too (`stubMapsApi`). Returns the `fetch` mock, which fails any other request.
+ */
+export function stubWeatherApi(respond: (url: URL) => unknown) {
+  weatherStore.setState({ stopped: false });
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+    const url = new URL(String(input));
+    if (url.host !== 'weather.googleapis.com') throw new TypeError('no network in tests');
+    const answer = await respond(url);
+    return answer instanceof Response ? answer : Response.json(answer);
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
 }
 
 /**

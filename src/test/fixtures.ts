@@ -180,6 +180,52 @@ export function latestRatesBody(base: string, rates: Record<string, number>) {
 
 export const RATES_PUBLISHED_AT = '2026-11-03T00:02:31.000Z';
 
+export interface ForecastDayFixture {
+  date: string;
+  /** A weather condition type: `CLEAR`, `LIGHT_RAIN`, … */
+  type: string;
+  text: string;
+  max: number;
+  min: number;
+  /** Daytime chance of precipitation, %, and what falls (`RAIN` unless said). */
+  rain?: number;
+  falls?: string;
+}
+
+/**
+ * A Google Weather API daily forecast (`forecast/days:lookup`), shaped like the real one (only the
+ * fields the app reads, and a few it doesn't). Japan and South Korea's days have the whole day's
+ * part only, as there.
+ */
+export function forecastBody(days: ForecastDayFixture[], timeZone = 'Europe/Istanbul') {
+  const part = ['Asia/Tokyo', 'Asia/Seoul'].includes(timeZone)
+    ? 'fullDayForecast'
+    : 'daytimeForecast';
+  return {
+    forecastDays: days.map(({ date, type, text, max, min, rain = 0, falls = 'RAIN' }) => {
+      const [year, month, day] = date.split('-').map(Number);
+      return {
+        displayDate: { year, month, day },
+        [part]: {
+          weatherCondition: {
+            iconBaseUri: 'https://maps.gstatic.com/weather/v1/sunny',
+            description: { text, languageCode: 'ko' },
+            type,
+          },
+          relativeHumidity: 54,
+          precipitation: {
+            probability: { percent: rain, type: falls },
+            qpf: { quantity: 0, unit: 'MILLIMETERS' },
+          },
+        },
+        maxTemperature: { degrees: max, unit: 'CELSIUS' },
+        minTemperature: { degrees: min, unit: 'CELSIUS' },
+      };
+    }),
+    timeZone: { id: timeZone },
+  };
+}
+
 /** Fresh, isolated database. Call `db.delete()` after the test. */
 export function createTestRepositories(clock: Clock = testClock()) {
   const db = createTravelGoDB(`test-${newId()}`);

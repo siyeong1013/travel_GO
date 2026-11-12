@@ -1,6 +1,10 @@
 import { type KeyboardEvent, useEffect, useRef } from 'react';
 import { InboxIcon } from '@/components/ui/icons';
+import type { LocalDate } from '@/data/models';
 import { type DayTab, type GroupKey, tabElementId } from '@/features/schedule/dayTabs';
+import { WeatherIcon } from '@/features/schedule/WeatherLine';
+import { weatherLabel } from '@/features/schedule/weather';
+import type { DayForecast } from '@/lib/weatherApi';
 
 interface DayTabsProps {
   tabs: DayTab[];
@@ -9,10 +13,12 @@ interface DayTabsProps {
   /** Prefix for tab element ids, see `tabElementId`. */
   idPrefix: string;
   panelId: string;
+  /** The days' forecasts, shown under their dates (an icon and the high). */
+  weather?: ReadonlyMap<LocalDate, DayForecast>;
 }
 
 /** Horizontally scrolling day chips, with the inbox last. ARIA tabs; arrow keys move. */
-export function DayTabs({ tabs, selected, onSelect, idPrefix, panelId }: DayTabsProps) {
+export function DayTabs({ tabs, selected, onSelect, idPrefix, panelId, weather }: DayTabsProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +52,7 @@ export function DayTabs({ tabs, selected, onSelect, idPrefix, panelId }: DayTabs
     >
       {tabs.map((tab) => {
         const isSelected = tab.key === selected;
+        const day = tab.date ? weather?.get(tab.date) : undefined;
         return (
           <button
             key={tab.key}
@@ -64,6 +71,13 @@ export function DayTabs({ tabs, selected, onSelect, idPrefix, panelId }: DayTabs
               <>
                 <span className="text-xs font-bold">{tab.title}</span>
                 <span className="text-sm font-medium whitespace-nowrap">{tab.subtitle}</span>
+                {day && (
+                  <span className="mt-0.5 flex items-center gap-0.5 text-xs font-semibold tabular-nums">
+                    <WeatherIcon condition={day.condition} width={14} height={14} />
+                    {day.max !== null && <span aria-hidden="true">{day.max}°</span>}
+                    <span className="sr-only">, {weatherLabel(day)}</span>
+                  </span>
+                )}
               </>
             ) : (
               <>

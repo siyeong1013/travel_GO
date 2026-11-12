@@ -29,6 +29,8 @@ import { FlightDataCredit } from '@/features/schedule/FlightResults';
 import { ScheduleBoard } from '@/features/schedule/ScheduleBoard';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { useSchedule } from '@/features/schedule/useSchedule';
+import { useTripWeather } from '@/features/schedule/useTripWeather';
+import { WeatherLine } from '@/features/schedule/WeatherLine';
 import { editingOf, withEditing } from '@/features/trips/tripView';
 import { errorMessage } from '@/lib/errorMessage';
 import { josa } from '@/lib/format';
@@ -79,6 +81,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const hasFlights = groupItems.some((item) => item.flight);
   const editing = items.find((item) => item.id === editingId);
   const bias = searchBias(trip, items);
+  const weather = useTripWeather(trip, items, today);
   // Picked in the edit mode: of the group shown when they were (another tab starts afresh).
   const [picks, setPicks] = useState<{ group: GroupKey; ids: ID[] }>({ group: selected, ids: [] });
   const [wasEditing, setWasEditing] = useState(editMode);
@@ -265,7 +268,14 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
           onSelect={select}
           idPrefix={idPrefix}
           panelId={panelId}
+          weather={weather.days}
         />
+        {weather.attributions.length > 0 && (
+          <WeatherLine
+            day={selectedDate ? weather.days.get(selectedDate) : undefined}
+            attributions={weather.attributions}
+          />
+        )}
         {mapShown && <DayMap items={groupItems} ordered={ordered} focusedId={focusedId} />}
       </div>
       <section
