@@ -77,7 +77,7 @@ describe('day map', () => {
     expect(legs[0]).toHaveAttribute('target', '_blank');
   });
 
-  it('keeps one map across days, with none for the inbox or a day without locations', async () => {
+  it('keeps one map across days and the inbox (pins without numbers), none without', async () => {
     await addPlace('2026-11-10', '오사카성', CASTLE);
     await addPlace('2026-11-11', '도톤보리', DOTONBORI);
     await addPlace('2026-11-11', '우메다', UMEDA);
@@ -104,9 +104,11 @@ describe('day map', () => {
     expect(api.markers()).toEqual([]);
     expect(screen.queryByText(/지도/)).not.toBeInTheDocument();
 
+    // The inbox's places are on a map too, as pins: no order, so no numbers and no route.
     await user.click(screen.getByRole('tab', { name: /^보관함/ }));
-    await screen.findByRole('button', { name: /^유니버설 스튜디오(?! 순서 바꾸기)/ });
-    expect(api.markers()).toEqual([]);
+    await waitFor(() => expect(api.markers()).toEqual([['', '유니버설 스튜디오']]));
+    expect(api.lines.at(-1)!.path).toEqual([]);
+    expect(legLinks()).toEqual([]);
   });
 
   it('says why there is no map without an API key, and still gives directions', async () => {

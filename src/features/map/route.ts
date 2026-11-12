@@ -1,13 +1,19 @@
 import type { GeoPoint, ID, ScheduleItem } from '@/data/models';
 import { isFlightItem } from '@/features/schedule/flightItem';
 
-/** A place of the day on the map, with the number of its card. */
-export interface RouteStop {
+/** A place on the map: numbered on a day (`RouteStop`), a plain pin in the inbox (`inboxPins`). */
+export interface MapPin {
   id: ID;
-  number: number;
+  /** The number of its card; null in the inbox, which has no order. */
+  number: number | null;
   name: string;
-  placeId: string | null;
   location: GeoPoint;
+}
+
+/** A place of the day on the map, with the number of its card. */
+export interface RouteStop extends MapPin {
+  number: number;
+  placeId: string | null;
 }
 
 /** Two stops in a row, for directions. */
@@ -34,6 +40,18 @@ export function routeStops(items: ScheduleItem[]): RouteStop[] {
       ? [{ id, number, name: place.name, placeId: place.placeId, location: place.location }]
       : [];
   });
+}
+
+/** The inbox's items that have a location, as pins: in no order, so without numbers or a line. */
+export function inboxPins(items: ScheduleItem[]): MapPin[] {
+  return items.flatMap(({ id, place }) =>
+    place.location ? [{ id, number: null, name: place.name, location: place.location }] : [],
+  );
+}
+
+/** How many of the inbox's places have no location, which the map leaves out (not flights). */
+export function unplacedCount(items: ScheduleItem[]): number {
+  return items.filter((item) => !item.place.location && !isFlightItem(item)).length;
 }
 
 /** Numbers of the day's places without a location, which the map leaves out. */
@@ -118,7 +136,7 @@ export interface Bounds {
   east: number;
 }
 
-/** Where the camera goes: around the stops, or close up when they are all about one spot. */
+/** Where the camera goes: around the pins, or close up when they are all about one spot. */
 export type RouteFrame = { bounds: Bounds } | { center: GeoPoint; zoom: number };
 
 /** Stops closer together than this (in degrees, about 200m) are shown at CLOSE_ZOOM. */
@@ -126,8 +144,8 @@ const CLOSE_SPAN = 0.002;
 /** A few streets around: fitting the bounds of one spot would zoom in all the way. */
 export const CLOSE_ZOOM = 16;
 
-/** The camera for `stops` (at least one). */
-export function routeFrame(stops: RouteStop[]): RouteFrame {
+/** The camera for `stops` (at least one), a day's or the inbox's. */
+export function routeFrame(stops: Pick<MapPin, 'location'>[]): RouteFrame {
   const lats = stops.map((stop) => stop.location.lat);
   const lngs = stops.map((stop) => stop.location.lng);
   const bounds = {

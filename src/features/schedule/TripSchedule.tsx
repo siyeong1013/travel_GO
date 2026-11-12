@@ -10,7 +10,7 @@ import type { ID, LocalDate, ScheduleItem, Trip } from '@/data/models';
 import { itemsOn } from '@/data/rules/schedule';
 import { DayMap } from '@/features/map/DayMap';
 import { useMapFocus } from '@/features/map/mapFocus';
-import { routeStops } from '@/features/map/route';
+import { inboxPins, routeStops } from '@/features/map/route';
 import { GoogleMapsAttribution } from '@/features/places/GoogleMapsAttribution';
 import { searchBias } from '@/features/places/placeSearch';
 import { type AddedFlight, AddFlightSheet } from '@/features/schedule/AddFlightSheet';
@@ -40,9 +40,9 @@ interface Notice {
 }
 
 /**
- * Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". A day's map is
- * pinned at the top with the tabs, and the list scrolls under it, the map following the places
- * as they go by (`useMapFocus`).
+ * Day tabs + the selected day's (or inbox's) items + "add place" and "add flight". The map (the
+ * day's route, or the inbox's places as plain pins) is pinned at the top with the tabs, and the
+ * list scrolls under it, the map following the places as they go by (`useMapFocus`).
  *
  * The edit mode (`?edit=1`, from the header's pencil or a long press on an item) picks items to
  * delete together, and drags them by their handles; a tap on an item picks it there.
@@ -92,11 +92,13 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
       : [];
   const allPicked = groupItems.length > 0 && picked.length === groupItems.length;
   const [deleting, setDeleting] = useState<{ busy: boolean; error: string | null } | null>(null);
-  // The inbox has no order, so no route.
-  const mapShown = status !== 'error' && groupItems.length > 0 && selectedDate !== null;
+  // The inbox has no order: its map has pins, without numbers or a route.
+  const ordered = selectedDate !== null;
+  const mapShown = status !== 'error' && groupItems.length > 0;
+  const pins = !mapShown ? [] : ordered ? routeStops(groupItems) : inboxPins(groupItems);
   const focusedId = useMapFocus(
     { pinned: pinnedRef, list: listRef, bar: barRef },
-    mapShown ? routeStops(groupItems).map((stop) => stop.id) : [],
+    pins.map((pin) => pin.id),
   );
 
   function select(key: GroupKey) {
@@ -264,7 +266,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
           idPrefix={idPrefix}
           panelId={panelId}
         />
-        {mapShown && <DayMap items={groupItems} focusedId={focusedId} />}
+        {mapShown && <DayMap items={groupItems} ordered={ordered} focusedId={focusedId} />}
       </div>
       <section
         id={panelId}

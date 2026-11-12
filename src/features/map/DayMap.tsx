@@ -1,6 +1,12 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { ID, ScheduleItem } from '@/data/models';
-import { type RouteStop, routeStops, unplacedNumbers } from '@/features/map/route';
+import {
+  inboxPins,
+  type MapPin,
+  routeStops,
+  unplacedCount,
+  unplacedNumbers,
+} from '@/features/map/route';
 import { createRouteMap, loadRouteMapLibraries, type RouteMap } from '@/features/map/routeMap';
 import { type SearchAvailability, useSearchAvailability } from '@/features/places/usePlaceSearch';
 
@@ -9,24 +15,42 @@ const NOTES: Record<Exclude<SearchAvailability, 'ready'>, string> = {
   offline: '오프라인이라 지도를 볼 수 없어요.',
 };
 
-/**
- * The day's places on a Google map, numbered like the list and joined in order by straight lines
- * (the list has the directions for each leg), with the one in `focusedId` up close (`useMapFocus`).
- * Nothing when no item has a location.
- */
-export function DayMap({ items, focusedId }: { items: ScheduleItem[]; focusedId: ID | null }) {
-  const stops = routeStops(items);
-  if (stops.length === 0) return null;
-  return <DayMapCard stops={stops} unplaced={unplacedNumbers(items)} focusedId={focusedId} />;
-}
-
-interface DayMapCardProps {
-  stops: RouteStop[];
-  unplaced: number[];
+interface DayMapProps {
+  items: ScheduleItem[];
+  /** A day's, numbered and joined in order; or the inbox's, in no order. */
+  ordered: boolean;
   focusedId: ID | null;
 }
 
-function DayMapCard({ stops, unplaced, focusedId }: DayMapCardProps) {
+/**
+ * The day's places on a Google map, numbered like the list and joined in order by straight lines
+ * (the list has the directions for each leg), with the one in `focusedId` up close (`useMapFocus`).
+ * The inbox's are plain pins, to see where they are before picking their days. Nothing when no
+ * item has a location.
+ */
+export function DayMap({ items, ordered, focusedId }: DayMapProps) {
+  const pins = ordered ? routeStops(items) : inboxPins(items);
+  if (pins.length === 0) return null;
+  return <DayMapCard pins={pins} note={unplacedNote(items, ordered)} focusedId={focusedId} />;
+}
+
+/** Why some places are not on the map: `2, 4번은 …`, or how many in the inbox. */
+function unplacedNote(items: ScheduleItem[], ordered: boolean): string | null {
+  if (ordered) {
+    const numbers = unplacedNumbers(items);
+    return numbers.length > 0 ? `${numbers.join(', ')}번은 위치가 없어서 지도에 없어요.` : null;
+  }
+  const count = unplacedCount(items);
+  return count > 0 ? `위치가 없는 ${count}곳은 지도에 없어요.` : null;
+}
+
+interface DayMapCardProps {
+  pins: MapPin[];
+  note: string | null;
+  focusedId: ID | null;
+}
+
+function DayMapCard({ pins, note, focusedId }: DayMapCardProps) {
   const availability = useSearchAvailability();
   const container = useRef<HTMLDivElement>(null);
   const [routeMap, setRouteMap] = useState<RouteMap | null>(null);
@@ -54,8 +78,8 @@ function DayMapCard({ stops, unplaced, focusedId }: DayMapCardProps) {
 
   useEffect(() => () => routeMap?.destroy(), [routeMap]);
 
-  const draw = useEffectEvent((map: RouteMap) => map.show(stops));
-  const stopsKey = JSON.stringify(stops);
+  const draw = useEffectEvent((map: RouteMap) => map.show(pins));
+  const stopsKey = JSON.stringify(pins);
   useEffect(() => {
     if (routeMap) draw(routeMap);
   }, [routeMap, stopsKey]);
@@ -97,11 +121,7 @@ function DayMapCard({ stops, unplaced, focusedId }: DayMapCardProps) {
               </div>
             )}
           </div>
-          {unplaced.length > 0 && (
-            <p className="mt-1.5 text-xs break-keep text-gray-500">
-              {unplaced.join(', ')}번은 위치가 없어서 지도에 없어요.
-            </p>
-          )}
+          {note && <p className="mt-1.5 text-xs break-keep text-gray-500">{note}</p>}
         </>
       )}
     </div>

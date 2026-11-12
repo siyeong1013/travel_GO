@@ -3,11 +3,13 @@ import {
   CLOSE_ZOOM,
   directionsUrl,
   distanceMeters,
+  inboxPins,
   itemNumbers,
   legsAbove,
   routeFrame,
   routeLegs,
   routeStops,
+  unplacedCount,
   unplacedNumbers,
 } from '@/features/map/route';
 import { flightItems } from '@/features/schedule/flightItem';
@@ -66,6 +68,17 @@ describe('route stops', () => {
       [3, '간사이 공항 (KIX)'],
     ]);
     expect(unplacedNumbers(items)).toEqual([4]);
+  });
+
+  it("pins the inbox's places without numbers, in no order", () => {
+    const items = [item('유니버설 스튜디오', CASTLE), item('기념품 사기', null), ...flight(KE723)];
+    expect(inboxPins(items).map(({ number, name }) => [number, name])).toEqual([
+      [null, '유니버설 스튜디오'],
+      [null, '인천 공항 (ICN)'],
+      [null, '간사이 공항 (KIX)'],
+    ]);
+    // The flight between the airports is no place without a location.
+    expect(unplacedCount(items)).toBe(1);
   });
 
   it('makes a leg of each stop to the next, except to the same spot', () => {

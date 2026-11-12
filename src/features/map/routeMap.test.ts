@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import { describe, expect, it, vi } from 'vitest';
-import { routeStops } from '@/features/map/route';
+import { inboxPins, routeStops } from '@/features/map/route';
 import { createRouteMap, FOCUS_ZOOM } from '@/features/map/routeMap';
 import { makeItem, makePlace } from '@/test/fixtures';
 import { fakeMapsApi } from '@/test/maps';
@@ -35,6 +35,25 @@ describe('route map', () => {
     ]);
     // Page scroll goes past the map; no Google popups for places on the base map.
     expect(map!.options).toMatchObject({ gestureHandling: 'cooperative', clickableIcons: false });
+  });
+
+  it("pins the inbox's places as dots, with no line, and brings one up close", () => {
+    const api = fakeMapsApi();
+    const routeMap = createRouteMap(document.createElement('div'), api.libraries);
+    const items = [
+      makeItem({ tripId: 'trip', place: makePlace('유니버설 스튜디오', { location: CASTLE }) }),
+      makeItem({ tripId: 'trip', place: makePlace('우메다', { location: UMEDA }) }),
+    ];
+
+    routeMap.show(inboxPins(items));
+    expect(api.markers()).toEqual([
+      ['', '유니버설 스튜디오'],
+      ['', '우메다'],
+    ]);
+    expect(api.lines[0]!.path).toEqual([]);
+
+    routeMap.focus(items[1]!.id);
+    expect(api.focused()).toBe('우메다');
   });
 
   it("uses the Map ID from .env.local, else Google's demo ID", () => {
