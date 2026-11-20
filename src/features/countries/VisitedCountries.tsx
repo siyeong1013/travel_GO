@@ -160,7 +160,8 @@ export function VisitedCountries() {
         />
       </div>
       <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-        다녀온 나라는 아래에서 나라나 도시 이름으로 검색하여 추가하세요.
+        여행에 넣은 나라와 도시는 그 여행이 시작되면 자동으로 칠해지며, 그 외 다녀온 나라는
+        아래에서 나라나 도시 이름으로 검색하여 추가하세요.
       </p>
 
       <PageSection title="나라 찾기">

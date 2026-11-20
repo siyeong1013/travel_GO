@@ -115,7 +115,8 @@ export function CountryCities({ country, query: initialQuery = '' }: { country: 
       </div>
       {map && (
         <p className="px-4 pt-2 text-xs break-keep text-gray-400">
-          다녀온 도시는 아래에서 이름으로 검색하여 추가하세요.
+          여행에 넣은 도시는 그 여행이 시작되면 자동으로 칠해지며, 그 외 다녀온 도시는 아래에서
+          이름으로 검색하여 추가하세요.
           {away.length > 0 && ` 지도에 없는 ${away.join(', ')}의 도시도 아래에 있어요.`}
         </p>
       )}
