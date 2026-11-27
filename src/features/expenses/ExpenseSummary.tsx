@@ -10,6 +10,7 @@ import {
   expenseTitle,
   usesApiRates,
 } from '@/features/expenses/expenseDisplay';
+import { LedgerExport } from '@/features/expenses/LedgerExport';
 import { RateAttribution } from '@/features/expenses/RateAttribution';
 import { categoryRows, dayRows, formatShare } from '@/features/expenses/summaryDisplay';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -147,6 +148,10 @@ export function ExpenseSummary({ trip, companions, expenses, settlements }: Expe
             ))}
           </ul>
         </PageSection>
+      )}
+
+      {expenses.length > 0 && (
+        <LedgerExport trip={trip} companions={companions} expenses={expenses} />
       )}
 
       {usesApiRates(expenses) && <RateAttribution />}

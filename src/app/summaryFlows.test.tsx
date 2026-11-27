@@ -1,11 +1,11 @@
 /** @vitest-environment happy-dom */
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { Companion, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
 import { createBackupFile } from '@/data/rules/backupFormat';
-import { renderApp, resetApp, stubRatesApi } from '@/test/app';
+import { renderApp, resetApp, resetStores, stubRatesApi } from '@/test/app';
 import {
   backupData,
   latestRatesBody,
@@ -122,6 +122,70 @@ describe('summary', () => {
     // Back to the ledger tab
     await user.click(screen.getByRole('button', { name: '뒤로' }));
     expect(await screen.findByRole('region', { name: '가계부 요약' })).toBeInTheDocument();
+  });
+
+/** What a download would save: the files handed to the link, with the names it gives them. */
+function catchDownloads() {
+  const files: File[] = [];
+  const names: string[] = [];
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((file) => {
+      files.push(file as File);
+      return 'blob:ledger';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+  });
+  return { files, names };
+}
+
+  it('exports for Excel right from the ledger tab, once there are expenses', async () => {
+    const { files, names } = catchDownloads();
+    const { user } = renderApp(`/trips/${trip.id}?tab=expenses`);
+    await screen.findByText('아직 지출이 없어요');
+    expect(within(overview()).queryByRole('button', { name: '엑셀로 내보내기' })).not.toBeInTheDocument();
+    cleanup();
+
+    await repositories.expenses.create(expense({ amount: 12_000, title: '타코야키' }));
+    resetStores();
+    renderApp(`/trips/${trip.id}?tab=expenses`);
+    await user.click(await within(await screen.findByRole('region', { name: '가계부 요약' })).findByRole('button', { name: '엑셀로 내보내기' }));
+
+    expect(names).toEqual(['오사카 여행 가계부.csv']);
+    expect((await files[0]!.text()).split('\r\n')[1]).toBe(
+      '2026-11-10,Day 1,타코야키,식비,12000,KRW,,12000,카드,나,12000,',
+    );
+    expect(await screen.findByText('가계부 파일을 저장했어요.')).toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  it('saves the expenses as a CSV for Excel', async () => {
+    await repositories.expenses.create(expense({ amount: 12_000, title: '타코야키' }));
+    const { files, names } = catchDownloads();
+    const { user } = renderApp(`/trips/${trip.id}/expenses/summary`);
+
+    const exportSection = await screen.findByRole('region', { name: '엑셀로 내보내기' });
+    // happy-dom has no file sharing: saving only.
+    expect(within(exportSection).queryByRole('button', { name: '공유' })).not.toBeInTheDocument();
+    await user.click(within(exportSection).getByRole('button', { name: '파일로 저장' }));
+
+    expect(names).toEqual(['오사카 여행 가계부.csv']);
+    expect(files[0]!.type).toBe('text/csv');
+    const text = await files[0]!.text();
+    expect(text.split('\r\n').slice(1, 3)).toEqual([
+      '2026-11-10,Day 1,타코야키,식비,12000,KRW,,12000,카드,나,12000,',
+      '합계,,,,,,,12000,,,12000,',
+    ]);
+    expect(await screen.findByText('가계부 파일을 저장했어요.')).toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  it('has nothing to export without expenses', async () => {
+    renderApp(`/trips/${trip.id}/expenses/summary`);
+    expect(await screen.findByText('아직 지출이 없어요')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '엑셀로 내보내기' })).not.toBeInTheDocument();
   });
 
   it('lists expenses whose rate has to be entered again, prefilled with the latest one', async () => {

@@ -12,6 +12,7 @@ import { CompanionSheet } from '@/features/expenses/CompanionSheet';
 import { groupExpenses, usesApiRates } from '@/features/expenses/expenseDisplay';
 import { ExpenseList } from '@/features/expenses/ExpenseList';
 import { ExpenseOverview } from '@/features/expenses/ExpenseOverview';
+import { useLedgerExport } from '@/features/expenses/useLedgerExport';
 import { RateAttribution } from '@/features/expenses/RateAttribution';
 import { SettlementCurrencySheet } from '@/features/expenses/SettlementCurrencySheet';
 import { useExpenses } from '@/features/expenses/useExpenses';
@@ -23,6 +24,7 @@ export function TripExpenses({ trip }: { trip: Trip }) {
   const { companions, expenses, settlements, status, error, reload } = useExpenses(trip.id);
   const { items } = useSchedule(trip.id);
   const [sheet, setSheet] = useState<'companions' | 'currency' | null>(null);
+  const ledgerExport = useLedgerExport({ trip, companions, expenses });
 
   const ledger = buildLedger(trip, companions, expenses, settlements);
 
@@ -73,6 +75,7 @@ export function TripExpenses({ trip }: { trip: Trip }) {
         pendingTransfers={planTransfers(ledger.balances).length}
         onManageCompanions={() => setSheet('companions')}
         onChangeCurrency={() => setSheet('currency')}
+        onExport={expenses.length > 0 ? ledgerExport.saveOrShare : undefined}
       />
       <div className="flex flex-1 flex-col">{content}</div>
 
@@ -83,6 +86,7 @@ export function TripExpenses({ trip }: { trip: Trip }) {
         </Link>
       </BottomActionBar>
 
+      {ledgerExport.notice}
       {sheet === 'companions' && (
         <CompanionSheet
           tripId={trip.id}

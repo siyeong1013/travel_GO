@@ -14,6 +14,8 @@ interface ExpenseOverviewProps {
   pendingTransfers: number;
   onManageCompanions: () => void;
   onChangeCurrency: () => void;
+  /** Saves the expenses as a file for Excel; absent while there are none. */
+  onExport?: () => void;
 }
 
 const actionClass =
@@ -28,6 +30,7 @@ export function ExpenseOverview({
   pendingTransfers,
   onManageCompanions,
   onChangeCurrency,
+  onExport,
 }: ExpenseOverviewProps) {
   return (
     <section aria-label="가계부 요약" className="mx-4 mt-4 rounded-3xl bg-gray-50 px-5 pt-5">
@@ -71,7 +74,14 @@ export function ExpenseOverview({
           <ChevronRightIcon width={16} height={16} className="shrink-0 text-gray-400" />
         </Link>
       )}
-      <div className="flex items-center justify-end gap-2 border-t border-gray-200/70 py-1">
+      <div className="flex items-center justify-between gap-2 border-t border-gray-200/70 py-1">
+        {onExport ? (
+          <button type="button" onClick={onExport} className={`-ml-3 ${actionClass}`}>
+            엑셀로 내보내기
+          </button>
+        ) : (
+          <span />
+        )}
         <Link to={summaryHref} className={`-mr-1 gap-0.5 ${actionClass}`}>
           지출 요약
           <ChevronRightIcon width={16} height={16} />
