@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Button } from '@/components/ui/Button';
 import type { LocalDate } from '@/data/models';
@@ -58,10 +58,15 @@ function RangeCalendar({ start, end, today, onDone }: Omit<DateRangeSheetProps, 
 
   const list = useRef<HTMLDivElement>(null);
   const sections = useRef(new Map<YearMonth, HTMLElement>());
-  // Opens at the picked month, or this one.
-  useLayoutEffect(() => {
-    const section = sections.current.get(opening);
-    if (list.current && section) list.current.scrollTop = section.offsetTop;
+  // Opens at the picked month, or this one. After a frame: the sheet's dialog opens after this
+  // mounts (laid out only then) and focuses its first button ("이전 달 더 보기"), which scrolls
+  // the list back to the top.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const section = sections.current.get(opening);
+      if (list.current && section) list.current.scrollTop = section.offsetTop;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [opening]);
 
   // Months added above keep the ones in view where they were.
@@ -186,15 +191,13 @@ function Day({ date, column, pick, today, onTap }: DayProps) {
             ? 'left-0 right-1/2'
             : null
       : null;
+  const isToday = date === today;
+  // Today keeps its weekday's color (blue read as a Saturday): a grey disc and "오늘" mark it.
   const tone = picked
     ? 'bg-brand-600 font-bold text-white'
-    : date === today
-      ? 'font-bold text-brand-600'
-      : column === 0
-        ? 'text-red-500'
-        : column === 6
-          ? 'text-blue-500'
-          : 'text-gray-900';
+    : `${isToday ? 'bg-gray-100 font-bold ' : ''}${
+        column === 0 ? 'text-red-500' : column === 6 ? 'text-blue-500' : 'text-gray-900'
+      }`;
   return (
     <div className="relative flex h-11 items-center justify-center">
       {band && <span aria-hidden="true" className={`absolute inset-y-1 bg-brand-50 ${band}`} />}
@@ -202,11 +205,19 @@ function Day({ date, column, pick, today, onTap }: DayProps) {
         type="button"
         aria-label={dayName(date)}
         aria-pressed={picked}
-        aria-current={date === today ? 'date' : undefined}
+        aria-current={isToday ? 'date' : undefined}
         onClick={onTap}
-        className={`relative flex size-10 items-center justify-center rounded-full text-[15px] ${tone}`}
+        className={`relative flex size-10 flex-col items-center justify-center rounded-full text-[15px] leading-none ${tone}`}
       >
         {Number(date.slice(8))}
+        {isToday && (
+          <span
+            aria-hidden="true"
+            className={`mt-0.5 text-[9px] font-semibold ${picked ? 'text-white' : 'text-gray-500'}`}
+          >
+            오늘
+          </span>
+        )}
       </button>
     </div>
   );
