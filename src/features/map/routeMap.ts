@@ -1,4 +1,4 @@
-import type { ID } from '@/data/models';
+import type { GeoPoint, ID } from '@/data/models';
 import { type MapPin, routeFrame } from '@/features/map/route';
 import { googleMapsMapId, importMapsLibrary } from '@/lib/googleMaps';
 
@@ -14,6 +14,11 @@ export interface RouteMap {
    * plain dots and no line.
    */
   show(pins: MapPin[]): void;
+  /**
+   * No pins, the camera around `center` (`AREA_ZOOM`): where the trip is that day, before any
+   * place is added to it.
+   */
+  showArea(center: GeoPoint): void;
   /**
    * Brings a stop up close: its marker stands out, and the camera centers on it, near enough to
    * see around it (`FOCUS_ZOOM`, or nearer as it was). Null shows them all again.
@@ -37,6 +42,8 @@ const LINE_COLOR = '#2f7cf6';
 const FIT_PADDING = 24;
 /** A stop up close: a few streets each way (about 5km across a phone). */
 export const FOCUS_ZOOM = 13;
+/** Around where the trip is on a day without places: a city and what is near it. */
+export const AREA_ZOOM = 11;
 
 export function createRouteMap(container: HTMLElement, { maps, marker }: RouteMapLibraries): RouteMap {
   const map = new maps.Map(container, {
@@ -124,6 +131,16 @@ export function createRouteMap(container: HTMLElement, { maps, marker }: RouteMa
       const stop = focusedStop();
       if (stop) frameStop(stop);
       else if (shown.length > 0) frameAll();
+    },
+    showArea(center) {
+      clearMarkers();
+      line.setPath([]);
+      shown = [];
+      focused = null;
+      const spot = `area ${center.lat},${center.lng}`;
+      if (spot === framed) return;
+      framed = spot;
+      map.moveCamera({ center, zoom: AREA_ZOOM });
     },
     destroy() {
       clearMarkers();

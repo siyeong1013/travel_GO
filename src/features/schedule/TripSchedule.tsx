@@ -30,6 +30,7 @@ import { ScheduleBoard } from '@/features/schedule/ScheduleBoard';
 import { useScheduleStore } from '@/features/schedule/scheduleStore';
 import { useSchedule } from '@/features/schedule/useSchedule';
 import { useTripWeather } from '@/features/schedule/useTripWeather';
+import { daySpots } from '@/features/schedule/weather';
 import { WeatherLine } from '@/features/schedule/WeatherLine';
 import { editingOf, withEditing } from '@/features/trips/tripView';
 import { errorMessage } from '@/lib/errorMessage';
@@ -97,7 +98,9 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
   const [deleting, setDeleting] = useState<{ busy: boolean; error: string | null } | null>(null);
   // The inbox has no order: its map has pins, without numbers or a route.
   const ordered = selectedDate !== null;
-  const mapShown = status !== 'error' && groupItems.length > 0;
+  // A day without places on the map shows where the trip is that day (as its weather does).
+  const area = selectedDate ? (daySpots(trip, items).get(selectedDate) ?? null) : null;
+  const mapShown = status !== 'error' && (groupItems.length > 0 || area !== null);
   const pins = !mapShown ? [] : ordered ? routeStops(groupItems) : inboxPins(groupItems);
   const focusedId = useMapFocus(
     { pinned: pinnedRef, list: listRef, bar: barRef },
@@ -276,7 +279,7 @@ export function TripSchedule({ trip, today }: { trip: Trip; today: LocalDate }) 
             attributions={weather.attributions}
           />
         )}
-        {mapShown && <DayMap items={groupItems} ordered={ordered} focusedId={focusedId} />}
+        {mapShown && <DayMap items={groupItems} ordered={ordered} focusedId={focusedId} area={area} />}
       </div>
       <section
         id={panelId}

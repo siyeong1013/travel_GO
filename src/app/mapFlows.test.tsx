@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { repositories } from '@/data';
 import type { GeoPoint, LocalDate, Trip } from '@/data/models';
@@ -77,7 +77,7 @@ describe('day map', () => {
     expect(legs[0]).toHaveAttribute('target', '_blank');
   });
 
-  it('keeps one map across days and the inbox (pins without numbers), none without', async () => {
+  it('keeps one map across days and the inbox (pins without numbers), around the day without places', async () => {
     await addPlace('2026-11-10', '오사카성', CASTLE);
     await addPlace('2026-11-11', '도톤보리', DOTONBORI);
     await addPlace('2026-11-11', '우메다', UMEDA);
@@ -101,14 +101,43 @@ describe('day map', () => {
 
     await user.click(screen.getByRole('tab', { name: /^Day 3/ }));
     await screen.findByRole('button', { name: /^공항 가기(?! 순서 바꾸기)/ });
+    // No place of Day 3 is on the map: it shows around where the trip is (Day 2 ended in 우메다).
+    await waitFor(() => expect(api.maps[0]!.cameras.at(-1)).toEqual({ center: UMEDA, zoom: 11 }));
     expect(api.markers()).toEqual([]);
-    expect(screen.queryByText(/지도/)).not.toBeInTheDocument();
+    expect(api.lines.at(-1)!.path).toEqual([]);
+    expect(api.maps).toHaveLength(1);
+    expect(screen.getByText('위치가 있는 장소를 넣으면 이 지도에 번호로 보여요.')).toBeInTheDocument();
 
     // The inbox's places are on a map too, as pins: no order, so no numbers and no route.
     await user.click(screen.getByRole('tab', { name: /^보관함/ }));
     await waitFor(() => expect(api.markers()).toEqual([['', '유니버설 스튜디오']]));
     expect(api.lines.at(-1)!.path).toEqual([]);
     expect(legLinks()).toEqual([]);
+  });
+
+  it('shows around the first city before any place, and nothing at all without a key', async () => {
+    const taipei = { lat: 25.033, lng: 121.5654 };
+    const withCity = await repositories.trips.create({
+      title: '타이베이 여행',
+      cities: [{ name: '타이베이', placeId: 'place-taipei', location: taipei, fetchedAt: new Date().toISOString() }],
+      startDate: '2026-11-28',
+      endDate: '2026-11-30',
+    });
+    renderApp(`/trips/${withCity.id}?day=2026-11-28`);
+    expect(await screen.findByText('아직 일정이 없어요')).toBeInTheDocument();
+    // Without a key, no note about the map on a day that has no places anyway.
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    cleanup();
+
+    const api = stubMapsApi();
+    const { user } = renderApp(`/trips/${withCity.id}?day=2026-11-29`);
+    await waitFor(() => expect(api.maps[0]?.cameras.at(-1)).toEqual({ center: taipei, zoom: 11 }));
+    expect(api.markers()).toEqual([]);
+    expect(screen.getByText('장소를 넣으면 이 지도에 번호로 보여요.')).toBeInTheDocument();
+
+    // The inbox has no "where": no map while it is empty.
+    await user.click(screen.getByRole('tab', { name: /^보관함/ }));
+    await waitFor(() => expect(screen.queryByText(/이 지도에/)).not.toBeInTheDocument());
   });
 
   it('says why there is no map without an API key, and still gives directions', async () => {

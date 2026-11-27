@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import type { ID, ScheduleItem } from '@/data/models';
+import type { GeoPoint, ID, ScheduleItem } from '@/data/models';
 import {
   inboxPins,
   type MapPin,
@@ -19,6 +19,8 @@ interface DayMapProps {
   items: ScheduleItem[];
   /** A day's, numbered and joined in order; or the inbox's, in no order. */
   ordered: boolean;
+  /** Where the trip is that day (`daySpots`): shown when no item of the day is on the map. */
+  area: GeoPoint | null;
   focusedId: ID | null;
 }
 
@@ -26,12 +28,19 @@ interface DayMapProps {
  * The day's places on a Google map, numbered like the list and joined in order by straight lines
  * (the list has the directions for each leg), with the one in `focusedId` up close (`useMapFocus`).
  * The inbox's are plain pins, to see where they are before picking their days. Nothing when no
- * item has a location.
+ * item has a location: then a day shows around where the trip is (`area`, as for its weather),
+ * so the map is there before the first place; the inbox shows nothing.
  */
-export function DayMap({ items, ordered, focusedId }: DayMapProps) {
+export function DayMap({ items, ordered, focusedId, area }: DayMapProps) {
   const pins = ordered ? routeStops(items) : inboxPins(items);
-  if (pins.length === 0) return null;
-  return <DayMapCard pins={pins} note={unplacedNote(items, ordered)} focusedId={focusedId} />;
+  const around = pins.length === 0 && ordered ? area : null;
+  if (pins.length === 0 && !around) return null;
+  const note = around
+    ? items.length === 0
+      ? '장소를 넣으면 이 지도에 번호로 보여요.'
+      : '위치가 있는 장소를 넣으면 이 지도에 번호로 보여요.'
+    : unplacedNote(items, ordered);
+  return <DayMapCard pins={pins} area={around} note={note} focusedId={focusedId} />;
 }
 
 /** Why some places are not on the map: `2, 4번은 …`, or how many in the inbox. */
@@ -46,11 +55,13 @@ function unplacedNote(items: ScheduleItem[], ordered: boolean): string | null {
 
 interface DayMapCardProps {
   pins: MapPin[];
+  /** Shown, without pins, when there are none. */
+  area: GeoPoint | null;
   note: string | null;
   focusedId: ID | null;
 }
 
-function DayMapCard({ pins, note, focusedId }: DayMapCardProps) {
+function DayMapCard({ pins, area, note, focusedId }: DayMapCardProps) {
   const availability = useSearchAvailability();
   const container = useRef<HTMLDivElement>(null);
   const [routeMap, setRouteMap] = useState<RouteMap | null>(null);
@@ -78,8 +89,11 @@ function DayMapCard({ pins, note, focusedId }: DayMapCardProps) {
 
   useEffect(() => () => routeMap?.destroy(), [routeMap]);
 
-  const draw = useEffectEvent((map: RouteMap) => map.show(pins));
-  const stopsKey = JSON.stringify(pins);
+  const draw = useEffectEvent((map: RouteMap) => {
+    if (pins.length === 0 && area) map.showArea(area);
+    else map.show(pins);
+  });
+  const stopsKey = JSON.stringify([pins, area]);
   useEffect(() => {
     if (routeMap) draw(routeMap);
   }, [routeMap, stopsKey]);
@@ -88,6 +102,9 @@ function DayMapCard({ pins, note, focusedId }: DayMapCardProps) {
   useEffect(() => {
     routeMap?.focus(focusedId);
   }, [routeMap, focusedId, stopsKey]);
+
+  // Only an area to show: nothing rather than a note on a day that has no places anyway.
+  if (pins.length === 0 && routeMap === null && availability !== 'ready') return null;
 
   return (
     <div className="px-4 pt-3 pb-3">
