@@ -124,13 +124,14 @@ export function TripChecklist({ trip }: { trip: Trip }) {
   } else {
     content = (
       <>
-        <section aria-label="준비 상황" className="px-4 pt-5">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-lg font-bold">
-              {progress.done === progress.total
-                ? '모두 챙겼어요'
-                : `${progress.total}개 중 ${progress.done}개 챙겼어요`}
-            </p>
+        <section aria-label="준비 상황" className="px-4 pt-3">
+          <div className="flex min-h-11 items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-[width]"
+                style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+              />
+            </div>
             {canFilter && (
               <button
                 type="button"
@@ -147,12 +148,6 @@ export function TripChecklist({ trip }: { trip: Trip }) {
                 </span>
               </button>
             )}
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
-            <div
-              className="h-full rounded-full bg-brand-500 transition-[width]"
-              style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
-            />
           </div>
         </section>
 

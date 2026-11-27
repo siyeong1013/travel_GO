@@ -48,20 +48,21 @@ describe('checklist', () => {
   it('opens from the trip page with the default list a new trip starts with; checks stay', async () => {
     const { user } = renderApp(`/trips/${trip.id}`);
     await user.click(await screen.findByRole('link', { name: '준비물' }));
-    expect(await screen.findByText('10개 중 0개 챙겼어요')).toBeInTheDocument();
+    await screen.findByRole('checkbox', { name: '여권' });
     expect(names('챙길 것')).toEqual([...DEFAULT_CHECKLIST]);
 
     await user.click(screen.getByRole('checkbox', { name: '여권' }));
-    expect(await screen.findByText('10개 중 1개 챙겼어요')).toBeInTheDocument();
+    await waitFor(() => expect(packed()).toEqual(['여권']));
     expect(names('챙길 것')).not.toContain('여권');
-    expect(packed()).toEqual(['여권']);
+    expect(names('챙길 것')).toHaveLength(9);
+    // No count above the list: only the bar.
+    expect(screen.queryByText(/개 챙겼어요/)).not.toBeInTheDocument();
 
     // Read again from storage (a new visit).
     cleanup();
     resetStores();
     renderApp(checklistPath());
-    expect(await screen.findByText('10개 중 1개 챙겼어요')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: '여권' })).toBeChecked();
+    expect(await screen.findByRole('checkbox', { name: '여권' })).toBeChecked();
   });
 
   it('adds several at once, renames, assigns, and shows only mine', async () => {
@@ -154,6 +155,5 @@ describe('checklist', () => {
 
     expect(await screen.findByText('준비물 2개를 가져왔어요.')).toBeInTheDocument();
     expect(names('챙길 것')).toEqual(['여권', '선크림']);
-    expect(screen.getByText('2개 중 0개 챙겼어요')).toBeInTheDocument();
   });
 });
