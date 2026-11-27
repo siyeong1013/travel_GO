@@ -165,7 +165,7 @@ describe('backup import', () => {
     const sheet = await screen.findByRole('dialog', { name: '백업 가져오기' });
     await user.click(within(sheet).getByRole('radio', { name: '덮어쓰기' }));
     const preview = within(sheet).getByRole('region', { name: '미리보기' });
-    await waitFor(() => expect(preview).toHaveTextContent('지워짐 12개여행 1개 · 동행자 1개 · 준비물 10개'));
+    await waitFor(() => expect(preview).toHaveTextContent('지워짐 18개여행 1개 · 동행자 1개 · 준비물 16개'));
     expect(preview).toHaveTextContent('가져옴 3개여행 1개 · 일정 1개 · 동행자 1개');
     expect(sheet).toHaveTextContent('지금 데이터를 모두 지우고 파일 내용으로 바꿔요.');
 

@@ -54,7 +54,7 @@ describe('checklist', () => {
     await user.click(screen.getByRole('checkbox', { name: '여권' }));
     await waitFor(() => expect(packed()).toEqual(['여권']));
     expect(names('챙길 것')).not.toContain('여권');
-    expect(names('챙길 것')).toHaveLength(9);
+    expect(names('챙길 것')).toHaveLength(DEFAULT_CHECKLIST.length - 1);
     // No count above the list: only the bar.
     expect(screen.queryByText(/개 챙겼어요/)).not.toBeInTheDocument();
 
@@ -141,7 +141,7 @@ describe('checklist', () => {
 
     expect(await screen.findByText('아직 준비물이 없어요')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '기본 목록으로 시작' }));
-    expect(await screen.findByText('기본 준비물 10개를 넣었어요.')).toBeInTheDocument();
+    expect(await screen.findByText(`기본 준비물 ${DEFAULT_CHECKLIST.length}개를 넣었어요.`)).toBeInTheDocument();
     expect(names('챙길 것')).toEqual([...DEFAULT_CHECKLIST]);
 
     await clearChecklist(trip.id);

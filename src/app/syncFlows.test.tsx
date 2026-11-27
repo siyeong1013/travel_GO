@@ -66,7 +66,7 @@ describe('sync', () => {
 
     expect(await screen.findByText('모든 여행을 서버에 저장했어요.', {}, synced)).toBeInTheDocument();
     // The trip, its "나" and its default checklist.
-    expect(await serverKinds()).toEqual(['trip', 'companion', ...Array(10).fill('checklistItem')]);
+    expect(await serverKinds()).toEqual(['trip', 'companion', ...Array(16).fill('checklistItem')]);
   });
 
   it('shows a trip made on another device', async () => {
@@ -109,14 +109,14 @@ describe('sync', () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const { user } = renderApp('/account');
     expect(
-      await screen.findByText('인터넷에 연결되면 변경 12개를 서버에 올려요.', {}, synced),
+      await screen.findByText('인터넷에 연결되면 변경 18개를 서버에 올려요.', {}, synced),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '로그아웃' }));
     const sheet = await screen.findByRole('dialog', { name: '로그아웃할까요?' });
     expect(
       await within(sheet).findByText(
-        '서버에 아직 올리지 못한 변경이 12개 있어요. 지금 로그아웃하면 이 변경은 사라져요.',
+        '서버에 아직 올리지 못한 변경이 18개 있어요. 지금 로그아웃하면 이 변경은 사라져요.',
       ),
     ).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: '취소' }));

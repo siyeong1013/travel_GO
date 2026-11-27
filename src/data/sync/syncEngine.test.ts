@@ -99,8 +99,8 @@ describe('sync', () => {
     const trip = await addTrip(phone);
     await addItem(phone, trip.id, '오사카성');
     await phone.repos.expenses.create(expenseOf(trip.id, 12000));
-    // The trip, "나", its default checklist (10), the item, the expense.
-    expect(await phone.engine.pending()).toBe(14);
+    // The trip, "나", its default checklist (16), the item, the expense.
+    expect(await phone.engine.pending()).toBe(20);
 
     expect(await phone.sync()).toEqual({ changed: false, pending: 0, needsUpdate: false });
 
@@ -310,7 +310,7 @@ describe('sync', () => {
     const covers = (await laptop.repos.trips.list()).map((t) => t.cover?.image.length);
     expect(covers).toEqual([2_000_023, 2_000_023, 2_000_023]);
     // Two photos are more than one push takes: the trips, then each one's "나" and checklist.
-    expect(pushes).toEqual([1, 1, 34]);
+    expect(pushes).toEqual([1, 1, 52]);
   });
 
   it('takes the browser’s lock, so two tabs don’t sync at once', async () => {
