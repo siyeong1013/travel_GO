@@ -4,6 +4,7 @@ import { editingOf, searchForView, viewOf, withEditing } from '@/features/trips/
 describe('tripView', () => {
   it('reads the view from ?tab=, defaulting to the schedule', () => {
     expect(viewOf(new URLSearchParams('tab=expenses'))).toBe('expenses');
+    expect(viewOf(new URLSearchParams('tab=checklist'))).toBe('checklist');
     expect(viewOf(new URLSearchParams('tab=nope'))).toBe('schedule');
     expect(viewOf(new URLSearchParams(''))).toBe('schedule');
   });

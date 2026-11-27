@@ -3,12 +3,13 @@ import { createDataLayer } from '@/data/dataLayer';
 import { createTravelGoDB, type TravelGoDB } from '@/data/local';
 import type { ID, Trip } from '@/data/models';
 import type { NewExpense } from '@/data/repositories';
+import { DEFAULT_CHECKLIST, defaultChecklistItems } from '@/data/rules/checklist';
 import { meCompanionId } from '@/data/rules/companion';
-import { SYNC_FORMAT } from '@/data/sync/records';
+import { openWorking, SYNC_FORMAT, takeRows } from '@/data/sync/records';
 import type { SyncServer } from '@/data/sync/syncEngine';
 import type { Clock } from '@/lib/dates';
 import { newId } from '@/lib/id';
-import { namedPlace, testClock, typedCity } from '@/test/fixtures';
+import { emptyData, namedPlace, testClock, typedCity } from '@/test/fixtures';
 import { createSyncDatabase, type SyncDatabase } from '@/test/syncDatabase';
 
 // Two devices of one account syncing through the real server SQL (PGlite).
@@ -98,7 +99,8 @@ describe('sync', () => {
     const trip = await addTrip(phone);
     await addItem(phone, trip.id, '오사카성');
     await phone.repos.expenses.create(expenseOf(trip.id, 12000));
-    expect(await phone.engine.pending()).toBe(4); // the trip, "나", the item, the expense
+    // The trip, "나", its default checklist (10), the item, the expense.
+    expect(await phone.engine.pending()).toBe(14);
 
     expect(await phone.sync()).toEqual({ changed: false, pending: 0, needsUpdate: false });
 
@@ -307,8 +309,8 @@ describe('sync', () => {
     await laptop.sync();
     const covers = (await laptop.repos.trips.list()).map((t) => t.cover?.image.length);
     expect(covers).toEqual([2_000_023, 2_000_023, 2_000_023]);
-    // Two photos are more than one push takes: the trips, then each one's "나".
-    expect(pushes).toEqual([1, 1, 4]);
+    // Two photos are more than one push takes: the trips, then each one's "나" and checklist.
+    expect(pushes).toEqual([1, 1, 34]);
   });
 
   it('takes the browser’s lock, so two tabs don’t sync at once', async () => {
@@ -341,6 +343,71 @@ describe('sync', () => {
     expect(await laptop.sync()).toMatchObject({ needsUpdate: true });
     expect((await laptop.repos.trips.list()).map((t) => t.id)).toEqual([trip.id]);
     expect(await laptop.repos.schedule.listByTrip(trip.id)).toEqual([]);
+  });
+});
+
+describe('sync of the checklist', () => {
+  const list = async (on: Device, tripId: ID) =>
+    (await on.repos.checklist.listByTrip(tripId)).map((item) => [item.text, item.checked]);
+
+  it('brings items, checks and deletions across, and they go with their trip', async () => {
+    const phone = device();
+    const laptop = device();
+    const trip = await addTrip(phone);
+    // Without the default list it starts with.
+    await phone.db.checklistItems.clear();
+    const [passport, charger] = await phone.repos.checklist.add(trip.id, ['여권', '충전기']);
+    await phone.sync();
+    await laptop.sync();
+    expect(await list(laptop, trip.id)).toEqual([
+      ['여권', false],
+      ['충전기', false],
+    ]);
+
+    await laptop.repos.checklist.update(passport!.id, { checked: true });
+    await laptop.repos.checklist.delete(charger!.id);
+    await laptop.sync();
+    expect(await phone.sync()).toMatchObject({ changed: true });
+    expect(await list(phone, trip.id)).toEqual([['여권', true]]);
+
+    await phone.repos.trips.delete(trip.id);
+    await phone.sync();
+    await laptop.sync();
+    expect(await laptop.db.checklistItems.count()).toBe(0);
+  });
+
+  it('makes one default list of a trip that two devices each gave it', async () => {
+    const phone = device();
+    const laptop = device();
+    const trip = await addTrip(phone);
+    await phone.sync();
+    await laptop.sync();
+    // As the update adds it to a trip not over yet, on each device, at its own time.
+    await laptop.db.checklistItems.clear();
+    await laptop.db.checklistItems.bulkPut(defaultChecklistItems(trip.id, clock()));
+    await laptop.sync();
+    await phone.sync();
+
+    for (const on of [phone, laptop]) {
+      expect((await list(on, trip.id)).map(([text]) => text)).toEqual([...DEFAULT_CHECKLIST]);
+    }
+  });
+
+  it('is skipped by an app from before the checklist, which keeps syncing the rest', async () => {
+    const phone = device();
+    const trip = await addTrip(phone);
+    await phone.repos.checklist.add(trip.id, ['여권']);
+    await phone.sync();
+
+    // An older app doesn't know the kind: as with any kind unknown to it, it skips the row and
+    // reads on (no "새 버전이 나왔어요"), since the record's format is that of the other kinds.
+    const rows = await server.serverFor(ME).pull(0, 100);
+    const checklistRow = rows.find((row) => row.kind === 'checklistItem')!;
+    expect(checklistRow.format).toBe(SYNC_FORMAT);
+    const w = openWorking(emptyData(), []);
+    const taken = takeRows(w, rows.map((row) => (row === checklistRow ? { ...row, kind: 'unknown' } : row)));
+    expect(taken).toEqual({ cursor: rows.at(-1)!.seq, newer: false, invalid: [checklistRow.id] });
+    expect(w.trips.has(trip.id)).toBe(true);
   });
 });
 

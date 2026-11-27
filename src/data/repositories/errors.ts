@@ -30,7 +30,10 @@ export class RepositoryError extends Error {
 }
 
 export class EntityNotFoundError extends RepositoryError {
-  constructor(entity: 'trip' | 'scheduleItem' | 'companion' | 'expense', id: ID) {
+  constructor(
+    entity: 'trip' | 'scheduleItem' | 'companion' | 'expense' | 'checklistItem',
+    id: ID,
+  ) {
     super('not_found', `${entity} not found: ${id}`);
   }
 }

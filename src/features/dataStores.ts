@@ -1,3 +1,4 @@
+import { checklistStore } from '@/features/checklist/checklistStore';
 import { countryStore } from '@/features/countries/countryStore';
 import { expenseStore } from '@/features/expenses/expenseStore';
 import { scheduleStore } from '@/features/schedule/scheduleStore';
@@ -8,6 +9,7 @@ export function resetDataStores() {
   tripStore.setState(tripStore.getInitialState(), true);
   scheduleStore.setState(scheduleStore.getInitialState(), true);
   expenseStore.setState(expenseStore.getInitialState(), true);
+  checklistStore.setState(checklistStore.getInitialState(), true);
   countryStore.setState(countryStore.getInitialState(), true);
 }
 
@@ -17,6 +19,7 @@ export async function reloadDataStores() {
     tripStore.getState().reload(),
     scheduleStore.getState().reload(),
     expenseStore.getState().reload(),
+    checklistStore.getState().reload(),
     countryStore.getState().reload(),
   ]);
 }

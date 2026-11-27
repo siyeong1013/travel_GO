@@ -1,6 +1,7 @@
 import type {
   BackupData,
   BackupFile,
+  ChecklistItem,
   Companion,
   CoverPhoto,
   Expense,
@@ -20,6 +21,7 @@ import type {
   VisitedCountry,
 } from '@/data/models';
 import { BackupFormatError } from '@/data/repositories';
+import { compareChecklistItems, isChecklistText } from '@/data/rules/checklist';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { isCountryCode, isPlaceCode } from '@/data/rules/country';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, SPLIT_METHODS } from '@/data/rules/expense';
@@ -54,13 +56,15 @@ import { parseFlightNumber } from '@/lib/flights';
  * v10: schedule items' flight (`flight`): an item can be a flight, between its airports.
  * v11: expenses' title (`title`) besides the memo: the memo was shown as the title, so in older
  *     files it is the title. And the category `flight` (항공).
+ * v12: trips' checklist (`checklistItems`, 준비물). Records of the other kinds are as in v11.
  */
-export const BACKUP_SCHEMA_VERSION = 11;
+export const BACKUP_SCHEMA_VERSION = 12;
 
 /**
  * The version the records (trips and what is in them) last changed in: the sync format
  * (data/sync). A version that changes only the rest of the file keeps it, so devices still on
- * the app before it keep syncing.
+ * the app before it keep syncing. So does a new kind of record (checklist items, v12): an older
+ * app skips the kinds it doesn't know.
  */
 export const RECORD_SCHEMA_VERSION = 11;
 
@@ -91,6 +95,9 @@ export function createBackupFile(
     ),
     settlements: [...data.settlements].sort(
       (a, b) => byText(a.tripId, b.tripId) || byText(a.createdAt, b.createdAt),
+    ),
+    checklistItems: [...data.checklistItems].sort(
+      (a, b) => byText(a.tripId, b.tripId) || compareChecklistItems(a, b),
     ),
     visitedCountries: [...(data.visitedCountries ?? [])].sort((a, b) => byText(a.id, b.id)),
   };
@@ -367,6 +374,22 @@ function readSettlement(value: unknown, path: string): Settlement {
   };
 }
 
+function readChecklistItem(value: unknown, path: string): ChecklistItem {
+  const c = object(value, path);
+  return {
+    id: text(c.id, `${path}.id`),
+    tripId: text(c.tripId, `${path}.tripId`),
+    text: isChecklistText(c.text) ? c.text : invalid(`${path}.text`, 'trimmed text of 1–100 characters'),
+    checked: boolean(c.checked, `${path}.checked`),
+    assigneeId: nullable(text)(c.assigneeId, `${path}.assigneeId`),
+    order: Number.isSafeInteger(c.order) && (c.order as number) >= 0
+      ? (c.order as number)
+      : invalid(`${path}.order`, 'whole number'),
+    createdAt: timestamp(c.createdAt, `${path}.createdAt`),
+    updatedAt: timestamp(c.updatedAt, `${path}.updatedAt`),
+  };
+}
+
 function readCountry(value: unknown, path: string, version: number): VisitedCountry {
   const c = object(value, path);
   // Regions came with v7, cities with v8: a v7 file can have them too, from a device on the app
@@ -401,6 +424,7 @@ function assertConsistent(data: BackupData) {
     ['$.companions', data.companions],
     ['$.expenses', data.expenses],
     ['$.settlements', data.settlements],
+    ['$.checklistItems', data.checklistItems],
   ] as const) {
     records.forEach((record, i) => {
       if (!tripIds.has(record.tripId)) invalid(`${path}[${i}].tripId`, 'the id of a trip in this file');
@@ -448,6 +472,12 @@ function assertConsistent(data: BackupData) {
     }
     if (settlement.fromId === settlement.toId) invalid(`$.settlements[${i}].toId`, 'someone else');
   });
+
+  data.checklistItems.forEach((item, i) => {
+    if (!sameTrip(companionTrips, item.assigneeId, item.tripId)) {
+      invalid(`$.checklistItems[${i}].assigneeId`, 'null or a companion of the same trip');
+    }
+  });
 }
 
 /**
@@ -466,6 +496,7 @@ export function parseRecord<K extends RecordKind>(
     scheduleItem: () => readScheduleItem(raw, path, version),
     companion: () => readCompanion(raw, path, version),
     settlement: () => readSettlement(raw, path),
+    checklistItem: () => readChecklistItem(raw, path),
     expense: () => {
       const expense = readExpense(raw, path, version);
       const shares = array(object(raw, path).shares, `${path}.shares`).map((v, i) =>
@@ -519,6 +550,7 @@ export function parseBackupFile(raw: unknown): BackupFile {
           expenses: [],
           expenseShares: [],
           settlements: [],
+          checklistItems: [],
         }
       : {
           trips,
@@ -527,6 +559,8 @@ export function parseBackupFile(raw: unknown): BackupFile {
           expenses: list('expenses', (v, path) => readExpense(v, path, version)),
           expenseShares: list('expenseShares', readShare),
           settlements: list('settlements', readSettlement),
+          // The checklist came with v12.
+          checklistItems: version >= 12 ? list('checklistItems', readChecklistItem) : [],
         };
 
   for (const key of Object.keys(data) as (keyof BackupData)[]) {

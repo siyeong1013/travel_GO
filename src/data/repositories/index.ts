@@ -1,4 +1,5 @@
 import type { BackupRepository } from '@/data/repositories/BackupRepository';
+import type { ChecklistRepository } from '@/data/repositories/ChecklistRepository';
 import type { CompanionRepository } from '@/data/repositories/CompanionRepository';
 import type { CountryRepository } from '@/data/repositories/CountryRepository';
 import type { ExpenseRepository } from '@/data/repositories/ExpenseRepository';
@@ -7,6 +8,7 @@ import type { SettlementRepository } from '@/data/repositories/SettlementReposit
 import type { TripRepository } from '@/data/repositories/TripRepository';
 
 export type * from '@/data/repositories/BackupRepository';
+export type * from '@/data/repositories/ChecklistRepository';
 export type * from '@/data/repositories/CompanionRepository';
 export type * from '@/data/repositories/CountryRepository';
 export type * from '@/data/repositories/ExpenseRepository';
@@ -21,6 +23,7 @@ export interface Repositories {
   companions: CompanionRepository;
   expenses: ExpenseRepository;
   settlements: SettlementRepository;
+  checklist: ChecklistRepository;
   countries: CountryRepository;
   backup: BackupRepository;
 }

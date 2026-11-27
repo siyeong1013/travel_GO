@@ -2,7 +2,9 @@ import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalRepositories, createTravelGoDB, type TravelGoDB } from '@/data/local';
 import type { Trip } from '@/data/models';
+import { DEFAULT_CHECKLIST, defaultChecklistItems } from '@/data/rules/checklist';
 import { makeMeCompanion, meCompanionId } from '@/data/rules/companion';
+import { addDays, toLocalDate } from '@/lib/dates';
 import { newId } from '@/lib/id';
 import { makeExpense, makeItem, makePlace, makeTrip, namedPlace, testClock } from '@/test/fixtures';
 
@@ -283,5 +285,37 @@ describe('schema migrations', () => {
     expect(await db.expenses.toArray()).toEqual([{ ...expense, title: '타코야키', memo: '' }]);
     expect(title).toBe('');
     expect(shares).toHaveLength(1);
+  });
+
+  it('v11 → v12: trips not over yet get the default checklist, stamped as they were made', async () => {
+    const name = `test-${newId()}`;
+    const today = toLocalDate();
+    const coming = makeTrip({ startDate: addDays(today, 3), endDate: addDays(today, 5) });
+    const ongoing = makeTrip({ startDate: addDays(today, -1), endDate: today });
+    const past = makeTrip({ startDate: addDays(today, -9), endDate: addDays(today, -7) });
+
+    // A database as version 11 of the app left it.
+    const v11 = new Dexie(name);
+    v11.version(1).stores({ trips: 'id', scheduleItems: 'id, tripId' });
+    v11.version(2).stores({
+      companions: 'id, tripId',
+      expenses: 'id, tripId, scheduleItemId',
+      expenseShares: 'id, tripId, expenseId',
+      settlements: 'id, tripId',
+    });
+    v11.version(5).stores({ syncedRecords: 'id, tripId', syncState: 'id' });
+    v11.version(7).stores({ visitedCountries: 'id' });
+    v11.version(11).stores({});
+    await v11.table('trips').bulkAdd([coming, ongoing, past]);
+    v11.close();
+
+    db = createTravelGoDB(name);
+    const items = await db.checklistItems.toArray();
+    expect(items).toHaveLength(2 * DEFAULT_CHECKLIST.length);
+    for (const trip of [coming, ongoing]) {
+      expect(items.filter((item) => item.tripId === trip.id).sort((a, b) => a.order - b.order)).toEqual(
+        defaultChecklistItems(trip.id, trip.createdAt),
+      );
+    }
   });
 });

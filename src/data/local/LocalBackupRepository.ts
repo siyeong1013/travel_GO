@@ -14,6 +14,7 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
     db.expenses,
     db.expenseShares,
     db.settlements,
+    db.checklistItems,
     db.visitedCountries,
   ];
 
@@ -24,6 +25,7 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
     expenses: await db.expenses.toArray(),
     expenseShares: await db.expenseShares.toArray(),
     settlements: await db.settlements.toArray(),
+    checklistItems: await db.checklistItems.toArray(),
     visitedCountries: await db.visitedCountries.toArray(),
   });
 
@@ -58,6 +60,7 @@ export function createLocalBackupRepository(db: TravelGoDB, now: Clock): BackupR
         await db.expenses.bulkPut(plan.put.expenses);
         await db.expenseShares.bulkPut(plan.put.expenseShares);
         await db.settlements.bulkPut(plan.put.settlements);
+        await db.checklistItems.bulkPut(plan.put.checklistItems);
         await db.visitedCountries.bulkPut(plan.put.visitedCountries);
         return plan.summary;
       });

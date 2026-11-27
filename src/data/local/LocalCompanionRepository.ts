@@ -122,7 +122,7 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
     },
 
     delete(id) {
-      const tables = [db.companions, db.expenses, db.expenseShares, db.settlements];
+      const tables = [db.companions, db.expenses, db.expenseShares, db.settlements, db.checklistItems];
       return db.transaction('rw', tables, async () => {
         const companion = await db.companions.get(id);
         if (!companion) return;
@@ -141,6 +141,12 @@ export function createLocalCompanionRepository(db: TravelGoDB, now: Clock): Comp
           await db.expenseShares.bulkAdd(toShareRows(expense, split.shares, timestamp));
           await db.expenses.put({ ...expense, updatedAt: timestamp });
         }
+        // What they were to bring is nobody's now.
+        await db.checklistItems
+          .where('tripId')
+          .equals(companion.tripId)
+          .filter((item) => item.assigneeId === id)
+          .modify({ assigneeId: null, updatedAt: timestamp });
         await db.companions.delete(id);
       });
     },

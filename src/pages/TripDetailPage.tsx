@@ -4,6 +4,7 @@ import { iconButtonClass, iconButtonOnCoverClass } from '@/components/ui/buttonC
 import { PencilIcon } from '@/components/ui/icons';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { ID } from '@/data/models';
+import { TripChecklist } from '@/features/checklist/TripChecklist';
 import { TripExpenses } from '@/features/expenses/TripExpenses';
 import { useExpenses } from '@/features/expenses/useExpenses';
 import { usePlaceDataRefresh } from '@/features/places/placeRefresh';
@@ -111,11 +112,9 @@ export function TripDetailPage() {
       <main className="flex flex-1 flex-col">
         <TripCover trip={trip} today={today} startRef={setCoverStart} endRef={setCoverEnd} />
         <TripViewTabs view={view} />
-        {view === 'schedule' ? (
-          <TripSchedule trip={trip} today={today} />
-        ) : (
-          <TripExpenses trip={trip} />
-        )}
+        {view === 'schedule' && <TripSchedule trip={trip} today={today} />}
+        {view === 'expenses' && <TripExpenses trip={trip} />}
+        {view === 'checklist' && <TripChecklist trip={trip} />}
       </main>
     </>
   );

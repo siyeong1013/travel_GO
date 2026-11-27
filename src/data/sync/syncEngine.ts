@@ -111,6 +111,7 @@ export function createSyncEngine(
     expenses: db.expenses,
     expenseShares: db.expenseShares,
     settlements: db.settlements,
+    checklistItems: db.checklistItems,
   };
   const tables = [...Object.values(dataTables), db.syncedRecords, db.syncState, db.visitedCountries];
 
@@ -125,6 +126,7 @@ export function createSyncEngine(
       expenses: await db.expenses.toArray(),
       expenseShares: await db.expenseShares.toArray(),
       settlements: await db.settlements.toArray(),
+      checklistItems: await db.checklistItems.toArray(),
     };
     return openWorking(data, await db.syncedRecords.toArray());
   }

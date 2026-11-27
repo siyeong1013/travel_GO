@@ -1,5 +1,6 @@
 import type { TravelGoDB } from '@/data/local/db';
 import { createLocalBackupRepository } from '@/data/local/LocalBackupRepository';
+import { createLocalChecklistRepository } from '@/data/local/LocalChecklistRepository';
 import { createLocalCompanionRepository } from '@/data/local/LocalCompanionRepository';
 import { createLocalCountryRepository } from '@/data/local/LocalCountryRepository';
 import { createLocalExpenseRepository } from '@/data/local/LocalExpenseRepository';
@@ -18,6 +19,7 @@ export function createLocalRepositories(db: TravelGoDB, now: Clock = nowIso): Re
     companions: createLocalCompanionRepository(db, now),
     expenses: createLocalExpenseRepository(db, now),
     settlements: createLocalSettlementRepository(db, now),
+    checklist: createLocalChecklistRepository(db, now),
     countries: createLocalCountryRepository(db, now),
     backup: createLocalBackupRepository(db, now),
   };

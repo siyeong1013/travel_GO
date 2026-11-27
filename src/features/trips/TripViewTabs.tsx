@@ -4,10 +4,11 @@ import { searchForView, type TripView } from '@/features/trips/tripView';
 const VIEWS: { key: TripView; label: string }[] = [
   { key: 'schedule', label: '일정' },
   { key: 'expenses', label: '가계부' },
+  { key: 'checklist', label: '준비물' },
 ];
 
 /**
- * Schedule / ledger switch. Links that replace the history entry (like the day tabs), so
+ * Schedule / ledger / checklist switch. Links that replace the history entry (like the day tabs), so
  * "back" leaves the trip instead of flipping between them.
  */
 export function TripViewTabs({ view }: { view: TripView }) {

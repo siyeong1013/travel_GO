@@ -1,3 +1,4 @@
+import type { ChecklistItem } from '@/data/models/checklist';
 import type { ISODateTime } from '@/data/models/common';
 import type { VisitedCountry } from '@/data/models/country';
 import type {
@@ -18,6 +19,7 @@ export interface BackupData {
   expenses: Expense[];
   expenseShares: ExpenseShare[];
   settlements: Settlement[];
+  checklistItems: ChecklistItem[];
 }
 
 /**
@@ -30,6 +32,7 @@ export interface RecordsByKind {
   companion: Companion;
   expense: ExpenseWithShares;
   settlement: Settlement;
+  checklistItem: ChecklistItem;
 }
 
 export type RecordKind = keyof RecordsByKind;
@@ -67,6 +70,7 @@ export interface ImportSummary {
   /** Expenses together with their shares. */
   expenses: ImportCounts;
   settlements: ImportCounts;
+  checklistItems: ImportCounts;
   visitedCountries: ImportCounts;
   /** Items that ended up outside their trip's dates and were moved to the inbox. */
   movedToInbox: number;

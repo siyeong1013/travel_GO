@@ -145,6 +145,7 @@ export function emptyData(): BackupContents {
     expenses: [],
     expenseShares: [],
     settlements: [],
+    checklistItems: [],
     visitedCountries: [],
   };
 }

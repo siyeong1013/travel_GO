@@ -46,6 +46,7 @@ type Kind =
   | 'expenses'
   | 'companions'
   | 'settlements'
+  | 'checklistItems'
   | 'visitedCountries';
 
 const KINDS: readonly [Kind, string][] = [
@@ -54,6 +55,7 @@ const KINDS: readonly [Kind, string][] = [
   ['expenses', '지출'],
   ['companions', '동행자'],
   ['settlements', '송금 기록'],
+  ['checklistItems', '준비물'],
   ['visitedCountries', '다녀온 나라'],
 ];
 

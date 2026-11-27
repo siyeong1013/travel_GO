@@ -9,6 +9,7 @@ import { repositories } from '@/data';
 import { createBackupFile } from '@/data/rules/backupFormat';
 import { accountStore } from '@/features/account/accountStore';
 import { backupStore } from '@/features/backup/backupStore';
+import { checklistStore } from '@/features/checklist/checklistStore';
 import { countryStore } from '@/features/countries/countryStore';
 import { loadPlaces } from '@/features/countries/usePlaces';
 import { expenseStore } from '@/features/expenses/expenseStore';
@@ -41,6 +42,7 @@ export function resetStores() {
   tripStore.setState(tripStore.getInitialState(), true);
   scheduleStore.setState(scheduleStore.getInitialState(), true);
   expenseStore.setState(expenseStore.getInitialState(), true);
+  checklistStore.setState(checklistStore.getInitialState(), true);
   rateStore.setState(rateStore.getInitialState(), true);
   backupStore.setState(backupStore.getInitialState(), true);
   accountStore.setState(accountStore.getInitialState(), true);

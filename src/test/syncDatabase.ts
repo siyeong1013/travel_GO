@@ -6,6 +6,7 @@ import { countryChanges, type CountryRow, toCountries } from '@/data/sync/supaba
 import countriesMigration from '../../supabase/migrations/20261106120000_countries.sql?raw';
 import citiesMigration from '../../supabase/migrations/20261107120000_cities_regions.sql?raw';
 import visitedCitiesMigration from '../../supabase/migrations/20261108120000_visited_cities.sql?raw';
+import checklistMigration from '../../supabase/migrations/20261127120000_checklist.sql?raw';
 import sharingMigration from '../../supabase/migrations/20261105200000_sharing.sql?raw';
 import syncMigration from '../../supabase/migrations/20261105120000_sync.sql?raw';
 
@@ -57,6 +58,7 @@ export async function createSyncDatabase(): Promise<SyncDatabase> {
   await db.exec(countriesMigration);
   await db.exec(citiesMigration);
   await db.exec(visitedCitiesMigration);
+  await db.exec(checklistMigration);
 
   const as: SyncDatabase['as'] = (userId, work) =>
     db.transaction(async (tx) => {

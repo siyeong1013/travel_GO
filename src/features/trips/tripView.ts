@@ -1,9 +1,10 @@
-/** The two halves of the trip detail page. */
-export type TripView = 'schedule' | 'expenses';
+/** The parts of the trip detail page. */
+export type TripView = 'schedule' | 'expenses' | 'checklist';
 
-/** `?tab=expenses` opens the ledger; anything else, the schedule. */
+/** `?tab=expenses` opens the ledger, `?tab=checklist` the checklist; anything else, the schedule. */
 export function viewOf(params: URLSearchParams): TripView {
-  return params.get('tab') === 'expenses' ? 'expenses' : 'schedule';
+  const tab = params.get('tab');
+  return tab === 'expenses' || tab === 'checklist' ? tab : 'schedule';
 }
 
 /** `params` switched to `view`, keeping the others (e.g. `?day=`) but the schedule's edit mode. */

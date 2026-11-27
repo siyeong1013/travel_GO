@@ -1,5 +1,6 @@
 import type {
   BackupData,
+  ChecklistItem,
   Companion,
   Expense,
   ExpenseShare,
@@ -35,6 +36,7 @@ export const RECORD_KINDS: readonly RecordKind[] = [
   'companion',
   'expense',
   'settlement',
+  'checklistItem',
 ];
 
 /** What the server has of a record, as this device last saw it. */
@@ -106,7 +108,7 @@ export type Incoming =
       record: RecordsByKind[RecordKind];
     };
 
-type Stored = Trip | ScheduleItem | Companion | Expense | Settlement;
+type Stored = Trip | ScheduleItem | Companion | Expense | Settlement | ChecklistItem;
 
 /** The device's records while a sync changes them, and how they were (`base`). */
 export interface Working {
@@ -116,6 +118,7 @@ export interface Working {
   expenses: Map<ID, Expense>;
   expenseShares: Map<ID, ExpenseShare>;
   settlements: Map<ID, Settlement>;
+  checklistItems: Map<ID, ChecklistItem>;
   synced: Map<ID, SyncedRecord>;
   /** Trips whose items or dates came in: their schedule may need repairing. */
   touched: Set<ID>;
@@ -128,6 +131,7 @@ const TABLES = {
   companion: 'companions',
   expense: 'expenses',
   settlement: 'settlements',
+  checklistItem: 'checklistItems',
 } as const satisfies Record<RecordKind, keyof BackupData>;
 
 const table = (w: Working, kind: RecordKind) => w[TABLES[kind]] as Map<ID, Stored>;
@@ -148,6 +152,7 @@ export function openWorking(data: BackupData, synced: SyncedRecord[]): Working {
     expenses: byId(data.expenses),
     expenseShares: byId(data.expenseShares),
     settlements: byId(data.settlements),
+    checklistItems: byId(data.checklistItems),
     synced: byId(synced),
     touched: new Set(),
     base: { data, synced },
@@ -179,6 +184,7 @@ export function changesOf(w: Working): WorkingChanges {
       expenses: diff(data.expenses, w.expenses),
       expenseShares: diff(data.expenseShares, w.expenseShares),
       settlements: diff(data.settlements, w.settlements),
+      checklistItems: diff(data.checklistItems, w.checklistItems),
     },
     synced: diff(synced, w.synced),
   };
@@ -213,7 +219,15 @@ function putRecord(w: Working, kind: RecordKind, record: RecordsByKind[RecordKin
 function removeRecord(w: Working, kind: RecordKind, id: ID) {
   if (kind === 'trip') {
     w.trips.delete(id);
-    for (const records of [w.scheduleItems, w.companions, w.expenses, w.expenseShares, w.settlements]) {
+    const inTrip = [
+      w.scheduleItems,
+      w.companions,
+      w.expenses,
+      w.expenseShares,
+      w.settlements,
+      w.checklistItems,
+    ];
+    for (const records of inTrip) {
       for (const [key, record] of records) if (record.tripId === id) records.delete(key);
     }
     for (const [key, entry] of w.synced) if (entry.tripId === id) w.synced.delete(key);

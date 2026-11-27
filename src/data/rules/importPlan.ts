@@ -58,6 +58,7 @@ export function planImport(
     companions: emptyCounts(),
     expenses: emptyCounts(),
     settlements: emptyCounts(),
+    checklistItems: emptyCounts(),
     visitedCountries: emptyCounts(),
     movedToInbox: 0,
   };
@@ -69,6 +70,7 @@ export function planImport(
       'companions',
       'expenses',
       'settlements',
+      'checklistItems',
       'visitedCountries',
     ] as const;
     for (const key of kinds) {
@@ -94,6 +96,7 @@ export function planImport(
   const companions = mergeById(local.companions, file.companions, summary.companions);
   const expenses = mergeById(local.expenses, file.expenses, summary.expenses);
   const settlements = mergeById(local.settlements, file.settlements, summary.settlements);
+  const checklist = mergeById(local.checklistItems, file.checklistItems, summary.checklistItems);
   const countries = mergeById(
     local.visitedCountries,
     file.visitedCountries,
@@ -124,6 +127,7 @@ export function planImport(
       expenses: expenses.writes(),
       expenseShares: file.expenseShares.filter((share) => expenses.written.has(share.expenseId)),
       settlements: settlements.writes(),
+      checklistItems: checklist.writes(),
       visitedCountries: countries.writes(),
     },
     deleteShareIds: local.expenseShares

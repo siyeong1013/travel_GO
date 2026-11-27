@@ -355,6 +355,41 @@ describe('backup file format', () => {
     expectInvalid({ ...file, expenses: [{ ...expense, title: 3 }] }, 'backup_invalid', '$.expenses[0].title');
   });
 
+  it('takes the checklist, checked; files before v12 have none', () => {
+    const file = sampleFile();
+    const trip = file.trips[0]!;
+    const me = file.companions.find((c) => c.tripId === trip.id && c.isMe)!;
+    const item = {
+      id: newId(),
+      tripId: trip.id,
+      text: '여권',
+      checked: true,
+      assigneeId: me.id,
+      order: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    };
+    const withList = { ...file, checklistItems: [item] };
+    expect(roundTrip(withList).checklistItems).toEqual([item]);
+    expect(parseRecord('checklistItem', JSON.parse(JSON.stringify(item)), 11)).toEqual(item);
+
+    const { checklistItems: _, ...older } = withList;
+    expect(roundTrip({ ...older, schemaVersion: 11 }).checklistItems).toEqual([]);
+
+    expectInvalid({ ...file, checklistItems: [{ ...item, text: ' ' }] }, 'backup_invalid', '$.checklistItems[0].text');
+    expectInvalid({ ...file, checklistItems: [{ ...item, order: -1 }] }, 'backup_invalid', '$.checklistItems[0].order');
+    expectInvalid(
+      { ...file, checklistItems: [{ ...item, assigneeId: newId() }] },
+      'backup_invalid',
+      '$.checklistItems[0].assigneeId',
+    );
+    expectInvalid(
+      { ...file, checklistItems: [{ ...item, tripId: newId() }] },
+      'backup_invalid',
+      '$.checklistItems[0].tripId',
+    );
+  });
+
   it('reads a server expense of the format before v11 with its memo as the title', () => {
     const file = sampleFile();
     const [old] = beforeV11(file).expenses;

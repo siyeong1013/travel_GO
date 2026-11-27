@@ -7,6 +7,7 @@ const WRITES: { [K in keyof Repositories]: (keyof Repositories[K])[] } = {
   companions: ['create', 'rename', 'claim', 'delete'],
   expenses: ['create', 'update', 'delete'],
   settlements: ['create', 'delete'],
+  checklist: ['add', 'copyFrom', 'update', 'delete', 'restore'],
   countries: ['set'],
   backup: ['importAll'],
 };
@@ -34,6 +35,7 @@ export function watchWrites(repos: Repositories, onWrite: () => void): Repositor
     companions: watch(repos.companions, WRITES.companions),
     expenses: watch(repos.expenses, WRITES.expenses),
     settlements: watch(repos.settlements, WRITES.settlements),
+    checklist: watch(repos.checklist, WRITES.checklist),
     countries: watch(repos.countries, WRITES.countries),
     backup: watch(repos.backup, WRITES.backup),
   };

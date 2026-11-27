@@ -1,4 +1,5 @@
 export type * from '@/data/models/backup';
+export type * from '@/data/models/checklist';
 export type * from '@/data/models/common';
 export type * from '@/data/models/country';
 export type * from '@/data/models/expense';

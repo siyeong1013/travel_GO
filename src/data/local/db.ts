@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  ChecklistItem,
   Companion,
   Expense,
   ExpenseShare,
@@ -10,9 +11,11 @@ import type {
   TripCity,
   VisitedCountry,
 } from '@/data/models';
+import { defaultChecklistItems } from '@/data/rules/checklist';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { DEFAULT_SETTLEMENT_CURRENCY } from '@/data/rules/money';
 import type { SyncedRecord, SyncState } from '@/data/sync/records';
+import { toLocalDate } from '@/lib/dates';
 
 export type TravelGoDB = Dexie & {
   trips: Table<Trip, ID>;
@@ -21,6 +24,7 @@ export type TravelGoDB = Dexie & {
   expenses: Table<Expense, ID>;
   expenseShares: Table<ExpenseShare, ID>;
   settlements: Table<Settlement, ID>;
+  checklistItems: Table<ChecklistItem, ID>;
   syncedRecords: Table<SyncedRecord, ID>;
   syncState: Table<SyncState, 'state'>;
   visitedCountries: Table<VisitedCountry, string>;
@@ -189,6 +193,23 @@ export function createTravelGoDB(name = DEFAULT_DB_NAME): TravelGoDB {
           expense.title = expense.memo;
           expense.memo = '';
         });
+    });
+
+  // v12: each trip's checklist (준비물). Trips not over yet get the default list, as new trips do;
+  // its ids come from the trip's, so another device (or a friend's) adding it too makes no copy.
+  // Stamped with the trip's `createdAt`, like a migrated "나".
+  db.version(12)
+    .stores({ checklistItems: 'id, tripId' })
+    .upgrade(async (tx) => {
+      const today = toLocalDate();
+      const trips = await tx.table<Trip, ID>('trips').toArray();
+      await tx
+        .table<ChecklistItem, ID>('checklistItems')
+        .bulkPut(
+          trips
+            .filter((trip) => trip.endDate >= today)
+            .flatMap((trip) => defaultChecklistItems(trip.id, trip.createdAt)),
+        );
     });
 
   return db;

@@ -7,6 +7,7 @@ import {
   OutOfRangeItemsError,
   type TripRepository,
 } from '@/data/repositories';
+import { defaultChecklistItems } from '@/data/rules/checklist';
 import { makeMeCompanion } from '@/data/rules/companion';
 import { DEFAULT_SETTLEMENT_CURRENCY } from '@/data/rules/money';
 import { expireTrip, withCitiesData } from '@/data/rules/placeData';
@@ -49,7 +50,7 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
     },
 
     create(input, options = {}) {
-      return db.transaction('rw', db.trips, db.companions, async () => {
+      return db.transaction('rw', db.trips, db.companions, db.checklistItems, async () => {
         const timestamp = now();
         const trip: Trip = {
           id: options.id !== undefined ? cleanId(options.id) : newId(),
@@ -62,6 +63,8 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
         };
         await db.trips.add(trip);
         await db.companions.add(makeMeCompanion(trip.id, timestamp));
+        // A new trip starts with the default checklist (준비물).
+        await db.checklistItems.bulkAdd(defaultChecklistItems(trip.id, timestamp));
         return trip;
       });
     },
@@ -135,6 +138,7 @@ export function createLocalTripRepository(db: TravelGoDB, now: Clock): TripRepos
         db.expenses,
         db.expenseShares,
         db.settlements,
+        db.checklistItems,
       ];
       return db.transaction('rw', tables, async () => {
         for (const table of tables.slice(1)) await table.where('tripId').equals(id).delete();
